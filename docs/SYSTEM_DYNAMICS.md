@@ -55,7 +55,7 @@ flowchart TD
 
 ---
 
-## 🤝 3. Olay: Alacak Tahsilatı veya Borç Geri Ödemesi (Debt/Receivable Settlement)
+## 🤝 3. Olay: Alacak Tahsilatı veya Borç Geri Ödemesi (Debt/Receivable Auto-Sync)
 
 ```mermaid
 flowchart TD
@@ -69,31 +69,35 @@ flowchart TD
     E -->|Evet| F["Durum: `Kapatıldı` olarak pasife geçer"]
     E -->|Hayır| G["Durum: `Açık` kalmaya devam eder"]
 
-    C --> H["Nakit Girişi ➔ `accounts.balance` Yükselir"]
-    D --> I["Nakit Çıkışı ➔ `accounts.balance` Düşer"]
+    C --> H["Nakit Girişi ➔ Seçilen `accounts.balance` Otomatik Yükselir"]
+    D --> I["Nakit Çıkışı ➔ Seçilen `accounts.balance` Otomatik Düşer"]
 
-    H & I & F & G --> J["📊 Net Varlık & Borç/Alacak Dengesi Anında Güncellenir"]
+    H & I & F & G --> J["📊 Net Varlık & Nakit Bakiyesi Anında Güncellenir"]
 ```
 
 ---
 
-## ⏰ 4. Olay: Abonelik ve Tekrarlayan Servis Yönetimi (Subscription Lifecycle)
+## ⏰ 4. Olay: 6 Aylık Planlı Nakit Yükü Projeksiyonu (Abonelikler + Taksitler)
 
-1. **Abonelik Tanımlandığında:**
-   - Gelecek 6 ayın planlı nakit yükü tablosuna aylık/periyodik yük olarak yansır.
-   - Eğer `project_id` seçildiyse, projenin aylık yakma hızına (burn rate) eklenir.
-2. **Karar Değiştiğinde (`İptal Et` seçildiğinde):**
-   - Karar panelinde işaretlenir; yenileme gün sayacı alarm verir.
-   - İptal gerçekleştiğinde `status: 'İptal'` yapılır ve 6 aylık nakit yükünden otomatik düşer.
+Sistem gelecek 6 ayın nakit çıkış yükünü sadece aboneliklerden değil, **kredi kartlarının devam eden taksitlerinden** de hesaplar:
+
+$$\text{Ay } N \text{ Nakit Yükü} = \sum \text{Aktif Aylık Abonelikler} + \sum \text{Ay } N\text{'e İsabet Eden Kredi Kartı Taksitleri}$$
+
+1. **Abonelikler:** Her ay düzenli yük (Örn: Cursor ₺960 + ChatGPT ₺1.090 = ₺2.050/ay).
+2. **Taksitler:** Devam eden taksitler (Örn: `RIHTIM VE VERASET 4/6` ➔ Gelecek 2 ay boyunca her ay ₺1.879 ek nakit yükü).
+3. **İptal Kararı:** Abonelik `İptal Et` işaretlendiğinde veya kapatıldığında projeksiyondan anında düşer.
 
 ---
 
-## 🚀 5. Olay: Proje Yaşam Döngüsü & Odak Kapasitesi (Focus Gate)
+## 🚀 5. Olay: Proje Yaşam Döngüsü & Bütçe Tavanı (Budget Cap & Focus Gate)
 
 1. **Fikir Aşaması:** `ideas` havuzunda depolanır.
-2. **Projeye Dönüştürme:** Fikir onaylandığında tek tıkla `projects` tablosunda `status: 'Fikir'` veya `'Planlama'` olarak yeni proje açılır.
-3. **Kapasite Kapısı (Focus Gate):**
-   - Sistem sürekli şu sorguyu çalıştırır:
-     $$\text{Aktif Geliştirme} = \text{Count}(\text{status} \in \{\text{'Planlama'}, \text{'Geliştirmede'}\})$$
-   - $\text{Aktif Geliştirme} \ge 2$ olduğunda sistemde **"Kapasite Dolu"** uyarısı tetiklenir. Kurucu mevcut projelerden birini bitirmeden veya askıya almadan yeni geliştirmeye başlamamaya yönlendirilir.
-4. **Maliyet Muhasebesi:** Proje detay sayfası açıldığında, o projeye ait tüm geçmiş tekil harcamalar ve aktif abonelikler toplanarak **"Bu projenin bugüne kadarki gerçek maliyeti"** olarak gösterilir.
+2. **Projeye Dönüştürme:** Fikir onaylandığında tek tıkla `projects` tablosunda `status: 'Fikir'` veya `'Planlama'` olarak yeni proje açılır; opsiyonel bir **Bütçe Tavanı (`budget_limit`)** belirlenir (Örn: ₺20.000).
+3. **Bütçe Kontrol Dinamiği:**
+   - $\text{Harcanan} \ge \text{Bütçe} \times 0.85$ ➔ 🟡 **Yaklaşan Bütçe Uyarısı**
+   - $\text{Harcanan} \ge \text{Bütçe}$ ➔ 🔴 **Bütçe Aşımı Uyarısı**
+4. **Kapasite Kapısı (Focus Gate):**
+   - Aktif geliştirme sayısı $\ge 2$ olduğunda kurucu uyarılır.
+5. **Maliyet Muhasebesi (Bridge):**
+   - $\text{Proje Gerçek Maliyeti} = \sum \text{Transactions}(project\_id) + \sum \text{Subscriptions}(project\_id)$
+   - Her harcama ve abonelik projeye anında yansır.

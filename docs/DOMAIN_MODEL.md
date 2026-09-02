@@ -101,6 +101,7 @@ erDiagram
   - `past_payments`: Numeric(12,2) (Geçmişte tahsil edilen/ödenen)
   - `remaining`: Numeric(12,2) (`principal - past_payments`)
   - `status`: Enum (`Açık`, `Kapatıldı`)
+  - `linked_account_id`: UUID (FK ➔ Accounts, **Tahsilat/Ödemenin yansıyacağı hesap**)
 
 ### 6. `Subscriptions` (Abonelikler & Planlı Yük)
 - **Amaç:** Aylık/yıllık tekrarlayan SaaS ve lisans maliyetlerini, bitiş tarihlerini ve kararları yönetir.
@@ -110,7 +111,7 @@ erDiagram
   - `service`: Text ("Cursor Pro", "ChatGPT Plus", "Hostinger")
   - `group`: Enum (`Kişisel`, `İş`)
   - `model`: Text ("Tekrarlayan", "Promosyon", "Ücretsiz")
-  - `amount`: Numeric(12,2)
+  - `amount`: Numeric(12,2) (Sabit TL)
   - `period`: Enum (`Aylık`, `Yıllık`, `Tek Sefer`, `18 Ay`)
   - `end_date`: Date (Yenileme/bitiş tarihi)
   - `decision`: Enum (`Devam`, `İptal Et`, `Kararsız`)
@@ -126,6 +127,7 @@ erDiagram
   - `name`: Text
   - `description`: Text
   - `status`: Enum (`Fikir`, `Planlama`, `Geliştirmede`, `Canlı`, `Arşiv`)
+  - `budget_limit`: Numeric(12,2) (Bütçe tavanı, örn: ₺20.000)
   - `repo_url`: Text
   - `live_url`: Text
 
