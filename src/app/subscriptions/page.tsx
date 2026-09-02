@@ -121,7 +121,7 @@ export default function SubscriptionsPage() {
   ) => {
     try {
       const supabase = createClient()
-      const newStatus = decision === 'İptal Et' ? 'İptal Edildi' : 'Aktif'
+      const newStatus = decision === 'İptal Et' ? 'İptal' : 'Aktif'
       const { error } = await supabase
         .from('subscriptions')
         .update({ decision, status: newStatus as any })
