@@ -53,7 +53,7 @@ export default function DashboardPage() {
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
           supabase.from('debts').select('*').eq('status', 'Açık'),
-          supabase.from('transactions').select('*').order('date', { ascending: false }).limit(30),
+          supabase.from('transactions').select('*').order('date', { ascending: false }),
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
         ])
@@ -81,8 +81,21 @@ export default function DashboardPage() {
   const { personal: personalSpent, business: businessSpent, financing: financeCost, totalConsumption } =
     calculateSpendingBreakdown(transactions)
 
+  // Extract ongoing installments from transactions (e.g. Masterpass 9/12 -> 3 months remaining)
+  const activeInstallments = transactions
+    .filter((t) => t.recurrence && /Taksit\s*\(\d+\/\d+\)/i.test(t.recurrence))
+    .map((t) => {
+      const m = t.recurrence!.match(/(\d+)\/(\d+)/)
+      if (!m) return null
+      const current = parseInt(m[1], 10)
+      const total = parseInt(m[2], 10)
+      const remaining = Math.max(0, total - current)
+      return remaining > 0 ? { amountPerMonth: t.amount, remainingMonths: remaining } : null
+    })
+    .filter((inst): inst is { amountPerMonth: number; remainingMonths: number } => inst !== null)
+
   // Subscriptions & Installments 6-month projection
-  const cashForecast = projectSixMonthCashLoad(subscriptions, [], 6)
+  const cashForecast = projectSixMonthCashLoad(subscriptions, activeInstallments, 6)
   const monthlySubscriptionLoad = cashForecast[0] || 0
 
   // Founder Runway

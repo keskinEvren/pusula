@@ -22,7 +22,7 @@ export function repairTurkishPdfText(text: string): string {
     [/\bA\s*ıklama\b/gi, 'Açıklama'],
 
     // ŞOK Market
-    [/\bOK\s*(?:-|–)?\s*12037\b/gi, 'ŞOK 12037'],
+    [/\b(?:OK|ŞOK)\s*(?:-|–)?\s*12037\s*(?:L\s+AL\s+BEY|ŞİŞLİ\s+ALİBEY)?\b/gi, 'ŞOK 12037 ŞİŞLİ ALİBEY'],
     [/\b12037\s+L\s+AL\s+BEY\b/gi, 'ŞOK 12037 ŞİŞLİ ALİBEY'],
     [/\bOK-12037-\s*L\s+AL\s+B\b/gi, 'ŞOK 12037 ŞİŞLİ ALİBEY'],
     [/\bOK\s+(\d{4,6})\b/gi, 'ŞOK $1'],

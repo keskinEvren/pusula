@@ -7,64 +7,125 @@ import * as XLSX from 'xlsx'
 
 /**
  * Parses raw text lines from Turkish bank account statements (Vadesiz Hesap Özeti)
+ * Handles dual columns (Tutar + Bakiye), multi-line FAST explanations, and 2-digit years.
  */
 export function parseBankAccountLines(
   rawText: string,
   openDebts: Debt[] = [],
   creditCards: CreditCard[] = [],
   userMappings: MerchantMapping[] = []
-): ExtractedTransaction[] {
+): { transactions: ExtractedTransaction[]; closing_balance?: number } {
   const repairedText = repairTurkishPdfText(rawText)
   const lines = repairedText.split('\n')
   const transactions: ExtractedTransaction[] = []
 
   let idx = 0
+  let closing_balance: number | undefined = undefined
+
+  // Multi-line accumulator
+  interface IntermediateMovement {
+    date: string
+    descriptionParts: string[]
+    rawAmountStr: string
+    balanceStr?: string
+    borcAlacakFlag?: string
+  }
+
+  const movements: IntermediateMovement[] = []
+  let currentMovement: IntermediateMovement | null = null
 
   for (const line of lines) {
     const trimmed = line.trim()
-    if (!trimmed || trimmed.length < 10) continue
+    if (!trimmed) continue
 
-    // Filter non-transaction header lines
+    // Detect official closing balance
+    const closingMatch = trimmed.match(/(?:Dönem sonu bakiyesi|Kapanış bakiyesi|Toplam Bakiye)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i)
+    if (closingMatch && closing_balance === undefined) {
+      const cleanClosing = closingMatch[1].replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.')
+      closing_balance = parseFloat(cleanClosing)
+    }
+
+    // Filter headers
     if (
-      /Hesap No|IBAN|Toplam Bakiye|Kullanılabilir Bakiye|Açılış Bakiyesi|Kapanış Bakiyesi|Dönem Başı|Sayfa\s+\d+/i.test(
+      /Hesap No|IBAN|Kullanılabilir Bakiye|Açılış Bakiyesi|Dönem Başı|Sayfa\s+\d+|Enpara Bank A\.Ş\.|Mersis no/i.test(
         trimmed
       )
     ) {
       continue
     }
 
-    // Line starts with date (DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY)
+    // Line starts with date (DD.MM.YYYY or DD/MM/YYYY or DD/MM/YY)
     const dateMatch = trimmed.match(/^(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\s+(.+)$/)
-    if (!dateMatch) continue
 
-    const rawDate = dateMatch[1]
-    const rest = dateMatch[2].trim()
+    if (dateMatch) {
+      if (currentMovement) {
+        movements.push(currentMovement)
+      }
 
-    // Match amount at the end: e.g. " + 50.000,00 TL", " - 1.250,00 TL", " 20.000,00 TL (B)", " 50.000,00 TL (A)"
-    const amountMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?$/i)
-    if (!amountMatch) continue
+      const rawDate = dateMatch[1]
+      const rest = dateMatch[2].trim()
 
-    const rawDesc = amountMatch[1].trim()
-    const rawAmountStr = amountMatch[2].trim()
-    const borcAlacakFlag = amountMatch[3]?.toUpperCase()
+      // Normalize date (handling 2-digit year e.g. 06/08/26 -> 2026-08-06)
+      let parsedDate = new Date().toISOString().split('T')[0]
+      const dmy = rawDate.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/)
+      if (dmy) {
+        const year = dmy[3] ? (dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]) : new Date().getFullYear().toString()
+        parsedDate = `${year}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+      }
+
+      // Check for dual amount format at end of line: [Tutar TL] [Bakiye TL]
+      // e.g. "Gelen Transfer 7.000,00 TL 6.849,61 TL" or "Ödeme - 6.130,00 TL 719,61 TL"
+      const dualMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?$/i)
+
+      if (dualMatch) {
+        currentMovement = {
+          date: parsedDate,
+          descriptionParts: [dualMatch[1].trim()],
+          rawAmountStr: dualMatch[2].trim(), // Exact transaction amount!
+          balanceStr: dualMatch[3].trim(),   // Account balance!
+          borcAlacakFlag: dualMatch[4]?.toUpperCase(),
+        }
+      } else {
+        // Single amount fallback: [Açıklama] [Tutar TL]
+        const singleMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?$/i)
+        if (singleMatch) {
+          currentMovement = {
+            date: parsedDate,
+            descriptionParts: [singleMatch[1].trim()],
+            rawAmountStr: singleMatch[2].trim(),
+            borcAlacakFlag: singleMatch[3]?.toUpperCase(),
+          }
+        }
+      }
+    } else if (currentMovement) {
+      // Continuation line of multi-line explanation (e.g. FAST sorgu no, alıcı vb.)
+      currentMovement.descriptionParts.push(trimmed)
+    }
+  }
+
+  if (currentMovement) {
+    movements.push(currentMovement)
+  }
+
+  // Convert movements to ExtractedTransactions
+  for (const mov of movements) {
+    const fullDesc = mov.descriptionParts.join(' ').trim()
+    const rawAmountStr = mov.rawAmountStr
 
     // Determine direction
-    let isOutflow = rawAmountStr.startsWith('-') || borcAlacakFlag === 'B'
-    if (
-      !isOutflow &&
-      (rawDesc.toUpperCase().includes('GİDEN') ||
-        rawDesc.toUpperCase().includes('GIDEN') ||
-        rawDesc.toUpperCase().includes('ÖDEME') ||
-        rawDesc.toUpperCase().includes('ODEME') ||
-        rawDesc.toUpperCase().includes('EFT ÇIKIŞ') ||
-        rawDesc.toUpperCase().includes('FAST ÇIKIŞ'))
-    ) {
-      isOutflow = true
+    let isOutflow =
+      rawAmountStr.startsWith('-') ||
+      mov.borcAlacakFlag === 'B' ||
+      /Ödeme|Giden Transfer|EFT Çıkış|FAST Çıkış|Para Çekme/i.test(fullDesc)
+
+    // Positive check
+    if (/Gelen Transfer|Gelen EFT|Gelen FAST|Maaş|Hakediş|Para Yatırma/i.test(fullDesc)) {
+      isOutflow = false
     }
 
     const direction: 'inflow' | 'outflow' = isOutflow ? 'outflow' : 'inflow'
 
-    // Parse amount
+    // Clean amount
     const cleanAmountStr = rawAmountStr
       .replace(/[^\d.,]/g, '')
       .replace(/\.(?=\d{3})/g, '')
@@ -73,17 +134,9 @@ export function parseBankAccountLines(
     const absAmount = parseFloat(cleanAmountStr)
     if (isNaN(absAmount) || absAmount === 0) continue
 
-    // Normalize date
-    let parsedDate = new Date().toISOString().split('T')[0]
-    const dmy = rawDate.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/)
-    if (dmy) {
-      const year = dmy[3] ? (dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]) : new Date().getFullYear().toString()
-      parsedDate = `${year}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
-    }
-
     // Run Smart Reconciliation Engine
     const suggestion = reconcileBankMovement(
-      rawDesc,
+      fullDesc,
       absAmount,
       direction,
       openDebts,
@@ -94,8 +147,8 @@ export function parseBankAccountLines(
     idx++
     transactions.push({
       id: `bank-${idx}-${Date.now()}`,
-      date: parsedDate,
-      raw_description: rawDesc,
+      date: mov.date,
+      raw_description: fullDesc,
       merchant: suggestion.merchant,
       amount: absAmount,
       type: suggestion.type,
@@ -110,7 +163,7 @@ export function parseBankAccountLines(
     })
   }
 
-  return transactions
+  return { transactions, closing_balance }
 }
 
 /**
@@ -127,9 +180,9 @@ export async function parseBankAccountFile(
   if (ext === 'pdf') {
     try {
       const rawText = await extractTextFromPDF(file)
-      const transactions = parseBankAccountLines(rawText, openDebts, creditCards, userMappings)
+      const { transactions, closing_balance } = parseBankAccountLines(rawText, openDebts, creditCards, userMappings)
 
-      let detected_bank = 'Vadesiz Hesap'
+      let detected_bank = 'Enpara Vadesiz'
       const upper = rawText.toUpperCase()
       if (upper.includes('ENPARA') || upper.includes('QNB FINANSBANK')) detected_bank = 'Enpara Vadesiz'
       else if (upper.includes('GARANTI') || upper.includes('BBVA')) detected_bank = 'Garanti Vadesiz'
@@ -141,6 +194,7 @@ export async function parseBankAccountFile(
         file_name: file.name,
         import_type: 'bank_account',
         detected_bank,
+        closing_balance,
         transactions,
         error: transactions.length === 0 ? 'Vadesiz hesap hareket satırları tespit edilemedi.' : undefined,
       }
@@ -163,13 +217,14 @@ export async function parseBankAccountFile(
       const jsonData: Array<Array<any>> = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false })
 
       const textRows = jsonData.map((r) => (r || []).join(' ')).join('\n')
-      const transactions = parseBankAccountLines(textRows, openDebts, creditCards, userMappings)
+      const { transactions, closing_balance } = parseBankAccountLines(textRows, openDebts, creditCards, userMappings)
 
       return {
         success: transactions.length > 0,
         file_name: file.name,
         import_type: 'bank_account',
         detected_bank: 'Vadesiz Hesap (CSV)',
+        closing_balance,
         transactions,
       }
     } catch (err: any) {
