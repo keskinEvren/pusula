@@ -243,6 +243,7 @@ export async function parseStatementFile(
     return {
       success: !csvResult.error && csvResult.transactions.length > 0,
       file_name: file.name,
+      import_type: 'credit_card',
       transactions: csvResult.transactions,
       error: csvResult.error,
     }
@@ -257,6 +258,7 @@ export async function parseStatementFile(
       return {
         success: transactions.length > 0,
         file_name: file.name,
+        import_type: 'credit_card',
         detected_bank: meta.bank,
         detected_card: meta.card_name,
         last_four: meta.last_four,
@@ -273,6 +275,7 @@ export async function parseStatementFile(
       return {
         success: false,
         file_name: file.name,
+        import_type: 'credit_card',
         transactions: [],
         error: err.message || 'PDF dosyası işlenirken hata oluştu',
       }
@@ -282,7 +285,12 @@ export async function parseStatementFile(
   return {
     success: false,
     file_name: file.name,
+    import_type: 'credit_card',
     transactions: [],
     error: 'Desteklenmeyen dosya türü. Lütfen PDF, CSV veya XLSX yükleyin.',
   }
 }
+
+export * from './reconciler'
+export * from './extract-bank-account'
+
