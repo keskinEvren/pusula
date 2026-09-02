@@ -15,8 +15,13 @@ export interface ExtractedTransaction {
 export interface BankDetectionResult {
   bank: string
   card_name: string
+  last_four?: string
   statement_date?: string
   due_date?: string
+  statement_debt?: number
+  minimum_payment?: number
+  prev_debt?: number
+  interest_fees?: number
 }
 
 export interface ParseResult {
@@ -24,8 +29,13 @@ export interface ParseResult {
   file_name: string
   detected_bank?: string
   detected_card?: string
+  last_four?: string
   statement_date?: string
   due_date?: string
+  statement_debt?: number
+  minimum_payment?: number
+  prev_debt?: number
+  interest_fees?: number
   transactions: ExtractedTransaction[]
   error?: string
 }

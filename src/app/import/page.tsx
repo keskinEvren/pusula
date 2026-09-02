@@ -11,10 +11,13 @@ import {
   Trash2,
   ArrowRight,
   ShieldAlert,
+  CreditCard as CardIcon,
+  Sparkles,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { parseStatementFile } from '@/lib/parser'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { calculateStatementChange } from '@/lib/finance-engine'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -39,19 +42,20 @@ export default function ImportPage() {
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    async function loadMetadata() {
-      const supabase = createClient()
-      const [{ data: prjs }, { data: crds }, { data: maps }] = await Promise.all([
-        supabase.from('projects').select('*'),
-        supabase.from('credit_cards').select('*'),
-        supabase.from('merchant_mappings').select('*'),
-      ])
-      if (prjs) setProjects(prjs)
-      if (crds) setCards(crds)
-      if (maps) setUserMappings(maps)
-    }
     loadMetadata()
   }, [])
+
+  async function loadMetadata() {
+    const supabase = createClient()
+    const [{ data: prjs }, { data: crds }, { data: maps }] = await Promise.all([
+      supabase.from('projects').select('*'),
+      supabase.from('credit_cards').select('*'),
+      supabase.from('merchant_mappings').select('*'),
+    ])
+    if (prjs) setProjects(prjs)
+    if (crds) setCards(crds)
+    if (maps) setUserMappings(maps)
+  }
 
   const handleFile = async (uploadedFile: File) => {
     setFile(uploadedFile)
@@ -65,10 +69,12 @@ export default function ImportPage() {
         setParseResult(result)
         setTransactions(result.transactions)
 
-        // Try auto-selecting card
+        // Try auto-selecting card if exists
         if (result.detected_bank && cards.length > 0) {
           const matchedCard = cards.find(
-            (c) => c.bank.toLowerCase() === result.detected_bank?.toLowerCase()
+            (c) =>
+              c.bank.toLowerCase().includes(result.detected_bank?.toLowerCase() || '') ||
+              (result.detected_bank?.toLowerCase() || '').includes(c.bank.toLowerCase())
           )
           if (matchedCard) {
             setSelectedCardId(matchedCard.id)
@@ -114,32 +120,129 @@ export default function ImportPage() {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!user) throw new Error('Oturum açılmamış')
+      if (!user) throw new Error('Oturum açılmamış. Lütfen giriş yapın.')
 
-      // 1. Create statement import record
-      const totalAmount = selectedTxs.reduce((sum, t) => sum + t.amount, 0)
+      const totalSelectedAmount = selectedTxs.reduce((sum, t) => sum + t.amount, 0)
+      const detectedBankName = parseResult?.detected_bank || 'Kredi Kartı'
+      const detectedCardTitle = parseResult?.detected_card || 'Kredi Kartı'
+
+      // =========================================================================
+      // 1. OTOMATİK KREDİ KARTI ÇÖZÜMLEME VEYA OLUŞTURMA (Zero-Silos Bridge)
+      // =========================================================================
+      let resolvedCardId = selectedCardId
+
+      const statementDebtValue = parseResult?.statement_debt || totalSelectedAmount
+      const minPaymentValue = parseResult?.minimum_payment || Math.round(statementDebtValue * 0.2)
+      const interestFeesValue = parseResult?.interest_fees || 0
+
+      if (!resolvedCardId) {
+        // Search if user has a card with this bank
+        const existingCard = cards.find(
+          (c) =>
+            c.bank.toLowerCase().includes(detectedBankName.toLowerCase()) ||
+            detectedBankName.toLowerCase().includes(c.bank.toLowerCase())
+        )
+
+        if (existingCard) {
+          resolvedCardId = existingCard.id
+          // Update existing card with new statement debt & dates
+          await supabase
+            .from('credit_cards')
+            .update({
+              current_debt: statementDebtValue,
+              statement_debt: statementDebtValue,
+              minimum_payment: minPaymentValue,
+              interest_fees: interestFeesValue,
+              statement_date: parseResult?.statement_date || null,
+              due_date: parseResult?.due_date || null,
+            })
+            .eq('id', existingCard.id)
+        } else {
+          // Auto-create brand new credit card!
+          const { data: newCard, error: cardError } = await supabase
+            .from('credit_cards')
+            .insert({
+              user_id: user.id,
+              bank: detectedBankName,
+              card_name: detectedCardTitle,
+              last_four: parseResult?.last_four || null,
+              current_debt: statementDebtValue,
+              statement_debt: statementDebtValue,
+              minimum_payment: minPaymentValue,
+              interest_fees: interestFeesValue,
+              statement_date: parseResult?.statement_date || null,
+              due_date: parseResult?.due_date || null,
+            })
+            .select()
+            .single()
+
+          if (!cardError && newCard) {
+            resolvedCardId = newCard.id
+          }
+        }
+      } else {
+        // Update user-selected card
+        await supabase
+          .from('credit_cards')
+          .update({
+            current_debt: statementDebtValue,
+            statement_debt: statementDebtValue,
+            minimum_payment: minPaymentValue,
+            interest_fees: interestFeesValue,
+            statement_date: parseResult?.statement_date || null,
+            due_date: parseResult?.due_date || null,
+          })
+          .eq('id', resolvedCardId)
+      }
+
+      // =========================================================================
+      // 2. OTOMATİK EKSTRE GEÇMİŞİ KAYDI (card_statements + Trend Analizi)
+      // =========================================================================
+      if (resolvedCardId && parseResult?.statement_date) {
+        const prevDebt = parseResult?.prev_debt || null
+        const { changeAmount, changePct } = calculateStatementChange(statementDebtValue, prevDebt)
+
+        await supabase.from('card_statements').insert({
+          card_id: resolvedCardId,
+          statement_date: parseResult.statement_date,
+          period_debt: statementDebtValue,
+          minimum: minPaymentValue,
+          spending: totalSelectedAmount,
+          interest_fees: interestFeesValue,
+          due_date: parseResult.due_date || null,
+          prev_debt: prevDebt,
+          change_amount: changeAmount,
+          change_pct: changePct ? changePct / 100 : null,
+        })
+      }
+
+      // =========================================================================
+      // 3. İTHALAT (statement_imports) KAYDI
+      // =========================================================================
       const { data: importRecord, error: importError } = await supabase
         .from('statement_imports')
         .insert({
           user_id: user.id,
           file_name: file?.name || 'ekstre.pdf',
-          bank: parseResult?.detected_bank || null,
-          card_id: selectedCardId || null,
+          bank: detectedBankName,
+          card_id: resolvedCardId || null,
           statement_date: parseResult?.statement_date || null,
           due_date: parseResult?.due_date || null,
           total_transactions: selectedTxs.length,
-          total_amount: totalAmount,
+          total_amount: totalSelectedAmount,
         })
         .select()
         .single()
 
       if (importError) throw importError
 
-      // 2. Prepare transaction rows
+      // =========================================================================
+      // 4. İŞLEM HAREKETLERİNİ YAZMA (transactions)
+      // =========================================================================
       const rowsToInsert = selectedTxs.map((t) => ({
         user_id: user.id,
         date: t.date,
-        account_or_card: parseResult?.detected_card || 'Kredi Kartı',
+        account_or_card: detectedCardTitle,
         type: t.type as any,
         description: t.raw_description,
         amount: t.amount,
@@ -147,7 +250,7 @@ export default function ImportPage() {
         merchant: t.merchant,
         recurrence: t.recurrence || null,
         statement_date: parseResult?.statement_date || null,
-        card_id: selectedCardId || null,
+        card_id: resolvedCardId || null,
         project_id: t.project_id || null,
         import_id: importRecord.id,
       }))
@@ -155,22 +258,39 @@ export default function ImportPage() {
       const { error: txError } = await supabase.from('transactions').insert(rowsToInsert)
       if (txError) throw txError
 
-      // 3. If card selected, update card statement debt
-      if (selectedCardId && parseResult?.statement_date) {
-        await supabase
-          .from('credit_cards')
-          .update({
-            statement_debt: totalAmount,
-            current_debt: totalAmount,
-            statement_date: parseResult.statement_date,
-            due_date: parseResult.due_date || null,
+      // =========================================================================
+      // 5. OTOMATİK ABONELİK KEŞFİ VE EKLEME (subscriptions)
+      // =========================================================================
+      // If transactions contain recurring SaaS or tools, check and auto-add to subscriptions
+      const { data: existingSubs } = await supabase.from('subscriptions').select('service')
+      const existingServiceNames = new Set(existingSubs?.map((s) => s.service.toLowerCase()) || [])
+
+      for (const t of selectedTxs) {
+        if (
+          (t.recurrence === 'Düzenli' || t.analysis_group === 'İş') &&
+          t.type === 'Harcama' &&
+          !existingServiceNames.has(t.merchant.toLowerCase())
+        ) {
+          await supabase.from('subscriptions').insert({
+            user_id: user.id,
+            service: t.merchant,
+            group_type: t.analysis_group === 'İş' ? 'İş' : 'Kişisel',
+            model: 'Tekrarlayan',
+            amount: t.amount,
+            currency: 'TRY',
+            period: 'Aylık',
+            status: 'Aktif',
+            decision: 'Devam',
+            project_id: t.project_id || null,
+            payment_method: detectedCardTitle,
           })
-          .eq('id', selectedCardId)
+          existingServiceNames.add(t.merchant.toLowerCase())
+        }
       }
 
       setSuccess(true)
       setTimeout(() => {
-        router.push('/transactions')
+        router.push('/')
       }, 1500)
     } catch (err: any) {
       setError(err.message || 'Veritabanına kaydedilirken hata oluştu')
@@ -191,7 +311,7 @@ export default function ImportPage() {
           Ekstre Ayrıştırma & Yükleme
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Enpara, Akbank, Ziraat veya Garanti ekstre PDF veya CSV dosyanızı yükleyin; hareketler otomatik ayrılsın.
+          Enpara, Akbank, Ziraat veya Garanti ekstre PDF veya CSV dosyanızı yükleyin; hareketler, kredi kartı borçları ve abonelikler tek tıkla otomatik güncellensin.
         </p>
       </div>
 
@@ -205,7 +325,9 @@ export default function ImportPage() {
       {success && (
         <div className="rounded-xl border border-success/30 bg-success/10 p-4 text-success text-sm font-medium flex items-center gap-3">
           <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
-          <span>{selectedCount} hareket başarıyla Supabase'e aktarıldı! Yönlendiriliyorsunuz...</span>
+          <span>
+            {selectedCount} hareket, Kredi Kartı Borçları ve Abonelikler başarıyla Supabase'e aktarıldı! Dashboard'a yönlendiriliyorsunuz...
+          </span>
         </div>
       )}
 
@@ -278,20 +400,31 @@ export default function ImportPage() {
                       {parseResult.detected_bank || 'Banka Tespit Edildi'}
                     </Badge>
                   </div>
-                  <CardDescription className="mt-1">
-                    Ekstre Tarihi: <strong>{formatDate(parseResult.statement_date)}</strong> • Son Ödeme: <strong>{formatDate(parseResult.due_date)}</strong>
+                  <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
+                    <span>Ekstre Tarihi: <strong>{formatDate(parseResult.statement_date)}</strong></span>
+                    <span>•</span>
+                    <span>Son Ödeme: <strong>{formatDate(parseResult.due_date)}</strong></span>
+                    {parseResult.statement_debt && (
+                      <>
+                        <span>•</span>
+                        <span>Dönem Borcu: <strong className="text-foreground">{formatCurrency(parseResult.statement_debt)}</strong></span>
+                      </>
+                    )}
                   </CardDescription>
                 </div>
 
                 {/* Card Linking Selector */}
                 <div className="flex items-center gap-3">
-                  <div className="text-xs text-muted-foreground">Kredi Kartı:</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <CardIcon className="h-4 w-4" />
+                    Kredi Kartı:
+                  </div>
                   <Select
                     value={selectedCardId}
                     onChange={(e) => setSelectedCardId(e.target.value)}
-                    className="w-48 text-xs"
+                    className="w-52 text-xs"
                   >
-                    <option value="">(Kart Seçin)</option>
+                    <option value="">(Otomatik Oluştur / Eşleştir)</option>
                     {cards.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.bank} - {c.card_name}
@@ -331,7 +464,7 @@ export default function ImportPage() {
                   className="gap-2 text-xs shadow-md"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  {saving ? 'Kaydediliyor...' : `Onayla ve Supabase'e Aktar`}
+                  {saving ? 'Tüm Sisteme Aktarılıyor...' : `Onayla ve Tüm Sisteme Aktar`}
                 </Button>
               </div>
             </CardContent>
@@ -358,8 +491,9 @@ export default function ImportPage() {
                   Seçimi Kaldır
                 </Button>
               </div>
-              <div className="text-xs text-muted-foreground">
-                Grup ve projeleri satır bazında değiştirebilirsiniz.
+              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                İşyerini, analiz grubunu ve bağlı projeyi düzenleyebilirsiniz.
               </div>
             </div>
 
