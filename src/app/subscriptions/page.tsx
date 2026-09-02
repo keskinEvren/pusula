@@ -121,14 +121,15 @@ export default function SubscriptionsPage() {
   ) => {
     try {
       const supabase = createClient()
+      const newStatus = decision === 'İptal Et' ? 'İptal Edildi' : 'Aktif'
       const { error } = await supabase
         .from('subscriptions')
-        .update({ decision })
+        .update({ decision, status: newStatus as any })
         .eq('id', id)
 
       if (error) throw error
       setSubscriptions((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, decision } : s))
+        prev.map((s) => (s.id === id ? { ...s, decision, status: newStatus as any } : s))
       )
     } catch (err: any) {
       alert(err.message || 'Karar güncellenemedi')
@@ -148,7 +149,7 @@ export default function SubscriptionsPage() {
   }
 
   // 6-Month Projection via Pure Finance Engine
-  const activeSubs = subscriptions.filter((s) => s.status === 'Aktif')
+  const activeSubs = subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et')
   const monthlyProjection = projectSixMonthCashLoad(activeSubs, [], 6)
   const totalMonthlyBurn = monthlyProjection[0] || 0
 

@@ -2,6 +2,8 @@ export type ReconciliationActionType =
   | 'CARD_PAYMENT'        // Kredi Kartı Borcu Kapat
   | 'COLLECT_RECEIVABLE'  // Alacak Tahsil Et
   | 'PAY_DEBT'            // Şahıs / Kurum Borcu Öde
+  | 'FAMILY_SUPPORT'      // Aile Desteği / Harçlık (Kişisel Gider veya Gelir)
+  | 'SHARED_EXPENSE'      // Ortak Harcama / Masraf Bölüşme (Kişisel)
   | 'DIRECT_EXPENSE'      // Direkt Harcama (Kişisel / İş / Finansman)
   | 'FREE_INCOME'         // Serbest Gelir
   | 'INTERNAL_TRANSFER'   // Hesaplar Arası Transfer (Hariç)
