@@ -15,7 +15,7 @@ export interface ReconciliationSuggestion {
 
 /**
  * Akıllı Nakit Akışı Uzlaştırma Motoru (Smart Reconciliation Engine)
- * Vadesiz hesap hareketlerini analiz ederek alacak tahsilatı, kart ödemesi veya borç kapatma önerir.
+ * Vadesiz hesap hareketlerini analiz ederek alacak tahsilatı, aile transferi, kart ödemesi veya borç kapatma önerir.
  */
 export function reconcileBankMovement(
   rawDescription: string,
@@ -31,11 +31,31 @@ export function reconcileBankMovement(
   // 1. GELEN PARA (INFLOW) UZLAŞTIRMASI
   // =========================================================================
   if (direction === 'inflow') {
+    // 1.1. Aile Desteği / Harçlık / Anne-Baba Transferi
+    if (
+      upper.includes('HALİM KESKİN') ||
+      upper.includes('HALIM KESKIN') ||
+      upper.includes('ANNE') ||
+      upper.includes('BABA') ||
+      upper.includes('HARÇLIK') ||
+      upper.includes('HARCLIK') ||
+      upper.includes('HEDİYE') ||
+      upper.includes('HEDIYE')
+    ) {
+      return {
+        action: 'FAMILY_SUPPORT',
+        type: 'Gelir',
+        analysis_group: 'Gelir',
+        merchant: 'Aile Desteği / Transfer',
+        confidence: 'high',
+      }
+    }
+
     const activeReceivables = openDebts.filter(
       (d) => d.type === 'Alacak' && d.status !== 'Kapatıldı'
     )
 
-    // 1.1. Açık Alacak Kayıtları ile İsim Eşleştirmesi (Örn: Hızır Global, Maaş vb.)
+    // 1.2. Açık Alacak Kayıtları ile İsim Eşleştirmesi (Örn: Hızır Global, Maaş vb.)
     for (const rec of activeReceivables) {
       const entityUpper = rec.person_or_entity.toUpperCase()
       const categoryUpper = rec.category.toUpperCase()
@@ -68,12 +88,12 @@ export function reconcileBankMovement(
       }
     }
 
-    // 1.2. Serbest / Genel Gelir
+    // 1.3. Serbest / Genel Gelir
     return {
       action: 'FREE_INCOME',
       type: 'Gelir',
       analysis_group: 'Gelir',
-      merchant: rawDescription.replace(/^(?:GELEN\s+EFT|GELEN\s+HAVALE|GELEN\s+FAST)\s*[-:]?\s*/i, '').trim() || 'Gelen Transfer',
+      merchant: rawDescription.replace(/^(?:GELEN\s+EFT|GELEN\s+HAVALE|GELEN\s+FAST)\s*[-:,]?\s*/i, '').trim() || 'Gelen Transfer',
       confidence: 'medium',
     }
   }
@@ -82,7 +102,7 @@ export function reconcileBankMovement(
   // 2. GİDEN PARA (OUTFLOW) UZLAŞTIRMASI
   // =========================================================================
 
-  // 2.1. Kredi Kartı Borç Ödemesi Tespiti (Örn: Enpara Kredi Kartı Borç Ödeme, Axess Ödeme)
+  // 2.1. Kredi Kartı Borç Ödemesi Tespiti
   if (
     upper.includes('KREDİ KARTI') ||
     upper.includes('KREDI KARTI') ||
@@ -90,9 +110,10 @@ export function reconcileBankMovement(
     upper.includes('KART ODEME') ||
     upper.includes('KART ÖDEME') ||
     upper.includes('ÖDEME - ENPARA') ||
-    upper.includes('ODEME - ENPARA')
+    upper.includes('ODEME - ENPARA') ||
+    upper.includes('TALİMATLI KREDİ KARTI') ||
+    upper.includes('TALIMATLI KREDI KARTI')
   ) {
-    // Eşleşen kartı bul
     let matchedCard = creditCards.find(
       (c) =>
         upper.includes(c.bank.toUpperCase()) ||
@@ -101,20 +122,38 @@ export function reconcileBankMovement(
     )
 
     if (!matchedCard && creditCards.length > 0) {
-      matchedCard = creditCards[0] // İlk kartı varsayılan öner
+      matchedCard = creditCards[0]
     }
 
     return {
       action: 'CARD_PAYMENT',
       type: 'Kart Ödemesi',
-      analysis_group: 'Hariç', // Mükerrer harcama yazılmasını önler!
+      analysis_group: 'Hariç',
       merchant: matchedCard ? `Kart Ödemesi (${matchedCard.bank})` : 'Kredi Kartı Ödemesi',
       target_card_id: matchedCard?.id,
       confidence: 'high',
     }
   }
 
-  // 2.2. Açık Şahıs Borcu Geri Ödeme Tespiti (Örn: Abla Borcu, Mehmet Borç)
+  // 2.2. Aileye Gönderilen Para / Harçlık (Borç Değil, Kişisel Gider)
+  if (
+    upper.includes('ANNE') ||
+    upper.includes('BABA') ||
+    upper.includes('HARÇLIK') ||
+    upper.includes('HARCLIK') ||
+    upper.includes('AİLE') ||
+    upper.includes('AILE')
+  ) {
+    return {
+      action: 'FAMILY_SUPPORT',
+      type: 'Harcama',
+      analysis_group: 'Kişisel',
+      merchant: 'Aile Desteği / Harçlık',
+      confidence: 'high',
+    }
+  }
+
+  // 2.3. Açık Şahıs Borcu Geri Ödeme Tespiti
   const activeDebts = openDebts.filter(
     (d) => d.type === 'Borç' && d.status !== 'Kapatıldı'
   )
@@ -133,8 +172,13 @@ export function reconcileBankMovement(
     }
   }
 
-  // 2.3. Hesaplar Arası Virman / Transfer
-  if (upper.includes('VİRMAN') || upper.includes('VIRMAN') || upper.includes('HESAPLAR ARASI')) {
+  // 2.4. Hesaplar Arası Virman / Transfer
+  if (
+    upper.includes('VİRMAN') ||
+    upper.includes('VIRMAN') ||
+    upper.includes('HESAPLAR ARASI') ||
+    upper.includes('KENDİ HESABIM')
+  ) {
     return {
       action: 'INTERNAL_TRANSFER',
       type: 'Transfer',
@@ -144,7 +188,7 @@ export function reconcileBankMovement(
     }
   }
 
-  // 2.4. Doğrudan FAST / EFT ile Harcama (Kira, Noter, Alışveriş vb.)
+  // 2.5. Doğrudan FAST / EFT ile Harcama (Kira, Noter, Alışveriş vb.)
   const { merchant, analysis_group, type: mappedType, project_id } = matchMerchant(rawDescription, userMappings)
 
   return {
