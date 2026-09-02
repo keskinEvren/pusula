@@ -15,6 +15,7 @@ import {
   Flame,
   Archive,
   Sparkles,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -25,11 +26,12 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
-import type { Subscription, Project } from '@/types/database'
+import type { Subscription, Project, Transaction } from '@/types/database'
 
 export default function SubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
 
   // Tab: 'active' | 'archived'
@@ -41,7 +43,7 @@ export default function SubscriptionsPage() {
   const [subForm, setSubForm] = useState({
     service: '',
     group_type: 'İş' as 'Kişisel' | 'İş',
-    model: 'Tekrarlayan',
+    model: 'Vazgeçilmez',
     amount: '',
     period: 'Aylık',
     end_date: '',
@@ -58,12 +60,14 @@ export default function SubscriptionsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: sData }, { data: pData }] = await Promise.all([
+      const [{ data: sData }, { data: pData }, { data: tData }] = await Promise.all([
         supabase.from('subscriptions').select('*').order('amount', { ascending: false }),
         supabase.from('projects').select('*'),
+        supabase.from('transactions').select('*').order('date', { ascending: false }),
       ])
       if (sData) setSubscriptions(sData)
       if (pData) setProjects(pData)
+      if (tData) setTransactions(tData)
     } catch (err) {
       console.error('Error loading subscriptions:', err)
     } finally {
@@ -92,7 +96,7 @@ export default function SubscriptionsPage() {
           currency: 'TRY',
           period: subForm.period,
           end_date: subForm.end_date || null,
-          decision: subForm.decision,
+          decision: 'Devam',
           payment_method: subForm.payment_method || null,
           project_id: subForm.project_id || null,
           status: 'Aktif',
@@ -107,7 +111,7 @@ export default function SubscriptionsPage() {
         setSubForm({
           service: '',
           group_type: 'İş',
-          model: 'Tekrarlayan',
+          model: 'Vazgeçilmez',
           amount: '',
           period: 'Aylık',
           end_date: '',
@@ -139,7 +143,7 @@ export default function SubscriptionsPage() {
         .update({
           decision: newDecision as any,
           status: newStatus as any,
-          model: tag, // store semantic tag in model field
+          model: tag,
         })
         .eq('id', id)
 
@@ -168,25 +172,39 @@ export default function SubscriptionsPage() {
     }
   }
 
-  // Active / Current Month Tools vs Archived / Past Invoices
-  const activeSubs = subscriptions.filter(
-    (s) =>
-      s.status === 'Aktif' &&
-      s.decision !== 'İptal Et' &&
-      s.model !== 'Tek Seferlik' &&
-      s.model !== 'İptal'
-  )
+  // =========================================================================
+  // SON EKSTRE / AKTİF AY VE GEÇMİŞ AY AYRIŞTIRMASI
+  // =========================================================================
+  const latestTxDate = transactions[0]?.date || new Date().toISOString().split('T')[0]
+  const latestMonthPrefix = latestTxDate.slice(0, 7) // e.g. '2026-08'
+  const latestMonthName = latestMonthPrefix === '2026-08' ? 'Ağustos 2026' : latestMonthPrefix
 
-  const archivedSubs = subscriptions.filter(
-    (s) =>
-      s.status === 'İptal' ||
-      s.decision === 'İptal Et' ||
-      s.model === 'Tek Seferlik' ||
-      s.model === 'İptal'
-  )
+  // Active tools: either appeared in latest month statement OR explicitly marked as 'Vazgeçilmez' / 'Esnek'
+  const activeSubs = subscriptions.filter((s) => {
+    if (s.status === 'İptal' || s.decision === 'İptal Et' || s.model === 'Tek Seferlik' || s.model === 'İptal') {
+      return false
+    }
+
+    const explicitlyActive = s.model === 'Vazgeçilmez' || s.model === 'Esnek'
+    if (explicitlyActive) return true
+
+    // If auto-discovered without explicit user tag: check if it appeared in latest statement month!
+    const appearedInLatestMonth = transactions.some((t) => {
+      if (!t.date.startsWith(latestMonthPrefix)) return false
+      const m = (t.merchant || '').toLowerCase()
+      const d = (t.description || '').toLowerCase()
+      const srv = s.service.toLowerCase()
+      return (m && (m.includes(srv) || srv.includes(m))) || (d && (d.includes(srv) || srv.includes(d)))
+    })
+
+    return appearedInLatestMonth
+  })
+
+  // Archived / Past Invoices
+  const archivedSubs = subscriptions.filter((s) => !activeSubs.some((a) => a.id === s.id))
 
   // Calculations
-  const essentialSubs = activeSubs.filter((s) => s.model === 'Vazgeçilmez' || s.model === 'Tekrarlayan' || !s.model)
+  const essentialSubs = activeSubs.filter((s) => s.model === 'Vazgeçilmez' || !s.model)
   const flexibleSubs = activeSubs.filter((s) => s.model === 'Esnek')
 
   const totalEssentialMonthly = essentialSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
@@ -206,7 +224,7 @@ export default function SubscriptionsPage() {
             Abonelikler & Düzenli Araçlar
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Gerçekten aktif olan SaaS araçlarınızı ve geçmiş/tek seferlik faturalarınızı yönetin.
+            Son ekstrede ({latestMonthName}) doğrulanan aktif SaaS araçlarınız ve geçmişte kalan faturalarınız.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -223,7 +241,7 @@ export default function SubscriptionsPage() {
         <Card className="border-border bg-card shadow-sm border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Gerçek Aktif Aylık Yük
+              Son Ekstre Doğrulanmış Aktif Yük
             </CardTitle>
             <CalendarClock className="h-4 w-4 text-purple-400" />
           </CardHeader>
@@ -233,7 +251,7 @@ export default function SubscriptionsPage() {
               <span className="text-xs text-muted-foreground font-sans font-normal">/ ay</span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {activeSubs.length} aktif devam eden düzenli araç
+              {activeSubs.length} aktif devam eden düzenli araç ({latestMonthName})
             </p>
           </CardContent>
         </Card>
@@ -256,20 +274,20 @@ export default function SubscriptionsPage() {
           </CardContent>
         </Card>
 
-        {/* Flexible / Potential Cuts */}
+        {/* Past Invoices Count */}
         <Card className="border-border bg-card shadow-sm border-l-4 border-l-amber-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Esnek / Krizde İlk Kesilebilir
+              Geçmişte Kalan / Tek Seferlik
             </CardTitle>
-            <Flame className="h-4 w-4 text-amber-400" />
+            <Archive className="h-4 w-4 text-amber-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-mono text-amber-400">
-              {formatCurrency(totalFlexibleMonthly)}
+              {archivedSubs.length} Fatura
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Nakit sıkışırsa kurtarabileceğiniz bütçe ({flexibleSubs.length} araç)
+              Eski ekstrelerde kalmış veya tek seferlik ödenmiş kalemler
             </p>
           </CardContent>
         </Card>
@@ -282,7 +300,7 @@ export default function SubscriptionsPage() {
             6 Aylık Planlı Sabit Yük Projeksiyonu
           </CardTitle>
           <CardDescription className="text-xs">
-            Yalnızca aktif işaretli abonelikler geleceğe yansıtılır (Geçmiş ve tek seferlik faturalar dahil edilmez)
+            Yalnızca son ekstrede doğrulanmış aktif abonelikler geleceğe yansıtılır
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -339,7 +357,7 @@ export default function SubscriptionsPage() {
           {displayedList.length === 0 ? (
             <div className="col-span-3 p-12 text-center text-xs text-muted-foreground border border-dashed border-border rounded-xl">
               {activeTab === 'active'
-                ? 'Şu anda aktif bir abonelik bulunmuyor.'
+                ? `Son ekstrede (${latestMonthName}) yeni bir düzenli abonelik tespit edilmedi. Geçmiş faturalar sekmesini kontrol edebilir veya manuel ekleyebilirsiniz.`
                 : 'Geçmiş veya tek seferlik fatura bulunmuyor.'}
             </div>
           ) : (
@@ -355,7 +373,7 @@ export default function SubscriptionsPage() {
                 <Card
                   key={sub.id}
                   className={`border-border bg-card shadow-sm transition-all hover:border-primary/40 ${
-                    activeTab === 'archived' ? 'opacity-70 bg-muted/10' : ''
+                    activeTab === 'archived' ? 'opacity-75 bg-muted/10' : ''
                   }`}
                 >
                   <CardHeader className="pb-2">
@@ -491,6 +509,18 @@ export default function SubscriptionsPage() {
                 <option value="Kişisel">Kişisel</option>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Stratejik Rol</label>
+            <Select
+              value={subForm.model}
+              onChange={(e) => setSubForm({ ...subForm, model: e.target.value })}
+            >
+              <option value="Vazgeçilmez">🟢 Vazgeçilmez (Çekirdek SaaS)</option>
+              <option value="Esnek">🟡 Esnek (Dönemsel / Bütçeye Bağlı)</option>
+              <option value="Tek Seferlik">⚡ Tek Seferlik / Yıllık Fatura</option>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
