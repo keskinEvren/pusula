@@ -5,6 +5,14 @@ import { repairTurkishPdfText } from './turkish-cleaner'
 import type { ParseResult, ExtractedTransaction, BankDetectionResult } from './types'
 import type { MerchantMapping } from '@/types/database'
 
+function parseAmountRegex(text: string, pattern: RegExp): number | undefined {
+  const m = text.match(pattern)
+  if (!m) return undefined
+  const clean = m[1].replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.')
+  const num = parseFloat(clean)
+  return isNaN(num) ? undefined : num
+}
+
 /**
  * Detects bank, card name, statement dates and summary amounts from raw PDF text
  */
@@ -12,43 +20,83 @@ export function detectBankAndMetadata(text: string): BankDetectionResult {
   const upper = text.toUpperCase()
   let bank = 'Diğer Banka'
   let card_name = 'Kredi Kartı'
+  let last_four: string | undefined = undefined
 
   if (upper.includes('ENPARA') || upper.includes('QNB FINANSBANK')) {
     bank = 'Enpara'
-    card_name = 'Kredi Kartı • 2039'
+    card_name = 'Kredi Kartı'
+    last_four = '2039'
   } else if (upper.includes('AKBANK') || upper.includes('AXESS') || upper.includes('WINGS')) {
     bank = 'Akbank'
-    card_name = 'Platinum • 1697'
+    card_name = 'Axess Platinum'
+    last_four = '1697'
   } else if (upper.includes('ZIRAAT') || upper.includes('BANKKART')) {
     bank = 'Ziraat Bankası'
-    card_name = 'Bankkart • 0887'
+    card_name = 'Bankkart'
+    last_four = '0887'
   } else if (upper.includes('GARANTI') || upper.includes('BONUS') || upper.includes('BBVA')) {
     bank = 'Garanti BBVA'
-    card_name = 'Bonus Trink • 9388'
+    card_name = 'Bonus Trink'
+    last_four = '9388'
   }
 
-  // Detect dates
+  // Detect dates (DD.MM.YYYY or DD/MM/YYYY)
   let statement_date: string | undefined
   let due_date: string | undefined
 
-  // Match dates (DD.MM.YYYY or DD/MM/YYYY)
-  const dateMatches = text.match(/(\d{2})[./](\d{2})[./](\d{4})/g)
-  if (dateMatches && dateMatches.length > 0) {
-    const parseDMY = (dStr: string) => {
-      const parts = dStr.split(/[./]/)
-      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
-    }
-    statement_date = parseDMY(dateMatches[0])
-    if (dateMatches.length > 1) {
-      due_date = parseDMY(dateMatches[1])
+  const stmtDateMatch = text.match(/(?:Ekstre tarihi|Hesap Özeti Tarihi|Dönem Başlangıç)\s*[:]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i)
+  const dueDateMatch = text.match(/(?:Son ödeme tarihi|Son Ödeme)\s*[:]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i)
+
+  const parseDMY = (dStr: string) => {
+    const parts = dStr.split(/[./]/)
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+  }
+
+  if (stmtDateMatch) {
+    statement_date = parseDMY(stmtDateMatch[1])
+  }
+  if (dueDateMatch) {
+    due_date = parseDMY(dueDateMatch[1])
+  }
+
+  if (!statement_date) {
+    const dateMatches = text.match(/(\d{2})[./](\d{2})[./](\d{4})/g)
+    if (dateMatches && dateMatches.length > 0) {
+      statement_date = parseDMY(dateMatches[0])
+      if (dateMatches.length > 1 && !due_date) {
+        due_date = parseDMY(dateMatches[1])
+      }
     }
   }
 
+  // Detect summary amounts
+  const statement_debt = parseAmountRegex(
+    text,
+    /(?:Ekstre borcu|Dönem borcu|Toplam dönem borcu)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+  )
+  const minimum_payment = parseAmountRegex(
+    text,
+    /(?:Minimum ödeme tutarı|Asgari ödeme tutarı|Asgari tutar)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+  )
+  const prev_debt = parseAmountRegex(
+    text,
+    /(?:Bir önceki ekstre borcu|Önceki ekstre borcu|Geçen dönem borcu)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+  )
+  const interest_fees = parseAmountRegex(
+    text,
+    /(?:Faiz, vergiler, ücretler toplamı|Toplam faiz ve ücretler|Gecikme faizi)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+  )
+
   return {
     bank,
-    card_name,
+    card_name: last_four ? `${card_name} • ${last_four}` : card_name,
+    last_four,
     statement_date,
     due_date,
+    statement_debt,
+    minimum_payment,
+    prev_debt,
+    interest_fees,
   }
 }
 
@@ -211,8 +259,13 @@ export async function parseStatementFile(
         file_name: file.name,
         detected_bank: meta.bank,
         detected_card: meta.card_name,
+        last_four: meta.last_four,
         statement_date: meta.statement_date,
         due_date: meta.due_date,
+        statement_debt: meta.statement_debt,
+        minimum_payment: meta.minimum_payment,
+        prev_debt: meta.prev_debt,
+        interest_fees: meta.interest_fees,
         transactions,
         error: transactions.length === 0 ? 'PDF metni okundu fakat hareket satırları tespit edilemedi. Lütfen manuel kontrol edin veya CSV deneyin.' : undefined,
       }

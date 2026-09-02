@@ -22,7 +22,7 @@ describe('Pusula Ekstre Ayrıştırıcı & OCR Motoru (Gateway 3 Parser Testleri
       const sampleText = 'AKBANK T.A.S. AXESS PLATINUM HESAP BILDIRIM CETVELI 04.07.2026 14.07.2026'
       const meta = detectBankAndMetadata(sampleText)
       expect(meta.bank).toBe('Akbank')
-      expect(meta.card_name).toBe('Platinum • 1697')
+      expect(meta.card_name).toBe('Axess Platinum • 1697')
     })
 
     it('1.3. Ziraat Bankkart Tespiti: Ziraat metnini tanır', () => {
