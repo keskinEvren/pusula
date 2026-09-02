@@ -226,17 +226,24 @@ export default function ImportPage() {
 
           if (existingCard) {
             resolvedCardId = existingCard.id
-            await supabase
-              .from('credit_cards')
-              .update({
-                current_debt: statementDebtValue,
-                statement_debt: statementDebtValue,
-                minimum_payment: minPaymentValue,
-                interest_fees: interestFeesValue,
-                statement_date: parseResult?.statement_date || null,
-                due_date: parseResult?.due_date || null,
-              })
-              .eq('id', existingCard.id)
+            const isNewerStatement =
+              !existingCard.statement_date ||
+              (parseResult?.statement_date &&
+                new Date(parseResult.statement_date) >= new Date(existingCard.statement_date))
+
+            if (isNewerStatement) {
+              await supabase
+                .from('credit_cards')
+                .update({
+                  current_debt: statementDebtValue,
+                  statement_debt: statementDebtValue,
+                  minimum_payment: minPaymentValue,
+                  interest_fees: interestFeesValue,
+                  statement_date: parseResult?.statement_date || null,
+                  due_date: parseResult?.due_date || null,
+                })
+                .eq('id', existingCard.id)
+            }
           } else {
             const { data: newCard } = await supabase
               .from('credit_cards')
@@ -258,17 +265,25 @@ export default function ImportPage() {
             if (newCard) resolvedCardId = newCard.id
           }
         } else {
-          await supabase
-            .from('credit_cards')
-            .update({
-              current_debt: statementDebtValue,
-              statement_debt: statementDebtValue,
-              minimum_payment: minPaymentValue,
-              interest_fees: interestFeesValue,
-              statement_date: parseResult?.statement_date || null,
-              due_date: parseResult?.due_date || null,
-            })
-            .eq('id', resolvedCardId)
+          const matchedCard = cards.find((c) => c.id === resolvedCardId)
+          const isNewerStatement =
+            !matchedCard?.statement_date ||
+            (parseResult?.statement_date &&
+              new Date(parseResult.statement_date) >= new Date(matchedCard.statement_date))
+
+          if (isNewerStatement) {
+            await supabase
+              .from('credit_cards')
+              .update({
+                current_debt: statementDebtValue,
+                statement_debt: statementDebtValue,
+                minimum_payment: minPaymentValue,
+                interest_fees: interestFeesValue,
+                statement_date: parseResult?.statement_date || null,
+                due_date: parseResult?.due_date || null,
+              })
+              .eq('id', resolvedCardId)
+          }
         }
 
         // Ekstre Geçmişi (card_statements)
@@ -416,17 +431,23 @@ export default function ImportPage() {
             }
           }
 
-          // 2. Kredi Kartı Borcu Kapatma Aksiyonu
+          // 2. Kredi Kartı Borcu Kapatma Aksiyonu (Sadece ekstre tarihinden SONRA ise borç düşülür!)
           if (t.action === 'CARD_PAYMENT' && t.target_card_id) {
             const targetCard = cards.find((c) => c.id === t.target_card_id)
             if (targetCard) {
-              const newDebt = Math.max(0, targetCard.current_debt - t.amount)
-              await supabase
-                .from('credit_cards')
-                .update({
-                  current_debt: newDebt,
-                })
-                .eq('id', targetCard.id)
+              const isPostStatement =
+                !targetCard.statement_date ||
+                new Date(t.date) > new Date(targetCard.statement_date)
+
+              if (isPostStatement) {
+                const newDebt = Math.max(0, targetCard.current_debt - t.amount)
+                await supabase
+                  .from('credit_cards')
+                  .update({
+                    current_debt: newDebt,
+                  })
+                  .eq('id', targetCard.id)
+              }
             }
           }
 
@@ -447,11 +468,16 @@ export default function ImportPage() {
           }
         }
 
-        // Vadesiz Hesap Bakiyesini Güncelle
+        // Vadesiz Hesap Bakiyesini Güncelle (Resmi Kapanış Bakiyesi varsa onu esas al)
+        const finalBalance =
+          parseResult?.closing_balance !== undefined
+            ? parseResult.closing_balance
+            : runningAccountBalance
+
         if (currentAccountId) {
           await supabase
             .from('accounts')
-            .update({ balance: runningAccountBalance })
+            .update({ balance: finalBalance })
             .eq('id', currentAccountId)
         }
 

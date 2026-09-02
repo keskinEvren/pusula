@@ -218,7 +218,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
     `
 
     it('3.1. Çoklu Satır Döküm: Girişleri ve çıkışları doğru yönleriyle yakalar ve uzlaştırır', () => {
-      const txs = parseBankAccountLines(rawBankStatementText, mockDebts, mockCards)
+      const { transactions: txs } = parseBankAccountLines(rawBankStatementText, mockDebts, mockCards)
 
       expect(txs).toHaveLength(4)
 

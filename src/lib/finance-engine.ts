@@ -135,23 +135,27 @@ export function calculateSpendingBreakdown(
 
   for (const t of transactions) {
     const amount = Number(t.amount || 0)
-    if (t.type === 'Kart Ödemesi' || t.type === 'Transfer' || t.analysis_group === 'Hariç') {
+    if (t.type === 'Kart Ödemesi' || t.type === 'Transfer' || t.type === 'Gelir' || t.type === 'Tahsilat' || t.analysis_group === 'Hariç' || t.analysis_group === 'Gelir') {
       excluded += amount
       continue
     }
 
+    const isRefund = t.type === 'İade' || amount < 0
+    const absAmount = Math.abs(amount)
+    const factor = isRefund ? -1 : 1
+
     if (t.analysis_group === 'Kişisel') {
-      personal += amount
+      personal += factor * absAmount
     } else if (t.analysis_group === 'İş') {
-      business += amount
+      business += factor * absAmount
     } else if (t.analysis_group === 'Finansman' || t.type === 'Finansman/Masraf') {
-      financing += amount
+      financing += factor * absAmount
     } else {
-      personal += amount
+      personal += factor * absAmount
     }
   }
 
-  const totalConsumption = round2(personal + business + financing)
+  const totalConsumption = round2(Math.max(0, personal) + Math.max(0, business) + Math.max(0, financing))
 
   return {
     personal: round2(personal),
