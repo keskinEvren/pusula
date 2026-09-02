@@ -1,0 +1,50 @@
+[
+  {
+    "code": "enpara",
+    "name": "Enpara (QNB Finansbank)",
+    "keywords": ["ENPARA", "QNB FINANSBANK", "FINANSBANK"],
+    "default_card_name": "Kredi Kartı • 2039",
+    "statement_type": "pdf",
+    "currency": "TRY"
+  },
+  {
+    "code": "akbank",
+    "name": "Akbank",
+    "keywords": ["AKBANK", "AXESS", "WINGS", "FREE"],
+    "default_card_name": "Platinum • 1697",
+    "statement_type": "pdf",
+    "currency": "TRY"
+  },
+  {
+    "code": "ziraat",
+    "name": "Ziraat Bankası",
+    "keywords": ["ZIRAAT", "BANKKART"],
+    "default_card_name": "Bankkart • 0887",
+    "statement_type": "pdf",
+    "currency": "TRY"
+  },
+  {
+    "code": "garanti",
+    "name": "Garanti BBVA",
+    "keywords": ["GARANTI", "BONUS", "BBVA", "PARACARD"],
+    "default_card_name": "Bonus Trink • 9388",
+    "statement_type": "pdf",
+    "currency": "TRY"
+  },
+  {
+    "code": "isbank",
+    "name": "Türkiye İş Bankası",
+    "keywords": ["IS BANKASI", "İŞ BANKASI", "MAXIMUM", "MAXIMILES"],
+    "default_card_name": "Maximum Kart",
+    "statement_type": "pdf",
+    "currency": "TRY"
+  },
+  {
+    "code": "yapikredi",
+    "name": "Yapı Kredi",
+    "keywords": ["YAPI KREDI", "YAPI VE KREDI", "WORLD"],
+    "default_card_name": "Worldcard",
+    "statement_type": "pdf",
+    "currency": "TRY"
+  }
+]

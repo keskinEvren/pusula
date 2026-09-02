@@ -1,0 +1,234 @@
+[
+  {
+    "pattern": "BİM|BIM|\\bB\\s+M\\b",
+    "name": "BİM",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "A101",
+    "name": "A101",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "ŞOK|SOK|\\b12037\\b",
+    "name": "ŞOK",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "HAKMAR",
+    "name": "Hakmar Market",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "MIGROS|MİGROS",
+    "name": "Migros",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "FILE|FİLE",
+    "name": "File Market",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "CARREFOUR",
+    "name": "CarrefourSA",
+    "group": "Kişisel",
+    "category": "Market"
+  },
+  {
+    "pattern": "CURSOR",
+    "name": "Cursor Pro",
+    "group": "İş",
+    "category": "Yazılım / AI",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "OPENAI|CHATGPT",
+    "name": "ChatGPT Plus (OpenAI)",
+    "group": "İş",
+    "category": "Yazılım / AI",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "GAMMA\\.APP",
+    "name": "Gamma App",
+    "group": "İş",
+    "category": "Yazılım / Tasarım",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "FACEBK|FACEBOOK",
+    "name": "Meta / Facebook Ads",
+    "group": "İş",
+    "category": "Reklam / Pazarlama",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "GOOGLE.*WORKSPACE",
+    "name": "Google Workspace",
+    "group": "İş",
+    "category": "Bulut / E-posta",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "GOOGLE.*WHATSAPP",
+    "name": "WhatsApp Business",
+    "group": "İş",
+    "category": "İletişim",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "CANVA",
+    "name": "Canva",
+    "group": "İş",
+    "category": "Tasarım",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "YENGEC\\.CO|YENGEÇ\\.CO",
+    "name": "Yengeç.co Entegrasyon",
+    "group": "İş",
+    "category": "E-Ticaret Entegrasyon",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "HOSTINGER",
+    "name": "Hostinger",
+    "group": "İş",
+    "category": "Hosting / Domain",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "AWS|AMAZON WEB",
+    "name": "AWS Cloud",
+    "group": "İş",
+    "category": "Bulut Altyapı",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "VERCEL",
+    "name": "Vercel",
+    "group": "İş",
+    "category": "Bulut Altyapı",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "SUPABASE",
+    "name": "Supabase",
+    "group": "İş",
+    "category": "Veritabanı",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "GITHUB",
+    "name": "GitHub",
+    "group": "İş",
+    "category": "Geliştirici Araçları",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "FRINK",
+    "name": "Frink Kahve",
+    "group": "Kişisel",
+    "category": "Yeme / İçme",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "SPOTIFY",
+    "name": "Spotify",
+    "group": "Kişisel",
+    "category": "Abonelik",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "NETFLIX",
+    "name": "Netflix",
+    "group": "Kişisel",
+    "category": "Abonelik",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "YOUTUBE",
+    "name": "YouTube Premium",
+    "group": "Kişisel",
+    "category": "Abonelik",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "GETIR|GETİR",
+    "name": "Getir",
+    "group": "Kişisel",
+    "category": "Teslimat"
+  },
+  {
+    "pattern": "YEMEKSEPETI|YEMEKSEPETİ",
+    "name": "Yemeksepeti",
+    "group": "Kişisel",
+    "category": "Teslimat"
+  },
+  {
+    "pattern": "TRENDYOL",
+    "name": "Trendyol",
+    "group": "Kişisel",
+    "category": "E-Ticaret"
+  },
+  {
+    "pattern": "HEPSIBURADA|HEPSIPAY",
+    "name": "Hepsiburada",
+    "group": "Kişisel",
+    "category": "E-Ticaret"
+  },
+  {
+    "pattern": "UBER",
+    "name": "Uber",
+    "group": "Kişisel",
+    "category": "Ulaşım"
+  },
+  {
+    "pattern": "ISTANBULKART|İSTANBULKART",
+    "name": "İstanbulkart",
+    "group": "Kişisel",
+    "category": "Ulaşım"
+  },
+  {
+    "pattern": "TURK TELEKOM|TÜRK TELEKOM",
+    "name": "Türk Telekom",
+    "group": "Kişisel",
+    "category": "Telekom",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "TURKCELL",
+    "name": "Turkcell",
+    "group": "Kişisel",
+    "category": "Telekom",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "VODAFONE",
+    "name": "Vodafone",
+    "group": "Kişisel",
+    "category": "Telekom",
+    "recurrence": "Düzenli"
+  },
+  {
+    "pattern": "FAİZ|FAIZ|BSMV|KKDF|GECİKME|GECIKME|AKDİ|AKDI",
+    "name": "Banka Faiz / Masraf",
+    "group": "Finansman",
+    "category": "Finansman",
+    "type": "Finansman/Masraf"
+  },
+  {
+    "pattern": "ÖDEME\\s*-\\s*ENPARA|ODEME\\s*-\\s*ENPARA",
+    "name": "Kart Ödemesi (Enpara)",
+    "group": "Hariç",
+    "category": "Kart Ödemesi",
+    "type": "Kart Ödemesi"
+  }
+]
