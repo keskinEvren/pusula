@@ -15,23 +15,33 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { calculateStatementChange } from '@/lib/finance-engine'
+import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
-import type { CreditCard as CardType, CardStatement } from '@/types/database'
+import type { CreditCard as CardType, CardStatement, Account } from '@/types/database'
 
 export default function CardsPage() {
   const [cards, setCards] = useState<CardType[]>([])
   const [statements, setStatements] = useState<CardStatement[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
 
   // Modals
   const [isCardModalOpen, setIsCardModalOpen] = useState(false)
   const [isStmtModalOpen, setIsStmtModalOpen] = useState(false)
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedCardForPayment, setSelectedCardForPayment] = useState<CardType | null>(null)
+  
+  const [paymentForm, setPaymentForm] = useState({
+    sourceAccountId: '',
+    amount: '',
+    paymentType: 'minimum' as 'minimum' | 'statement' | 'custom'
+  })
 
   // Form states
   const [cardForm, setCardForm] = useState({
@@ -67,12 +77,17 @@ export default function CardsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: cData }, { data: sData }] = await Promise.all([
+      const [{ data: cData }, { data: sData }, { data: aData }] = await Promise.all([
         supabase.from('credit_cards').select('*').order('created_at', { ascending: false }),
         supabase.from('card_statements').select('*').order('statement_date', { ascending: false }),
+        supabase.from('accounts').select('*'),
       ])
       if (cData) setCards(cData)
       if (sData) setStatements(sData)
+      if (aData) {
+        setAccounts(aData)
+        if (aData.length > 0) setPaymentForm(prev => ({ ...prev, sourceAccountId: aData[0].id }))
+      }
     } catch (err) {
       console.error('Error loading cards:', err)
     } finally {
@@ -200,6 +215,41 @@ export default function CardsPage() {
     }
   }
 
+  const handleOpenPaymentModal = (card: CardType) => {
+    setSelectedCardForPayment(card)
+    setPaymentForm(prev => ({ ...prev, paymentType: 'minimum', amount: String(card.minimum_payment || '') }))
+    setIsPayModalOpen(true)
+  }
+
+  const handleProcessPayment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedCardForPayment) return
+    setSubmitting(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const res = await financialBridge.recordCardPayment({
+        userId: user.id,
+        amount: parseFloat(paymentForm.amount || '0'),
+        sourceAccountId: paymentForm.sourceAccountId,
+        cardId: selectedCardForPayment.id,
+        date: new Date().toISOString().split('T')[0],
+        description: `${selectedCardForPayment.bank} Kart Borcu Ödemesi`
+      })
+
+      if (!res.success) throw new Error(res.error)
+
+      setIsPayModalOpen(false)
+      loadCardsAndStatements()
+    } catch (err: any) {
+      alert(err.message || 'Ödeme işlemi başarısız')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Top Bar */}
@@ -274,6 +324,9 @@ export default function CardsPage() {
                   <span className="font-semibold text-foreground">{formatDate(card.due_date)}</span>
                 </div>
               </div>
+              <Button onClick={() => handleOpenPaymentModal(card)} variant="outline" className="w-full mt-4 gap-2 border-primary/40 text-primary hover:bg-primary/10">
+                💰 Borç Öde
+              </Button>
             </CardContent>
           </Card>
         ))}
@@ -555,6 +608,70 @@ export default function CardsPage() {
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? 'Kaydediliyor...' : 'Ekstre Kaydet'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Payment Modal */}
+      <Modal
+        isOpen={isPayModalOpen}
+        onClose={() => setIsPayModalOpen(false)}
+        title="Kart Borcu Öde"
+        description={`${selectedCardForPayment?.bank} kartınızın borcunu ödeyin.`}
+      >
+        <form onSubmit={handleProcessPayment} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Kaynak Banka Hesabı</label>
+            <Select
+              required
+              value={paymentForm.sourceAccountId}
+              onChange={(e) => setPaymentForm({ ...paymentForm, sourceAccountId: e.target.value })}
+              className="text-xs"
+            >
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Ödeme Tipi</label>
+            <Select
+              value={paymentForm.paymentType}
+              onChange={(e) => {
+                const type = e.target.value as 'minimum' | 'statement' | 'custom'
+                let amt = ''
+                if (type === 'minimum') amt = String(selectedCardForPayment?.minimum_payment || '')
+                else if (type === 'statement') amt = String(selectedCardForPayment?.statement_debt || '')
+                setPaymentForm({ ...paymentForm, paymentType: type, amount: amt })
+              }}
+              className="text-xs"
+            >
+              <option value="minimum">Asgari Tutar ({formatCurrency(selectedCardForPayment?.minimum_payment || 0)})</option>
+              <option value="statement">Dönem Borcu ({formatCurrency(selectedCardForPayment?.statement_debt || 0)})</option>
+              <option value="custom">Özel Tutar</option>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Ödenecek Tutar (TL)</label>
+            <Input
+              type="number"
+              step="0.01"
+              required
+              value={paymentForm.amount}
+              onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value, paymentType: 'custom' })}
+              className="text-xs font-mono"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+            <Button type="button" variant="outline" onClick={() => setIsPayModalOpen(false)}>
+              İptal
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'İşleniyor...' : 'Ödemeyi Kaydet'}
             </Button>
           </div>
         </form>
