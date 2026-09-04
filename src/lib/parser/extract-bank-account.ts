@@ -75,7 +75,7 @@ export function parseBankAccountLines(
 
       // Check for dual amount format at end of line: [Tutar TL] [Bakiye TL]
       // e.g. "Gelen Transfer 7.000,00 TL 6.849,61 TL" or "Ödeme - 6.130,00 TL 719,61 TL"
-      const dualMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?$/i)
+      const dualMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\(?(A|B)\)?)?$/i)
 
       if (dualMatch) {
         currentMovement = {
@@ -87,7 +87,7 @@ export function parseBankAccountLines(
         }
       } else {
         // Single amount fallback: [Açıklama] [Tutar TL]
-        const singleMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?$/i)
+        const singleMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\(?(A|B)\)?)?$/i)
         if (singleMatch) {
           currentMovement = {
             date: parsedDate,
@@ -99,7 +99,10 @@ export function parseBankAccountLines(
       }
     } else if (currentMovement) {
       // Continuation line of multi-line explanation (e.g. FAST sorgu no, alıcı vb.)
-      currentMovement.descriptionParts.push(trimmed)
+      const cleanLine = trimmed.replace(/(?:Sayfa\s+\d+|PAGE\s*BREAK)/gi, '').trim()
+      if (cleanLine) {
+        currentMovement.descriptionParts.push(cleanLine)
+      }
     }
   }
 
