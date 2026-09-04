@@ -21,6 +21,7 @@ import { createClient } from '@/lib/supabase/client'
 import { parseStatementFile, parseBankAccountFile } from '@/lib/parser'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { calculateStatementChange } from '@/lib/finance-engine'
+import { financialBridge } from '@/lib/financial-bridge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +29,11 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import type { ExtractedTransaction, ParseResult, ReconciliationActionType } from '@/lib/parser/types'
 import type { Project, MerchantMapping, CreditCard, Debt, Account } from '@/types/database'
+
+type LocalTransaction = ExtractedTransaction & {
+  track_as_subscription?: boolean
+  save_as_mapping?: boolean
+}
 
 export default function ImportPage() {
   const router = useRouter()
@@ -40,7 +46,7 @@ export default function ImportPage() {
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [parseResult, setParseResult] = useState<ParseResult | null>(null)
-  const [transactions, setTransactions] = useState<ExtractedTransaction[]>([])
+  const [transactions, setTransactions] = useState<LocalTransaction[]>([])
 
   // Metadata
   const [projects, setProjects] = useState<Project[]>([])
@@ -97,17 +103,33 @@ export default function ImportPage() {
 
       if (result.success && result.transactions.length > 0) {
         setParseResult(result)
-        setTransactions(result.transactions)
+        setTransactions(
+          result.transactions.map((t) => ({
+            ...t,
+            track_as_subscription: t.recurrence === 'Düzenli',
+            save_as_mapping: false,
+          }))
+        )
 
         // Try auto-selecting card for credit card mode
-        if (result.detected_bank && cards.length > 0 && activeMode === 'credit_card') {
-          const matchedCard = cards.find(
-            (c) =>
+        if (cards.length > 0 && activeMode === 'credit_card') {
+          const matchedCard = cards.find((c) => {
+            const bankMatch =
               c.bank.toLowerCase().includes(result.detected_bank?.toLowerCase() || '') ||
               (result.detected_bank?.toLowerCase() || '').includes(c.bank.toLowerCase())
-          )
+
+            if (result.last_four && c.last_four) {
+              return bankMatch && c.last_four === result.last_four
+            }
+            if (result.last_four && !c.last_four) {
+              return false
+            }
+            return bankMatch
+          })
           if (matchedCard) {
             setSelectedCardId(matchedCard.id)
+          } else {
+            setSelectedCardId('')
           }
         }
 
@@ -134,7 +156,7 @@ export default function ImportPage() {
 
   const handleRowChange = (
     id: string,
-    field: keyof ExtractedTransaction,
+    field: keyof LocalTransaction,
     value: any
   ) => {
     setTransactions((prev) =>
@@ -218,11 +240,19 @@ export default function ImportPage() {
         const interestFeesValue = parseResult?.interest_fees || 0
 
         if (!resolvedCardId) {
-          const existingCard = cards.find(
-            (c) =>
+          const existingCard = cards.find((c) => {
+            const bankMatch =
               c.bank.toLowerCase().includes(detectedBankName.toLowerCase()) ||
               detectedBankName.toLowerCase().includes(c.bank.toLowerCase())
-          )
+
+            if (parseResult?.last_four && c.last_four) {
+              return bankMatch && c.last_four === parseResult.last_four
+            }
+            if (parseResult?.last_four && !c.last_four) {
+              return false
+            }
+            return bankMatch && !parseResult?.last_four
+          })
 
           if (existingCard) {
             resolvedCardId = existingCard.id
@@ -341,16 +371,9 @@ export default function ImportPage() {
 
         await supabase.from('transactions').insert(rowsToInsert)
 
-        // Otomatik Abonelik Keşfi
-        const { data: existingSubs } = await supabase.from('subscriptions').select('service')
-        const existingSet = new Set(existingSubs?.map((s) => s.service.toLowerCase()) || [])
-
+        // Otomatik Abonelik Keşfi & Merchant Mapping
         for (const t of selectedTxs) {
-          if (
-            (t.recurrence === 'Düzenli' || t.analysis_group === 'İş') &&
-            t.type === 'Harcama' &&
-            !existingSet.has(t.merchant.toLowerCase())
-          ) {
+          if (t.track_as_subscription) {
             await supabase.from('subscriptions').insert({
               user_id: user.id,
               service: t.merchant,
@@ -364,7 +387,14 @@ export default function ImportPage() {
               project_id: t.project_id || null,
               payment_method: detectedCardTitle,
             })
-            existingSet.add(t.merchant.toLowerCase())
+          }
+          if (t.save_as_mapping) {
+            await supabase.from('merchant_mappings').upsert({
+              user_id: user.id,
+              raw_pattern: t.raw_description,
+              merchant_name: t.merchant,
+              default_group: t.analysis_group as any
+            }, { onConflict: 'raw_pattern' })
           }
         }
       }
@@ -407,6 +437,9 @@ export default function ImportPage() {
           .select()
           .single()
 
+        // Hareketleri ayıklayıp bulk-insert edilecek normal hareketleri biriktireceğimiz liste
+        const normalRowsToInsert = []
+
         // Satır Satır Uzlaştırma & Mahsuplaşma İşleme
         for (const t of selectedTxs) {
           if (t.direction === 'inflow') {
@@ -415,56 +448,75 @@ export default function ImportPage() {
             runningAccountBalance -= t.amount
           }
 
+          let handledByBridge = false
+
           // 1. Alacak Tahsilatı Aksiyonu
           if (t.action === 'COLLECT_RECEIVABLE' && t.target_debt_id) {
-            const targetDebt = debts.find((d) => d.id === t.target_debt_id)
-            if (targetDebt) {
-              const newRem = Math.max(0, targetDebt.remaining - t.amount)
-              await supabase
-                .from('debts')
-                .update({
-                  past_payments: targetDebt.past_payments + t.amount,
-                  remaining: newRem,
-                  status: newRem <= 0 ? 'Kapatıldı' : 'Açık',
-                })
-                .eq('id', targetDebt.id)
-            }
+            await financialBridge.recordReceivableCollection({
+              userId: user.id,
+              amount: t.amount,
+              targetAccountId: currentAccountId,
+              receivableId: t.target_debt_id,
+              date: t.date,
+              description: t.raw_description,
+            })
+            handledByBridge = true
           }
 
-          // 2. Kredi Kartı Borcu Kapatma Aksiyonu (Sadece ekstre tarihinden SONRA ise borç düşülür!)
-          if (t.action === 'CARD_PAYMENT' && t.target_card_id) {
-            const targetCard = cards.find((c) => c.id === t.target_card_id)
-            if (targetCard) {
-              const isPostStatement =
-                !targetCard.statement_date ||
-                new Date(t.date) > new Date(targetCard.statement_date)
-
-              if (isPostStatement) {
-                const newDebt = Math.max(0, targetCard.current_debt - t.amount)
-                await supabase
-                  .from('credit_cards')
-                  .update({
-                    current_debt: newDebt,
-                  })
-                  .eq('id', targetCard.id)
-              }
-            }
+          // 2. Kredi Kartı Borcu Kapatma Aksiyonu
+          else if (t.action === 'CARD_PAYMENT' && t.target_card_id) {
+            await financialBridge.recordCardPayment({
+              userId: user.id,
+              amount: t.amount,
+              sourceAccountId: currentAccountId,
+              cardId: t.target_card_id,
+              date: t.date,
+              description: t.raw_description,
+            })
+            handledByBridge = true
           }
 
           // 3. Şahıs Borcu Geri Ödeme Aksiyonu
-          if (t.action === 'PAY_DEBT' && t.target_debt_id) {
-            const targetDebt = debts.find((d) => d.id === t.target_debt_id)
-            if (targetDebt) {
-              const newRem = Math.max(0, targetDebt.remaining - t.amount)
-              await supabase
-                .from('debts')
-                .update({
-                  past_payments: targetDebt.past_payments + t.amount,
-                  remaining: newRem,
-                  status: newRem <= 0 ? 'Kapatıldı' : 'Açık',
-                })
-                .eq('id', targetDebt.id)
-            }
+          else if (t.action === 'PAY_DEBT' && t.target_debt_id) {
+            await financialBridge.recordDebtPayment({
+              userId: user.id,
+              amount: t.amount,
+              sourceAccountId: currentAccountId,
+              debtId: t.target_debt_id,
+              date: t.date,
+              description: t.raw_description,
+            })
+            handledByBridge = true
+          }
+
+          // 4. İç Transfer Aksiyonu
+          else if (t.action === 'INTERNAL_TRANSFER' && t.target_account_id) {
+            await financialBridge.recordTransfer({
+              userId: user.id,
+              amount: t.amount,
+              sourceAccountId: currentAccountId,
+              targetAccountId: t.target_account_id,
+              date: t.date,
+              description: t.raw_description,
+            })
+            handledByBridge = true
+          }
+
+          // Eğer bridge tarafından işlenmediyse, normal transaction olarak ekle
+          if (!handledByBridge) {
+            normalRowsToInsert.push({
+              user_id: user.id,
+              date: t.date,
+              account_or_card: targetAccount ? targetAccount.name : detectedBankName,
+              type: t.type as any,
+              description: t.raw_description,
+              amount: t.amount,
+              analysis_group: t.analysis_group as any,
+              merchant: t.merchant,
+              account_id: currentAccountId || null,
+              project_id: t.project_id || null,
+              import_id: importRecord?.id || null,
+            })
           }
         }
 
@@ -481,23 +533,9 @@ export default function ImportPage() {
             .eq('id', currentAccountId)
         }
 
-        // Hareketleri Transaction Defterine Kaydet
-        const accountName = targetAccount ? targetAccount.name : detectedBankName
-        const rowsToInsert = selectedTxs.map((t) => ({
-          user_id: user.id,
-          date: t.date,
-          account_or_card: accountName,
-          type: t.type as any,
-          description: t.raw_description,
-          amount: t.amount,
-          analysis_group: t.analysis_group as any,
-          merchant: t.merchant,
-          account_id: currentAccountId || null,
-          project_id: t.project_id || null,
-          import_id: importRecord?.id || null,
-        }))
-
-        await supabase.from('transactions').insert(rowsToInsert)
+        if (normalRowsToInsert.length > 0) {
+          await supabase.from('transactions').insert(normalRowsToInsert)
+        }
       }
 
       setSuccess(true)
@@ -694,12 +732,16 @@ export default function ImportPage() {
                     <Select
                       value={selectedCardId}
                       onChange={(e) => setSelectedCardId(e.target.value)}
-                      className="w-52 text-xs"
+                      className="w-56 text-xs"
                     >
-                      <option value="">(Otomatik Oluştur / Eşleştir)</option>
+                      <option value="">
+                        {parseResult.last_four
+                          ? `(Otomatik: ${parseResult.detected_bank || 'Kart'} • ${parseResult.last_four})`
+                          : '(Otomatik Oluştur / Eşleştir)'}
+                      </option>
                       {cards.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.bank} - {c.card_name}
+                          {c.bank} - {c.card_name} {c.last_four ? `(•• ${c.last_four})` : ''}
                         </option>
                       ))}
                     </Select>
@@ -801,6 +843,7 @@ export default function ImportPage() {
                     <th className="p-3">Temiz İsim</th>
                     {activeMode === 'bank_account' && <th className="p-3">Akıllı Eşleşme (Aksiyon)</th>}
                     <th className="p-3">Grup</th>
+                    <th className="p-3">Oto-Kayıt (Abonelik / Kural)</th>
                     <th className="p-3">Proje</th>
                     <th className="p-3 text-right">Tutar</th>
                   </tr>
@@ -876,6 +919,27 @@ export default function ImportPage() {
                           <option value="Hariç">Hariç</option>
                           <option value="Gelir">Gelir</option>
                         </Select>
+                      </td>
+
+                      <td className="p-3 flex flex-col gap-1.5 font-sans justify-center mt-1">
+                        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!tx.track_as_subscription}
+                            onChange={(e) => handleRowChange(tx.id, 'track_as_subscription', e.target.checked)}
+                            className="rounded border-border h-3 w-3"
+                          />
+                          📌 Abonelik
+                        </label>
+                        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!tx.save_as_mapping}
+                            onChange={(e) => handleRowChange(tx.id, 'save_as_mapping', e.target.checked)}
+                            className="rounded border-border h-3 w-3"
+                          />
+                          📝 Kural Kaydet
+                        </label>
                       </td>
 
                       <td className="p-3">
