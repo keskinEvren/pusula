@@ -26,6 +26,7 @@ export interface ExtractedTransaction {
   action?: ReconciliationActionType
   target_card_id?: string
   target_debt_id?: string
+  target_account_id?: string
 }
 
 export interface BankDetectionResult {
