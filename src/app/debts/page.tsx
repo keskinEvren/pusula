@@ -13,6 +13,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { collectReceivable, payDebt } from '@/lib/finance-engine'
+import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -134,54 +135,35 @@ export default function DebtsPage() {
 
     try {
       const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
       const amountNum = parseFloat(paymentAmount || '0')
-      const targetAccount = accounts.find((a) => a.id === selectedAccountId)
 
-      let newAccountBalance = targetAccount ? Number(targetAccount.balance) : 0
-      let newRemaining = selectedDebt.remaining
-      let isClosed = false
-
+      let res;
       if (selectedDebt.type === 'Alacak') {
-        const res = collectReceivable(
-          newAccountBalance,
-          selectedDebt.remaining,
-          amountNum
-        )
-        newAccountBalance = res.newAccountBalance
-        newRemaining = res.newReceivableRemaining
-        isClosed = res.isClosed
-      } else {
-        const res = payDebt(
-          newAccountBalance,
-          selectedDebt.remaining,
-          amountNum
-        )
-        newAccountBalance = res.newAccountBalance
-        newRemaining = res.newDebtRemaining
-        isClosed = res.isClosed
-      }
-
-      // 1. Update debt record
-      const { error: debtErr } = await supabase
-        .from('debts')
-        .update({
-          past_payments: selectedDebt.past_payments + amountNum,
-          remaining: newRemaining,
-          status: isClosed ? 'Kapatıldı' : 'Açık',
+        res = await financialBridge.recordReceivableCollection({
+          userId: user.id,
+          amount: amountNum,
+          targetAccountId: selectedAccountId,
+          receivableId: selectedDebt.id,
+          date: new Date().toISOString().split('T')[0],
+          description: `${selectedDebt.person_or_entity} Alacak Tahsilatı`
         })
-        .eq('id', selectedDebt.id)
-
-      if (debtErr) throw debtErr
-
-      // 2. Auto-sync linked account balance!
-      if (targetAccount) {
-        await supabase
-          .from('accounts')
-          .update({
-            balance: newAccountBalance,
-          })
-          .eq('id', targetAccount.id)
+      } else {
+        res = await financialBridge.recordDebtPayment({
+          userId: user.id,
+          amount: amountNum,
+          sourceAccountId: selectedAccountId,
+          debtId: selectedDebt.id,
+          date: new Date().toISOString().split('T')[0],
+          description: `${selectedDebt.person_or_entity} Borç Ödemesi`
+        })
       }
+
+      if (!res.success) throw new Error(res.error)
 
       setIsPaymentModalOpen(false)
       loadDebtsAndAccounts()

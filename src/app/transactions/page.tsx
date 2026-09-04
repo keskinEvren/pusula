@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { financialBridge } from '@/lib/financial-bridge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -99,22 +100,72 @@ export default function TransactionsPage() {
       if (!user) throw new Error('Oturum açılmamış')
 
       const amountNum = parseFloat(newTx.amount || '0')
+      
+      const account = accounts.find((a) => a.name === newTx.account_or_card)
+      const card = cards.find((c) => `${c.bank} • ${c.last_four || 'Kart'}` === newTx.account_or_card)
+      
+      const accountId = account?.id || null
+      const cardId = card?.id || null
 
-      const { error } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user.id,
-          date: newTx.date,
-          account_or_card: newTx.account_or_card,
-          type: newTx.type as any,
-          description: newTx.description || newTx.merchant,
-          merchant: newTx.merchant || newTx.description,
+      let res: { success: boolean; error?: string } = { success: true }
+
+      if (newTx.type === 'Harcama') {
+        res = await financialBridge.recordExpense({
+          userId: user.id,
           amount: amountNum,
-          analysis_group: newTx.analysis_group as any,
-          project_id: newTx.project_id || null,
+          accountId: accountId || undefined,
+          cardId: cardId || undefined,
+          date: newTx.date,
+          merchant: newTx.merchant || newTx.description || '',
+          description: newTx.description || newTx.merchant,
+          analysisGroup: newTx.analysis_group as any,
+          projectId: newTx.project_id || undefined,
         })
+      } else if (newTx.type === 'Gelir') {
+        if (!accountId) {
+          throw new Error('Gelir için bir banka hesabı seçilmelidir.')
+        }
+        res = await financialBridge.recordIncome({
+          userId: user.id,
+          amount: amountNum,
+          accountId: accountId,
+          date: newTx.date,
+          merchant: newTx.merchant || newTx.description || '',
+          description: newTx.description || newTx.merchant,
+          projectId: newTx.project_id || undefined,
+        })
+      } else if (newTx.type === 'Kart Ödemesi' && accountId && cardId) {
+        res = await financialBridge.recordCardPayment({
+          userId: user.id,
+          amount: amountNum,
+          sourceAccountId: accountId,
+          cardId: cardId,
+          date: newTx.date,
+          description: newTx.description || newTx.merchant,
+        })
+      } else {
+        // Fallback for Transfer or other types
+        const { error } = await supabase
+          .from('transactions')
+          .insert({
+            user_id: user.id,
+            date: newTx.date,
+            account_or_card: newTx.account_or_card,
+            type: newTx.type as any,
+            description: newTx.description || newTx.merchant,
+            merchant: newTx.merchant || newTx.description,
+            amount: amountNum,
+            analysis_group: newTx.analysis_group as any,
+            project_id: newTx.project_id || null,
+            account_id: accountId,
+            card_id: cardId,
+          })
+        if (error) res = { success: false, error: error.message }
+      }
 
-      if (error) throw error
+      if (!res.success) {
+        throw new Error(res.error || 'İşlem kaydedilemedi')
+      }
 
       setIsAddModalOpen(false)
       setNewTx({
@@ -137,9 +188,12 @@ export default function TransactionsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bu hareketi silmek istediğinize emin misiniz?')) return
-    const supabase = createClient()
-    await supabase.from('transactions').delete().eq('id', id)
-    setTransactions((prev) => prev.filter((t) => t.id !== id))
+    const res = await financialBridge.deleteTransaction(id)
+    if (res.success) {
+      setTransactions((prev) => prev.filter((t) => t.id !== id))
+    } else {
+      alert(res.error || 'Silinemedi')
+    }
   }
 
   // Filter pipeline
