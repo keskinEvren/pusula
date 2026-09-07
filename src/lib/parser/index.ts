@@ -5,12 +5,13 @@ import { repairTurkishPdfText } from './turkish-cleaner'
 import type { ParseResult, ExtractedTransaction, BankDetectionResult } from './types'
 import type { MerchantMapping } from '@/types/database'
 
+import { parseFlexibleAmount } from './utils'
+export * from './utils'
+
 function parseAmountRegex(text: string, pattern: RegExp): number | undefined {
   const m = text.match(pattern)
   if (!m) return undefined
-  const clean = m[1].replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.')
-  const num = parseFloat(clean)
-  return isNaN(num) ? undefined : num
+  return parseFlexibleAmount(m[1])
 }
 
 /**
@@ -22,41 +23,52 @@ export function detectBankAndMetadata(text: string): BankDetectionResult {
   let card_name = 'Kredi Kartı'
   let last_four: string | undefined = undefined
 
-  // Dynamically extract card last 4 digits if present in statement text
-  const dynamicLastFourMatch =
-    text.match(/(?:[0-9]{4}|####|\*{4})[-#*\s]+(?:[0-9]{4}|####|\*{4})[-#*\s]+(?:[0-9]{4}|####|\*{4})[-#*\s]+([0-9]{4})/i) ||
-    text.match(/(?:####|\*{2,4})[-#*\s]+([0-9]{4})/i) ||
-    text.match(/[-#*]{4,14}([0-9]{4})/i) ||
-    text.match(/(?:Kart No|Kart Numarası|KART NO)\s*[:]?\s*.*?(?:[-#*\s]+)?([0-9]{4})\b/i)
-
-  const dynamicLastFour = dynamicLastFourMatch ? dynamicLastFourMatch[1] : undefined
-
   if (upper.includes('ENPARA') || upper.includes('QNB FINANSBANK')) {
     bank = 'Enpara'
     card_name = 'Kredi Kartı'
-    last_four = dynamicLastFour || '2039'
   } else if (upper.includes('AKBANK') || upper.includes('AXESS') || upper.includes('WINGS')) {
     bank = 'Akbank'
     card_name = 'Axess Platinum'
-    last_four = dynamicLastFour || '1697'
-  } else if (upper.includes('ZIRAAT') || upper.includes('BANKKART')) {
+  } else if (
+    upper.includes('ZIRAAT') ||
+    upper.includes('BANKKART') ||
+    upper.includes('5349-') ||
+    /5349[\s-]*[#*xX\d]{4}/i.test(text) ||
+    text.includes('9980069675')
+  ) {
     bank = 'Ziraat Bankası'
     card_name = 'Bankkart'
-    last_four = dynamicLastFour || '0887'
   } else if (upper.includes('GARANTI') || upper.includes('BONUS') || upper.includes('BBVA')) {
     bank = 'Garanti BBVA'
     card_name = 'Bonus Trink'
-    last_four = dynamicLastFour || '9388'
+  }
+
+  // Dynamic last_four extraction from statement text (16-char masked card number: 4x4)
+  const full16Match = text.match(/(?:[0-9*#xX]{4}[\s-]*[0-9*#xX]{4}[\s-]*[0-9*#xX]{4}[\s-]*(\d{4}))/i)
+  if (full16Match) {
+    last_four = full16Match[1]
   } else {
-    last_four = dynamicLastFour
+    const labeledMatch = text.match(/(?:kart\s*no|kartı\s*no|kredi\s*kartı|kart\s*numaras[ıivx]?)\s*[:.\-]?\s*[0-9*#xX\-\s]*?(\d{4})(?!\d)/i)
+    if (labeledMatch) {
+      last_four = labeledMatch[1]
+    } else {
+      const starMatch = text.match(/[#*xX]{4,}\s*(\d{4})(?!\d)/i)
+      if (starMatch) {
+        last_four = starMatch[1]
+      }
+    }
   }
 
   // Detect dates (DD.MM.YYYY or DD/MM/YYYY)
   let statement_date: string | undefined
   let due_date: string | undefined
 
-  const stmtDateMatch = text.match(/(?:Ekstre tarihi|Hesap Özeti Tarihi|Dönem Başlangıç|Hesap Kesim Tarihi)\s*[:]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i)
-  const dueDateMatch = text.match(/(?:Son ödeme tarihi|Son Ödeme Tarihi|Son Ödeme)\s*[:]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i)
+  const stmtDateMatch = text.match(
+    /(?:(?:^|\n)\s*|(?<!Sonraki\s+))(?:Hesap\s+Kesim\s+Tarihi|Ekstre\s+tarihi|Hesap\s+Özeti\s+Tarihi|Dönem\s+Başlangıç)\s*[:]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i
+  )
+  const dueDateMatch = text.match(
+    /(?:(?:^|\n)\s*|(?<!Sonraki\s+))(?:Son\s+[öÖoO]deme\s+[Tt]arihi|Son\s+[Öö]deme)\s*[:]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i
+  )
 
   const parseDMY = (dStr: string) => {
     const parts = dStr.split(/[./]/)
@@ -83,19 +95,19 @@ export function detectBankAndMetadata(text: string): BankDetectionResult {
   // Detect summary amounts
   const statement_debt = parseAmountRegex(
     text,
-    /(?:Ekstre borcu|Dönem borcu|Toplam dönem borcu|Dönem Borcu TL)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+    /(?:Ekstre\s+borcu|D[öÖoO]nem\s+[bB]orcu|Toplam\s+d[öÖoO]nem\s+borcu|Toplam\s+bor[çc])(?:\s*(?:TL|TRY))?\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
   )
   const minimum_payment = parseAmountRegex(
     text,
-    /(?:Minimum ödeme tutarı|Asgari ödeme tutarı|Asgari tutar|Asgari Ödeme Tutarı TL)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+    /(?:Minimum\s+[öÖoO]deme|Asgari\s+[öÖoO]deme|En\s+[Aa]z\s+[öÖoO]deme\s+tutar[ıivx]?|Asgari\s+tutar)[^\d]*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
   )
   const prev_debt = parseAmountRegex(
     text,
-    /(?:Bir önceki ekstre borcu|Önceki ekstre borcu|Geçen dönem borcu|ÖNCEKİ AYDAN DEVİR|Devreden Bakiye)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+    /(?:Bir\s+önceki\s+ekstre\s+borcu|Önceki\s+ekstre\s+borcu|Geçen\s+dönem\s+borcu|Devreden\s+Bakiye|Önceki\s+Aydan\s+Devir|Önceki\s+DÖnem\s+Hesap\s+özeti\s+Bakiyesi)(?:\s*(?:TL|TRY))?\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
   )
   const interest_fees = parseAmountRegex(
     text,
-    /(?:Faiz, vergiler, ücretler toplamı|Toplam faiz ve ücretler|Faiz Ücretler ve\s*Kesintiler|Gecikme faizi)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
+    /(?:Faiz,\s+vergiler,\s+ücretler\s+toplamı|Toplam\s+faiz\s+ve\s+ücretler|Gecikme\s+faizi|Faiz\s+Ücretler\s+ve\s+Kesintiler|Toplam\s+DÖnem\s+Faizi)(?:\s*(?:TL|TRY))?\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i
   )
 
   return {
@@ -140,6 +152,9 @@ const IGNORED_PATTERNS = [
   /Taksitli nakit avans/i,
   /Aylık\s*%/i,
   /Yıllık\s*%/i,
+  /Önceki aydan devir/i,
+  /Devreden bakiye/i,
+  /Büyük Mükellefler/i,
   /--- PAGE BREAK ---/i,
 ]
 
@@ -176,28 +191,62 @@ export function parseStatementLines(
     const rawDate = dateMatch[1]
     const rest = dateMatch[2].trim()
 
-    // Match amount at the very end of the line: e.g. " - 1.000,00 TL", " 1.879,00 TL", " - 253,01 TL", " 15,82+"
-    const amountMatch = rest.match(/^(.*?)(?:(?:\s+İşlemin|\s+)(\d{1,2}\/\d{1,2})(?:\s+Taksidi)?)?\s+(-?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*([+-]))?$/i)
+    // Multi-amount column support:
+    // A statement line may end with 1, 2, or 3 amount columns (e.g. TL Tutar, USD Tutar, Bankkart Lira)
+    // Supports trailing '+' or '(-)' for payments, installment indicators like '619.99x1', and chip-para columns
+    const multiAmountRegex =
+      /^(.*?)(?:\s+(\d{1,2}\/\d{1,2}))?\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2}\s*(?:[+-]|\([+-]?\)|\))?)(?:\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2}\s*(?:[+-]|\([+-]?\)|\))?))?(?:\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2}\s*(?:[+-]|\([+-]?\)|\))?))?(?:\s+[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2}x\d+)?(?:\s+[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})?\s*(?:TL|TRY)?$/i
+
+    const amountMatch = rest.match(multiAmountRegex)
     if (!amountMatch) continue
 
-    let rawDesc = amountMatch[1].trim()
-    const taksitStr = amountMatch[2] || undefined
-    const rawAmountStr = amountMatch[3].trim()
-    const trailingSign = amountMatch[4]
+    const rawDesc = amountMatch[1].trim()
+    const taksitCol = amountMatch[2] || undefined
+    const descTaksitMatch = rawDesc.match(/(\d{1,2}\/\d{1,2})(?:\.taksit|\s*taksit)?/i)
+    const taksitStr = taksitCol || (descTaksitMatch ? descTaksitMatch[1] : undefined)
+    const col1 = amountMatch[3]
+    const col2 = amountMatch[4]
+    const col3 = amountMatch[5]
 
-    // Clean up trailing "[amount] TL İşlemin" from description if leftover
-    rawDesc = rawDesc.replace(/\s+[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2}\s*(?:TL|TRY)?\s*İşlemin$/i, '').trim()
+    const upperDesc = rawDesc.toUpperCase()
 
-    // Normalize amount
-    const isNegative = rawAmountStr.startsWith('-') || rawDesc.toLowerCase().includes('(iade)')
-    const isPositivePayment = trailingSign === '+' || rawAmountStr.startsWith('+')
-    const cleanAmountStr = rawAmountStr
-      .replace(/[^\d.,]/g, '')
-      .replace(/\.(?=\d{3})/g, '') // remove thousands dot
-      .replace(',', '.') // decimal comma -> dot
+    const parseCol = (str?: string) => {
+      if (!str) return null
+      const isCredit =
+        str.includes('+') ||
+        (str.includes('(-)') &&
+          (upperDesc.includes('ÖDEME') ||
+            upperDesc.includes('ODEME') ||
+            upperDesc.includes('TEŞEKKÜR') ||
+            upperDesc.includes('TEIEKKÜR') ||
+            upperDesc.includes('TAHSİLAT') ||
+            upperDesc.includes('KAPATILAN BORÇ')))
+      const isNegative = str.includes('-') || str.includes('(-)')
+      const val = parseFlexibleAmount(str)
+      return val === undefined ? null : { val, isCredit, isNegative, raw: str }
+    }
 
-    const absAmount = parseFloat(cleanAmountStr)
-    if (isNaN(absAmount) || absAmount === 0) continue
+    const p1 = parseCol(col1)
+    const p2 = parseCol(col2)
+    const p3 = parseCol(col3)
+
+    // Select primary amount:
+    // If col 1 is non-zero, it is the primary TL amount.
+    // If col 1 is zero and col 2 is non-zero (foreign transaction), use col 2.
+    let selectedAmount = p1
+    if (p1 && p2) {
+      if (p1.val !== 0) {
+        selectedAmount = p1
+      } else if (p2.val !== 0) {
+        selectedAmount = p2
+      }
+    }
+
+    if (!selectedAmount || selectedAmount.val === 0) continue
+
+    const absAmount = selectedAmount.val
+    const isCredit = selectedAmount.isCredit
+    const isNegative = selectedAmount.isNegative || rawDesc.toLowerCase().includes('(iade)')
 
     // Normalize date
     let parsedDate = new Date().toISOString().split('T')[0]
@@ -208,15 +257,18 @@ export function parseStatementLines(
     }
 
     // Determine type
-    const upperDesc = rawDesc.toUpperCase()
     let detectedType = 'Harcama'
-    if (isPositivePayment || upperDesc.includes('ÖDEME') || upperDesc.includes('ODEME') || upperDesc.includes('TAHSİLAT')) {
+    if (
+      isCredit ||
+      (!/FATURA/i.test(rawDesc) &&
+        /ÖDEMENİZ|ODEMENIZ|TEŞEKKÜR|TEIEKKÜR|TAHSİLAT|KAPATILAN BORÇ/i.test(rawDesc))
+    ) {
       detectedType = 'Kart Ödemesi'
-    } else if (upperDesc.includes('FAİZ') || upperDesc.includes('FAIZ') || upperDesc.includes('BSMV') || upperDesc.includes('KKDF')) {
+    } else if (/FAİZ|FAIZ|BSMV|KKDF/i.test(rawDesc)) {
       detectedType = 'Finansman/Masraf'
-    } else if (upperDesc.includes('İADE') || upperDesc.includes('IADE') || isNegative) {
+    } else if (isNegative || /İADE|IADE|İNDİRİM|INDIRIM/i.test(rawDesc)) {
       detectedType = 'İade'
-    } else if (upperDesc.includes('NAKİT AVANS') || upperDesc.includes('NAKIT AVANS')) {
+    } else if (/NAK[İI]T\s+AVANS|TAKS[İI]TL[İI]\s+AVANS|\bAVANS\b/i.test(rawDesc)) {
       detectedType = 'Nakit Avans'
     }
 

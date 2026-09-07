@@ -14,6 +14,7 @@ import {
   Lightbulb,
   Settings,
   Compass,
+  History,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Hareketler', href: '/transactions', icon: ReceiptText },
   { name: '📄 Ekstre Yükle', href: '/import', icon: UploadCloud },
+  { name: 'Ekstre Geçmişi', href: '/imports', icon: History },
   { name: 'Banka & Kasalar', href: '/accounts', icon: Building2 },
   { name: 'Kredi Kartları', href: '/cards', icon: CreditCard },
   { name: 'Borç & Alacak', href: '/debts', icon: HandCoins },

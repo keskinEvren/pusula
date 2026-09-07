@@ -16,6 +16,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
       remaining: 204573.0,
       status: 'Açık',
       linked_account_id: null,
+      project_id: null,
       created_at: '',
       updated_at: '',
     },
@@ -31,6 +32,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
       remaining: 15000.0,
       status: 'Açık',
       linked_account_id: null,
+      project_id: null,
       created_at: '',
       updated_at: '',
     },
@@ -46,6 +48,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
       remaining: 50000.0,
       status: 'Açık',
       linked_account_id: null,
+      project_id: null,
       created_at: '',
       updated_at: '',
     },
@@ -98,7 +101,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
 
       expect(res.action).toBe('COLLECT_RECEIVABLE')
       expect(res.type).toBe('Tahsilat')
-      expect(res.analysis_group).toBe('Gelir')
+      expect(res.analysis_group).toBe('Hariç')
       expect(res.target_debt_id).toBe('debt-rec-1')
       expect(res.confidence).toBe('high')
     })
@@ -114,7 +117,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
 
       expect(res.action).toBe('COLLECT_RECEIVABLE')
       expect(res.target_debt_id).toBe('debt-rec-2')
-      expect(res.analysis_group).toBe('Gelir')
+      expect(res.analysis_group).toBe('Hariç')
     })
 
     it('1.3. Serbest Gelir: Tanımsız gelen para serbest gelir olarak sınıflandırılır', () => {
@@ -128,7 +131,7 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
 
       expect(res.action).toBe('FREE_INCOME')
       expect(res.type).toBe('Gelir')
-      expect(res.analysis_group).toBe('Gelir')
+      expect(res.analysis_group).toBe('Hariç')
     })
   })
 

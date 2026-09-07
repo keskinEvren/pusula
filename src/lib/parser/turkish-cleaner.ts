@@ -4,7 +4,7 @@
  */
 
 export function repairTurkishPdfText(text: string): string {
-  let cleaned = text
+  let cleaned = text.replace(/\u00ad/g, '-').replace(/\u00a0/g, ' ')
 
   const replacements: Array<[RegExp, string]> = [
     // Ödeme / Ödemeler

@@ -102,6 +102,9 @@ export function matchMerchant(
 
   // 2. Check built-in patterns
   for (const p of DEFAULT_PATTERNS) {
+    if (p.name === 'Kart / Borç Ödemesi' && /FATURA/i.test(rawDescription)) {
+      continue
+    }
     if (p.pattern.test(rawDescription)) {
       return {
         merchant: p.name,

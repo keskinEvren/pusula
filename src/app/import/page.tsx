@@ -1,27 +1,34 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   UploadCloud,
   FileText,
   CheckCircle2,
   AlertCircle,
-  FolderKanban,
   Trash2,
-  ArrowRight,
   CreditCard as CardIcon,
   Building2,
   Sparkles,
-  ArrowUpRight,
-  ArrowDownLeft,
-  HandCoins,
+  History,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Loader2,
+  Layers,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { parseStatementFile, parseBankAccountFile } from '@/lib/parser'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { calculateStatementChange } from '@/lib/finance-engine'
-import { financialBridge } from '@/lib/financial-bridge'
+import { calculateFileHash } from '@/lib/hash'
+import {
+  checkDuplicateFileHash,
+  sortStatementsChronologically,
+  commitStatementBatch,
+} from '@/lib/import-service'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -30,23 +37,38 @@ import { Select } from '@/components/ui/select'
 import type { ExtractedTransaction, ParseResult, ReconciliationActionType } from '@/lib/parser/types'
 import type { Project, MerchantMapping, CreditCard, Debt, Account } from '@/types/database'
 
-type LocalTransaction = ExtractedTransaction & {
-  track_as_subscription?: boolean
-  save_as_mapping?: boolean
+export interface QueuedStatementFile {
+  id: string
+  file: File
+  fileHash: string | null
+  status: 'queued' | 'parsing' | 'ready' | 'duplicate' | 'error' | 'saving' | 'saved'
+  duplicateWarning?: string
+  errorMessage?: string
+  parseResult?: ParseResult
+  transactions: ExtractedTransaction[]
+  selectedCardId?: string
+  selectedAccountId?: string
+  expanded?: boolean
 }
 
 export default function ImportPage() {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const addMoreInputRef = useRef<HTMLInputElement>(null)
 
   // Mode: credit_card vs bank_account
   const [activeMode, setActiveMode] = useState<'credit_card' | 'bank_account'>('credit_card')
 
   const [isDragging, setIsDragging] = useState(false)
-  const [file, setFile] = useState<File | null>(null)
-  const [parsing, setParsing] = useState(false)
+  const [queuedFiles, setQueuedFiles] = useState<QueuedStatementFile[]>([])
   const [saving, setSaving] = useState(false)
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null)
-  const [transactions, setTransactions] = useState<LocalTransaction[]>([])
+  const [commitProgress, setCommitProgress] = useState<{
+    current: number
+    total: number
+    currentFileName: string
+  } | null>(null)
+
+  const [importHistoryCount, setImportHistoryCount] = useState<number>(0)
 
   // Metadata
   const [projects, setProjects] = useState<Project[]>([])
@@ -55,12 +77,11 @@ export default function ImportPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [userMappings, setUserMappings] = useState<MerchantMapping[]>([])
 
-  // Selections
-  const [selectedCardId, setSelectedCardId] = useState<string>('')
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
-
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [successSummary, setSuccessSummary] = useState<{
+    filesCount: number
+    txCount: number
+  } | null>(null)
 
   useEffect(() => {
     loadMetadata()
@@ -68,502 +89,440 @@ export default function ImportPage() {
 
   async function loadMetadata() {
     const supabase = createClient()
-    const [{ data: prjs }, { data: crds }, { data: dbts }, { data: accs }, { data: maps }] =
-      await Promise.all([
-        supabase.from('projects').select('*'),
-        supabase.from('credit_cards').select('*'),
-        supabase.from('debts').select('*'),
-        supabase.from('accounts').select('*'),
-        supabase.from('merchant_mappings').select('*'),
-      ])
+    const [
+      { data: prjs },
+      { data: crds },
+      { data: dbts },
+      { data: accs },
+      { data: maps },
+      { count: impCount },
+    ] = await Promise.all([
+      supabase.from('projects').select('*'),
+      supabase.from('credit_cards').select('*'),
+      supabase.from('debts').select('*'),
+      supabase.from('accounts').select('*'),
+      supabase.from('merchant_mappings').select('*'),
+      supabase.from('statement_imports').select('*', { count: 'exact', head: true }),
+    ])
 
-    if (prjs) setProjects(prjs)
-    if (crds) setCards(crds)
-    if (dbts) setDebts(dbts)
-    if (accs) {
-      setAccounts(accs)
-      if (accs.length > 0) setSelectedAccountId(accs[0].id)
+    if (crds) {
+      const healed = await Promise.all(
+        crds.map(async (c) => {
+          if (c.bank === 'Diğer Banka' && (c.last_four === '0887' || c.last_four === '6745')) {
+            const updated = {
+              ...c,
+              bank: 'Ziraat Bankası',
+              card_name: `Bankkart • ${c.last_four}`,
+            }
+            await supabase
+              .from('credit_cards')
+              .update({ bank: 'Ziraat Bankası', card_name: `Bankkart • ${c.last_four}` })
+              .eq('id', c.id)
+            return updated
+          }
+          return c
+        })
+      )
+      setCards(healed)
     }
+    if (dbts) setDebts(dbts)
+    if (impCount !== null) setImportHistoryCount(impCount)
+    if (accs) setAccounts(accs)
     if (maps) setUserMappings(maps)
   }
 
-  const handleFile = async (uploadedFile: File) => {
-    setFile(uploadedFile)
-    setParsing(true)
+  // =========================================================================
+  // QUEUE & FILE INGESTION (SEQUENTIAL PROCESSING)
+  // =========================================================================
+  const handleIncomingFiles = async (fileList: FileList | File[]) => {
+    const validExtensions = /\.(pdf|csv|xlsx|xls|html|htm)$/i
+    const incoming = Array.from(fileList).filter((f) => validExtensions.test(f.name))
+
+    if (incoming.length === 0) {
+      setError('Lütfen geçerli formatta dosya seçin (.pdf, .html, .csv, .xlsx, .xls).')
+      return
+    }
+
     setError(null)
-    setSuccess(false)
+    setSuccessSummary(null)
 
-    try {
-      let result: ParseResult
-      if (activeMode === 'credit_card') {
-        result = await parseStatementFile(uploadedFile, userMappings)
-      } else {
-        result = await parseBankAccountFile(uploadedFile, debts, cards, userMappings)
-      }
+    const newQueueItems: QueuedStatementFile[] = incoming.map((file, idx) => ({
+      id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+      file,
+      fileHash: null,
+      status: 'queued',
+      transactions: [],
+      expanded: incoming.length === 1,
+    }))
 
-      if (result.success && result.transactions.length > 0) {
-        setParseResult(result)
-        setTransactions(
-          result.transactions.map((t) => ({
-            ...t,
-            track_as_subscription: t.recurrence === 'Düzenli',
-            save_as_mapping: false,
-          }))
-        )
+    setQueuedFiles((prev) => [...prev, ...newQueueItems])
 
-        // Try auto-selecting card for credit card mode
-        if (cards.length > 0 && activeMode === 'credit_card') {
-          const matchedCard = cards.find((c) => {
-            const bankMatch =
-              c.bank.toLowerCase().includes(result.detected_bank?.toLowerCase() || '') ||
-              (result.detected_bank?.toLowerCase() || '').includes(c.bank.toLowerCase())
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-            if (result.last_four && c.last_four) {
-              return bankMatch && c.last_four === result.last_four
-            }
-            if (result.last_four && !c.last_four) {
-              return false
-            }
-            return bankMatch
-          })
-          if (matchedCard) {
-            setSelectedCardId(matchedCard.id)
-          } else {
-            setSelectedCardId('')
+    // Sequential parsing queue: process one file at a time
+    for (const item of newQueueItems) {
+      setQueuedFiles((prev) =>
+        prev.map((f) => (f.id === item.id ? { ...f, status: 'parsing' } : f))
+      )
+
+      try {
+        const hash = await calculateFileHash(item.file)
+
+        let isDuplicate = false
+        let duplicateWarning: string | undefined
+
+        if (user) {
+          const dupCheck = await checkDuplicateFileHash(supabase, user.id, hash)
+          if (dupCheck.isDuplicate && dupCheck.existingBatch) {
+            isDuplicate = true
+            duplicateWarning = `Bu dosya daha önce yüklenmiş (${dupCheck.existingBatch.file_name} / ${dupCheck.existingBatch.created_at?.slice(0, 10)}).`
           }
         }
 
-        // Try auto-selecting account for bank account mode
-        if (result.detected_bank && accounts.length > 0 && activeMode === 'bank_account') {
-          const matchedAcc = accounts.find(
-            (a) =>
-              a.name.toLowerCase().includes(result.detected_bank?.toLowerCase() || '') ||
-              (result.detected_bank?.toLowerCase() || '').includes(a.name.toLowerCase())
+        let result: ParseResult
+        if (activeMode === 'credit_card') {
+          result = await parseStatementFile(item.file, userMappings)
+        } else {
+          result = await parseBankAccountFile(item.file, debts, cards, userMappings)
+        }
+
+        if (!result.success || result.transactions.length === 0) {
+          setQueuedFiles((prev) =>
+            prev.map((f) =>
+              f.id === item.id
+                ? {
+                    ...f,
+                    fileHash: hash,
+                    status: 'error',
+                    errorMessage: result.error || 'Dosya ayrıştırılamadı veya hareket bulunamadı.',
+                  }
+                : f
+            )
           )
-          if (matchedAcc) {
-            setSelectedAccountId(matchedAcc.id)
+          continue
+        }
+
+        // Card / Account auto-match
+        let matchedCardId: string | undefined
+        let matchedAccountId: string | undefined
+
+        if (activeMode === 'credit_card' && result.detected_bank && cards.length > 0) {
+          let matched = result.last_four
+            ? cards.find(
+                (c) =>
+                  c.last_four === result.last_four ||
+                  c.card_name?.includes(result.last_four!)
+              )
+            : undefined
+
+          if (!matched && !result.last_four) {
+            matched = cards.find(
+              (c) =>
+                c.bank.toLowerCase().includes(result.detected_bank?.toLowerCase() || '') ||
+                (result.detected_bank?.toLowerCase() || '').includes(c.bank.toLowerCase())
+            )
+          }
+
+          if (matched) matchedCardId = matched.id
+        }
+
+        if (activeMode === 'bank_account') {
+          if (result.detected_bank && accounts.length > 0) {
+            const matched = accounts.find(
+              (a) =>
+                a.name.toLowerCase().includes(result.detected_bank?.toLowerCase() || '') ||
+                (result.detected_bank?.toLowerCase() || '').includes(a.name.toLowerCase())
+            )
+            if (matched) matchedAccountId = matched.id
+          }
+          if (!matchedAccountId && accounts.length > 0) {
+            matchedAccountId = accounts[0].id
           }
         }
-      } else {
-        setError(result.error || 'Dosya ayrıştırılamadı. Lütfen içeriği kontrol edin.')
+
+        setQueuedFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id
+              ? {
+                  ...f,
+                  fileHash: hash,
+                  status: isDuplicate ? 'duplicate' : 'ready',
+                  duplicateWarning,
+                  parseResult: result,
+                  transactions: result.transactions,
+                  selectedCardId: matchedCardId,
+                  selectedAccountId: matchedAccountId,
+                }
+              : f
+          )
+        )
+      } catch (err: any) {
+        setQueuedFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id
+              ? {
+                  ...f,
+                  status: 'error',
+                  errorMessage: err.message || 'Ayrıştırma işlemi sırasında hata oluştu.',
+                }
+              : f
+          )
+        )
       }
-    } catch (err: any) {
-      setError(err.message || 'Dosya okunurken bir hata oluştu.')
-    } finally {
-      setParsing(false)
     }
   }
 
-  const handleRowChange = (
-    id: string,
-    field: keyof LocalTransaction,
-    value: any
-  ) => {
-    setTransactions((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+  // =========================================================================
+  // QUEUE EDITING & TOGGLING
+  // =========================================================================
+  const handleRemoveQueueItem = (fileId: string) => {
+    setQueuedFiles((prev) => prev.filter((f) => f.id !== fileId))
+  }
+
+  const handleToggleExpand = (fileId: string) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, expanded: !f.expanded } : f))
     )
   }
 
-  const handleActionChange = (id: string, newAction: ReconciliationActionType) => {
-    setTransactions((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t
-        let newType = t.type
-        let newGroup = t.analysis_group
+  const handleCardChange = (fileId: string, cardId: string) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, selectedCardId: cardId } : f))
+    )
+  }
 
-        if (newAction === 'CARD_PAYMENT') {
-          newType = 'Kart Ödemesi'
-          newGroup = 'Hariç'
-        } else if (newAction === 'COLLECT_RECEIVABLE') {
-          newType = 'Tahsilat'
-          newGroup = 'Gelir'
-        } else if (newAction === 'PAY_DEBT') {
-          newType = 'Borç Ödemesi'
-          newGroup = 'Hariç'
-        } else if (newAction === 'DIRECT_EXPENSE') {
-          newType = 'Harcama'
-          newGroup = 'Kişisel'
-        } else if (newAction === 'FREE_INCOME') {
-          newType = 'Gelir'
-          newGroup = 'Gelir'
-        } else if (newAction === 'INTERNAL_TRANSFER') {
-          newType = 'Transfer'
-          newGroup = 'Hariç'
-        }
+  const handleAccountChange = (fileId: string, accountId: string) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, selectedAccountId: accountId } : f))
+    )
+  }
 
+  const handleToggleFileSelectAll = (fileId: string, select: boolean) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== fileId) return f
         return {
-          ...t,
-          action: newAction,
-          type: newType,
-          analysis_group: newGroup,
+          ...f,
+          transactions: f.transactions.map((t) => ({ ...t, selected: select })),
         }
       })
     )
   }
 
-  const handleToggleSelectAll = (select: boolean) => {
-    setTransactions((prev) => prev.map((t) => ({ ...t, selected: select })))
+  const handleRowFieldChange = (
+    fileId: string,
+    txId: string,
+    field: keyof ExtractedTransaction,
+    value: any
+  ) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== fileId) return f
+        return {
+          ...f,
+          transactions: f.transactions.map((t) => (t.id === txId ? { ...t, [field]: value } : t)),
+        }
+      })
+    )
+  }
+
+  const handleActionChange = (
+    fileId: string,
+    txId: string,
+    newAction: ReconciliationActionType
+  ) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== fileId) return f
+        return {
+          ...f,
+          transactions: f.transactions.map((t) => {
+            if (t.id !== txId) return t
+            let newType = t.type
+            let newGroup = t.analysis_group
+
+            if (newAction === 'CARD_PAYMENT') {
+              newType = 'Kart Ödemesi'
+              newGroup = 'Hariç'
+            } else if (newAction === 'COLLECT_RECEIVABLE') {
+              newType = 'Tahsilat'
+              newGroup = 'Hariç'
+            } else if (newAction === 'PAY_DEBT') {
+              newType = 'Borç Ödemesi'
+              newGroup = 'Hariç'
+            } else if (newAction === 'DIRECT_EXPENSE') {
+              newType = 'Harcama'
+              newGroup = 'Kişisel'
+            } else if (newAction === 'FREE_INCOME') {
+              newType = 'Gelir'
+              newGroup = 'Hariç'
+            } else if (newAction === 'CASH_ADVANCE') {
+              newType = 'Nakit Avans'
+              newGroup = 'Hariç'
+            } else if (newAction === 'INTERNAL_TRANSFER') {
+              newType = 'Transfer'
+              newGroup = 'Hariç'
+            }
+
+            return {
+              ...t,
+              action: newAction,
+              type: newType,
+              analysis_group: newGroup,
+            }
+          }),
+        }
+      })
+    )
   }
 
   // =========================================================================
-  // TOPLU SUPABASE AKTARIMI & SİSTEM GENELİ MAHSUPLAŞMA
+  // BULK COMMIT EXECUTION
   // =========================================================================
-  const handleSaveToSupabase = async () => {
-    const selectedTxs = transactions.filter((t) => t.selected)
-    if (selectedTxs.length === 0) {
-      alert('Lütfen kaydedilecek en az bir hareket seçin.')
+  const handleBulkCommit = async () => {
+    const committableFiles = queuedFiles.filter(
+      (f) =>
+        (f.status === 'ready' || f.status === 'duplicate') &&
+        f.transactions.some((t) => t.selected !== false)
+    )
+
+    if (committableFiles.length === 0) {
+      alert('Aktarılacak hazır veya seçili hareketi olan dosya bulunamadı.')
       return
     }
 
     setSaving(true)
     setError(null)
+    setSuccessSummary(null)
+    setCommitProgress({
+      current: 0,
+      total: committableFiles.length,
+      currentFileName: committableFiles[0].file.name,
+    })
 
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-      if (!user) throw new Error('Oturum açılmamış. Lütfen giriş yapın.')
-
-      const totalSelectedAmount = selectedTxs.reduce((sum, t) => sum + t.amount, 0)
-      const detectedBankName = parseResult?.detected_bank || 'Banka Dökümü'
-      const detectedCardTitle = parseResult?.detected_card || 'Kredi Kartı'
-
-      // =======================================================================
-      // MOD A: KREDİ KARTI EKSTRESİ AKIŞI
-      // =======================================================================
-      if (activeMode === 'credit_card') {
-        let resolvedCardId = selectedCardId
-        const statementDebtValue = parseResult?.statement_debt || totalSelectedAmount
-        const minPaymentValue = parseResult?.minimum_payment || Math.round(statementDebtValue * 0.2)
-        const interestFeesValue = parseResult?.interest_fees || 0
-
-        if (!resolvedCardId) {
-          const existingCard = cards.find((c) => {
-            const bankMatch =
-              c.bank.toLowerCase().includes(detectedBankName.toLowerCase()) ||
-              detectedBankName.toLowerCase().includes(c.bank.toLowerCase())
-
-            if (parseResult?.last_four && c.last_four) {
-              return bankMatch && c.last_four === parseResult.last_four
-            }
-            if (parseResult?.last_four && !c.last_four) {
-              return false
-            }
-            return bankMatch && !parseResult?.last_four
-          })
-
-          if (existingCard) {
-            resolvedCardId = existingCard.id
-            const isNewerStatement =
-              !existingCard.statement_date ||
-              (parseResult?.statement_date &&
-                new Date(parseResult.statement_date) >= new Date(existingCard.statement_date))
-
-            if (isNewerStatement) {
-              await supabase
-                .from('credit_cards')
-                .update({
-                  current_debt: statementDebtValue,
-                  statement_debt: statementDebtValue,
-                  minimum_payment: minPaymentValue,
-                  interest_fees: interestFeesValue,
-                  statement_date: parseResult?.statement_date || null,
-                  due_date: parseResult?.due_date || null,
-                })
-                .eq('id', existingCard.id)
-            }
-          } else {
-            const { data: newCard } = await supabase
-              .from('credit_cards')
-              .insert({
-                user_id: user.id,
-                bank: detectedBankName,
-                card_name: detectedCardTitle,
-                last_four: parseResult?.last_four || null,
-                current_debt: statementDebtValue,
-                statement_debt: statementDebtValue,
-                minimum_payment: minPaymentValue,
-                interest_fees: interestFeesValue,
-                statement_date: parseResult?.statement_date || null,
-                due_date: parseResult?.due_date || null,
-              })
-              .select()
-              .single()
-
-            if (newCard) resolvedCardId = newCard.id
-          }
-        } else {
-          const matchedCard = cards.find((c) => c.id === resolvedCardId)
-          const isNewerStatement =
-            !matchedCard?.statement_date ||
-            (parseResult?.statement_date &&
-              new Date(parseResult.statement_date) >= new Date(matchedCard.statement_date))
-
-          if (isNewerStatement) {
-            await supabase
-              .from('credit_cards')
-              .update({
-                current_debt: statementDebtValue,
-                statement_debt: statementDebtValue,
-                minimum_payment: minPaymentValue,
-                interest_fees: interestFeesValue,
-                statement_date: parseResult?.statement_date || null,
-                due_date: parseResult?.due_date || null,
-              })
-              .eq('id', resolvedCardId)
-          }
-        }
-
-        // Ekstre Geçmişi (card_statements)
-        if (resolvedCardId && parseResult?.statement_date) {
-          const prevDebt = parseResult?.prev_debt || null
-          const { changeAmount, changePct } = calculateStatementChange(statementDebtValue, prevDebt)
-          await supabase.from('card_statements').insert({
-            card_id: resolvedCardId,
-            statement_date: parseResult.statement_date,
-            period_debt: statementDebtValue,
-            minimum: minPaymentValue,
-            spending: totalSelectedAmount,
-            interest_fees: interestFeesValue,
-            due_date: parseResult.due_date || null,
-            prev_debt: prevDebt,
-            change_amount: changeAmount,
-            change_pct: changePct ? changePct / 100 : null,
-          })
-        }
-
-        // İthalat Kaydı
-        const { data: importRecord, error: importError } = await supabase
-          .from('statement_imports')
-          .insert({
-            user_id: user.id,
-            file_name: file?.name || 'ekstre.pdf',
-            bank: detectedBankName,
-            card_id: resolvedCardId || null,
-            statement_date: parseResult?.statement_date || null,
-            due_date: parseResult?.due_date || null,
-            total_transactions: selectedTxs.length,
-            total_amount: totalSelectedAmount,
-          })
-          .select()
-          .single()
-
-        if (importError) throw importError
-
-        // Hareketleri Ekle
-        const rowsToInsert = selectedTxs.map((t) => ({
-          user_id: user.id,
-          date: t.date,
-          account_or_card: detectedCardTitle,
-          type: t.type as any,
-          description: t.raw_description,
-          amount: t.amount,
-          analysis_group: t.analysis_group as any,
-          merchant: t.merchant,
-          recurrence: t.recurrence || null,
-          statement_date: parseResult?.statement_date || null,
-          card_id: resolvedCardId || null,
-          project_id: t.project_id || null,
-          import_id: importRecord.id,
-        }))
-
-        await supabase.from('transactions').insert(rowsToInsert)
-
-        // Otomatik Abonelik Keşfi & Merchant Mapping
-        for (const t of selectedTxs) {
-          if (t.track_as_subscription) {
-            await supabase.from('subscriptions').insert({
-              user_id: user.id,
-              service: t.merchant,
-              group_type: t.analysis_group === 'İş' ? 'İş' : 'Kişisel',
-              model: 'Tekrarlayan',
-              amount: t.amount,
-              currency: 'TRY',
-              period: 'Aylık',
-              status: 'Aktif',
-              decision: 'Devam',
-              project_id: t.project_id || null,
-              payment_method: detectedCardTitle,
-            })
-          }
-          if (t.save_as_mapping) {
-            await supabase.from('merchant_mappings').upsert({
-              user_id: user.id,
-              raw_pattern: t.raw_description,
-              merchant_name: t.merchant,
-              default_group: t.analysis_group as any
-            }, { onConflict: 'raw_pattern' })
-          }
-        }
-      }
-
-      // =======================================================================
-      // MOD B: VADESİZ HESAP DÖKÜMÜ & UZLAŞTIRMA AKIŞI
-      // =======================================================================
-      if (activeMode === 'bank_account') {
-        let currentAccountId = selectedAccountId
-
-        // If no account selected or exists, create default account
-        if (!currentAccountId) {
-          const { data: newAcc } = await supabase
-            .from('accounts')
-            .insert({
-              user_id: user.id,
-              name: detectedBankName || 'Garanti Vadesiz',
-              type: 'vadesiz',
-              balance: 0,
-            })
-            .select()
-            .single()
-
-          if (newAcc) currentAccountId = newAcc.id
-        }
-
-        const targetAccount = accounts.find((a) => a.id === currentAccountId)
-        let runningAccountBalance = targetAccount ? Number(targetAccount.balance) : 0
-
-        // İthalat Kaydı
-        const { data: importRecord } = await supabase
-          .from('statement_imports')
-          .insert({
-            user_id: user.id,
-            file_name: file?.name || 'hesap_dokumu.pdf',
-            bank: detectedBankName,
-            total_transactions: selectedTxs.length,
-            total_amount: totalSelectedAmount,
-          })
-          .select()
-          .single()
-
-        // Hareketleri ayıklayıp bulk-insert edilecek normal hareketleri biriktireceğimiz liste
-        const normalRowsToInsert = []
-
-        // Satır Satır Uzlaştırma & Mahsuplaşma İşleme
-        for (const t of selectedTxs) {
-          if (t.direction === 'inflow') {
-            runningAccountBalance += t.amount
-          } else {
-            runningAccountBalance -= t.amount
-          }
-
-          let handledByBridge = false
-
-          // 1. Alacak Tahsilatı Aksiyonu
-          if (t.action === 'COLLECT_RECEIVABLE' && t.target_debt_id) {
-            await financialBridge.recordReceivableCollection({
-              userId: user.id,
-              amount: t.amount,
-              targetAccountId: currentAccountId,
-              receivableId: t.target_debt_id,
-              date: t.date,
-              description: t.raw_description,
-            })
-            handledByBridge = true
-          }
-
-          // 2. Kredi Kartı Borcu Kapatma Aksiyonu
-          else if (t.action === 'CARD_PAYMENT' && t.target_card_id) {
-            await financialBridge.recordCardPayment({
-              userId: user.id,
-              amount: t.amount,
-              sourceAccountId: currentAccountId,
-              cardId: t.target_card_id,
-              date: t.date,
-              description: t.raw_description,
-            })
-            handledByBridge = true
-          }
-
-          // 3. Şahıs Borcu Geri Ödeme Aksiyonu
-          else if (t.action === 'PAY_DEBT' && t.target_debt_id) {
-            await financialBridge.recordDebtPayment({
-              userId: user.id,
-              amount: t.amount,
-              sourceAccountId: currentAccountId,
-              debtId: t.target_debt_id,
-              date: t.date,
-              description: t.raw_description,
-            })
-            handledByBridge = true
-          }
-
-          // 4. İç Transfer Aksiyonu
-          else if (t.action === 'INTERNAL_TRANSFER' && t.target_account_id) {
-            await financialBridge.recordTransfer({
-              userId: user.id,
-              amount: t.amount,
-              sourceAccountId: currentAccountId,
-              targetAccountId: t.target_account_id,
-              date: t.date,
-              description: t.raw_description,
-            })
-            handledByBridge = true
-          }
-
-          // Eğer bridge tarafından işlenmediyse, normal transaction olarak ekle
-          if (!handledByBridge) {
-            normalRowsToInsert.push({
-              user_id: user.id,
-              date: t.date,
-              account_or_card: targetAccount ? targetAccount.name : detectedBankName,
-              type: t.type as any,
-              description: t.raw_description,
-              amount: t.amount,
-              analysis_group: t.analysis_group as any,
-              merchant: t.merchant,
-              account_id: currentAccountId || null,
-              project_id: t.project_id || null,
-              import_id: importRecord?.id || null,
-            })
-          }
-        }
-
-        // Vadesiz Hesap Bakiyesini Güncelle (Resmi Kapanış Bakiyesi varsa onu esas al)
-        const finalBalance =
-          parseResult?.closing_balance !== undefined
-            ? parseResult.closing_balance
-            : runningAccountBalance
-
-        if (currentAccountId) {
-          await supabase
-            .from('accounts')
-            .update({ balance: finalBalance })
-            .eq('id', currentAccountId)
-        }
-
-        if (normalRowsToInsert.length > 0) {
-          await supabase.from('transactions').insert(normalRowsToInsert)
-        }
-      }
-
-      setSuccess(true)
-      setTimeout(() => {
-        router.push('/')
-      }, 1500)
-    } catch (err: any) {
-      setError(err.message || 'Veritabanına kaydedilirken hata oluştu')
-    } finally {
+    if (!user) {
+      setError('Oturum açılmamış. Lütfen giriş yapın.')
       setSaving(false)
+      return
+    }
+
+    // Sort files chronologically: oldest statement first, newest last
+    const sortedFiles = sortStatementsChronologically(committableFiles)
+
+    let committedFilesCount = 0
+    let committedTxCount = 0
+
+    for (let i = 0; i < sortedFiles.length; i++) {
+      const item = sortedFiles[i]
+      setCommitProgress({
+        current: i + 1,
+        total: sortedFiles.length,
+        currentFileName: item.file.name,
+      })
+
+      setQueuedFiles((prev) =>
+        prev.map((f) => (f.id === item.id ? { ...f, status: 'saving' } : f))
+      )
+
+      const res = await commitStatementBatch({
+        supabase,
+        userId: user.id,
+        fileName: item.file.name,
+        fileHash: item.fileHash,
+        importType: activeMode,
+        parseResult: item.parseResult,
+        transactions: item.transactions,
+        selectedCardId: item.selectedCardId,
+        selectedAccountId: item.selectedAccountId,
+        cards,
+        accounts,
+        debts,
+      })
+
+      if (res.success) {
+        committedFilesCount++
+        committedTxCount += res.insertedTransactionsCount || 0
+        setQueuedFiles((prev) =>
+          prev.map((f) => (f.id === item.id ? { ...f, status: 'saved' } : f))
+        )
+      } else {
+        setQueuedFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id ? { ...f, status: 'error', errorMessage: res.error } : f
+          )
+        )
+      }
+    }
+
+    setSaving(false)
+    setCommitProgress(null)
+    await loadMetadata()
+
+    if (committedFilesCount > 0) {
+      setSuccessSummary({
+        filesCount: committedFilesCount,
+        txCount: committedTxCount,
+      })
     }
   }
 
-  const selectedCount = transactions.filter((t) => t.selected).length
-  const selectedSum = transactions
-    .filter((t) => t.selected)
-    .reduce((sum, t) => sum + t.amount, 0)
+  // Aggregate metrics
+  const readyFiles = queuedFiles.filter((f) => f.status === 'ready' || f.status === 'duplicate')
+  const distinctDetectedCards = Array.from(
+    new Set(
+      queuedFiles
+        .filter((f) => f.parseResult?.detected_bank)
+        .map((f) => {
+          const bank = f.parseResult?.detected_bank || 'Banka'
+          const last4 = f.parseResult?.last_four ? `• ${f.parseResult.last_four}` : ''
+          return `${bank} ${last4}`.trim()
+        })
+    )
+  )
+  const totalSelectedTransactions = queuedFiles.reduce(
+    (acc, f) => acc + f.transactions.filter((t) => t.selected !== false).length,
+    0
+  )
+  const totalSelectedAmount = queuedFiles.reduce(
+    (acc, f) =>
+      acc +
+      f.transactions
+        .filter((t) => t.selected !== false)
+        .reduce((sum, t) => sum + t.amount, 0),
+    0
+  )
+
+  const isAnyFileParsing = queuedFiles.some((f) => f.status === 'parsing' || f.status === 'queued')
 
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          İkili Ekstre & Uzlaştırma Merkezi
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Kredi kartı ekstreleri ile vadesiz banka dökümlerini sıfır mükerrerlikle tek ekranda işleyin.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            İkili Ekstre & Toplu Uzlaştırma Merkezi
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tek veya birden fazla ekstre dosyasını topluca yükleyin; kronolojik sırayla sisteme aktarın.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Link href="/imports">
+            <Button variant="outline" className="shadow-sm text-xs">
+              <History className="h-4 w-4 mr-2 text-primary" />
+              Ekstre Geçmişi & Geri Alma ({importHistoryCount})
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Mode Selector Tabs */}
@@ -571,9 +530,16 @@ export default function ImportPage() {
         <button
           type="button"
           onClick={() => {
+            if (queuedFiles.length > 0) {
+              const confirmSwitch = window.confirm(
+                'Mod değiştirdiğinizde kuyruktaki mevcut dosyalar temizlenir. Devam etmek istiyor musunuz?'
+              )
+              if (!confirmSwitch) return
+            }
             setActiveMode('credit_card')
-            setParseResult(null)
-            setTransactions([])
+            setQueuedFiles([])
+            setError(null)
+            setSuccessSummary(null)
           }}
           className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
             activeMode === 'credit_card'
@@ -588,9 +554,16 @@ export default function ImportPage() {
         <button
           type="button"
           onClick={() => {
+            if (queuedFiles.length > 0) {
+              const confirmSwitch = window.confirm(
+                'Mod değiştirdiğinizde kuyruktaki mevcut dosyalar temizlenir. Devam etmek istiyor musunuz?'
+              )
+              if (!confirmSwitch) return
+            }
             setActiveMode('bank_account')
-            setParseResult(null)
-            setTransactions([])
+            setQueuedFiles([])
+            setError(null)
+            setSuccessSummary(null)
           }}
           className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
             activeMode === 'bank_account'
@@ -603,6 +576,7 @@ export default function ImportPage() {
         </button>
       </div>
 
+      {/* Global Error Banner */}
       {error && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm font-medium flex items-center gap-3">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
@@ -610,17 +584,46 @@ export default function ImportPage() {
         </div>
       )}
 
-      {success && (
-        <div className="rounded-xl border border-success/30 bg-success/10 p-4 text-success text-sm font-medium flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
-          <span>
-            {selectedCount} hareket ve bağlı finansal mahsuplaşmalar başarıyla işlendi! Dashboard'a yönlendiriliyorsunuz...
-          </span>
-        </div>
+      {/* Success Notification Card */}
+      {successSummary && (
+        <Card className="border-success/40 bg-success/10 text-success">
+          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="h-6 w-6 flex-shrink-0 text-success" />
+              <div>
+                <div className="font-bold text-base text-foreground">
+                  Toplu Aktarım Başarıyla Tamamlandı!
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Toplam <strong>{successSummary.filesCount}</strong> ekstre paketi ve{' '}
+                  <strong>{successSummary.txCount}</strong> hareket sisteme işlendi.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <Link href="/imports">
+                <Button variant="outline" size="sm" className="text-xs">
+                  Ekstre Geçmişine Git
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  setQueuedFiles([])
+                  setSuccessSummary(null)
+                }}
+              >
+                Yeni Ekstre Yükle
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Upload Box */}
-      {!parseResult && (
+      {/* Empty Queue Dropzone */}
+      {queuedFiles.length === 0 && (
         <Card
           className={`border-2 border-dashed transition-all ${
             isDragging ? 'border-primary bg-primary/5' : 'border-border bg-card'
@@ -633,8 +636,8 @@ export default function ImportPage() {
           onDrop={(e) => {
             e.preventDefault()
             setIsDragging(false)
-            if (e.dataTransfer.files?.[0]) {
-              handleFile(e.dataTransfer.files[0])
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              handleIncomingFiles(e.dataTransfer.files)
             }
           }}
         >
@@ -652,37 +655,37 @@ export default function ImportPage() {
                 <Building2 className="h-8 w-8" />
               )}
             </div>
+
             <h3 className="text-lg font-bold text-foreground">
               {activeMode === 'credit_card'
-                ? 'Kredi Kartı Ekstrenizi Sürükleyin (PDF/CSV)'
-                : 'Vadesiz Hesap Özetinizi Sürükleyin (PDF/CSV/XLSX)'}
+                ? 'Kredi Kartı Ekstrelerinizi Sürükleyin (Tek veya Çoklu)'
+                : 'Vadesiz Hesap Dökümlerinizi Sürükleyin (Tek veya Çoklu)'}
             </h3>
+
             <p className="mt-1 text-xs text-muted-foreground max-w-md">
-              {activeMode === 'credit_card'
-                ? 'Harcamalar, taksitler, dönem borcu ve SaaS abonelikleri otomatik ayrıştırılır.'
-                : 'Maaş tahsilatları, kredi kartı borç ödemeleri ve FAST transferleri nakit bakiyenizle otomatik uzlaştırılır.'}
+              PDF, HTML, CSV veya Excel formatında birden fazla dosyayı aynı anda seçebilirsiniz.
+              Her dosya bağımsız bir geri alınabilir paket olarak sırayla ayrıştırılır.
             </p>
 
             <div className="mt-6 flex items-center gap-3">
-              <label
-                htmlFor="file-upload"
-                className={`inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors shadow h-9 px-4 py-2 cursor-pointer ${
-                  activeMode === 'credit_card'
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-purple-600 text-white hover:bg-purple-700'
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                className={`text-xs gap-2 ${
+                  activeMode === 'credit_card' ? 'bg-primary' : 'bg-purple-600 hover:bg-purple-700'
                 }`}
               >
-                {parsing ? 'Ayrıştırılıyor...' : 'Dosya Seçin'}
-              </label>
+                <UploadCloud className="h-4 w-4" />
+                Dosyaları Seçin (Çoklu Seçim)
+              </Button>
               <input
-                id="file-upload"
+                ref={fileInputRef}
                 type="file"
-                accept=".pdf,.csv,.xlsx,.xls"
-                className="sr-only"
-                disabled={parsing}
+                multiple
+                accept=".pdf,.csv,.xlsx,.xls,.html,.htm"
+                className="hidden"
                 onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    handleFile(e.target.files[0])
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleIncomingFiles(e.target.files)
                   }
                 }}
               />
@@ -691,293 +694,504 @@ export default function ImportPage() {
         </Card>
       )}
 
-      {/* Parsing & Smart Reconciliation Review Screen */}
-      {parseResult && (
+      {/* Queue View & Batch Manager */}
+      {queuedFiles.length > 0 && (
         <div className="space-y-6">
-          {/* Metadata & Actions Card */}
+          {/* Top Bulk Summary Bar */}
           <Card className="border-border bg-card shadow-sm">
-            <CardHeader className="pb-4">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">{parseResult.file_name}</CardTitle>
-                    <Badge
-                      variant={activeMode === 'credit_card' ? 'success' : 'purple'}
-                      className="text-xs"
-                    >
-                      {parseResult.detected_bank || (activeMode === 'credit_card' ? 'Kredi Kartı' : 'Vadesiz Hesap')}
-                    </Badge>
-                  </div>
-                  <CardDescription className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                    {parseResult.statement_date && (
-                      <span>Tarih: <strong>{formatDate(parseResult.statement_date)}</strong></span>
-                    )}
-                    {parseResult.statement_debt && (
-                      <>
-                        <span>•</span>
-                        <span>Dönem Borcu: <strong className="text-foreground">{formatCurrency(parseResult.statement_debt)}</strong></span>
-                      </>
-                    )}
-                  </CardDescription>
+            <CardContent className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-primary" />
+                  <span className="font-bold text-sm text-foreground">
+                    Yükleme Kuyruğu ({queuedFiles.length} Dosya)
+                  </span>
                 </div>
-
-                {/* Target Linker Selector */}
-                {activeMode === 'credit_card' ? (
-                  <div className="flex items-center gap-3">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <CardIcon className="h-4 w-4" />
-                      Kredi Kartı:
-                    </div>
-                    <Select
-                      value={selectedCardId}
-                      onChange={(e) => setSelectedCardId(e.target.value)}
-                      className="w-56 text-xs"
-                    >
-                      <option value="">
-                        {parseResult.last_four
-                          ? `(Otomatik: ${parseResult.detected_bank || 'Kart'} • ${parseResult.last_four})`
-                          : '(Otomatik Oluştur / Eşleştir)'}
-                      </option>
-                      {cards.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.bank} - {c.card_name} {c.last_four ? `(•• ${c.last_four})` : ''}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <Building2 className="h-4 w-4" />
-                      Yansıtılacak Hesap:
-                    </div>
-                    <Select
-                      value={selectedAccountId}
-                      onChange={(e) => setSelectedAccountId(e.target.value)}
-                      className="w-52 text-xs font-semibold"
-                    >
-                      {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name} ({formatCurrency(a.balance)})
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
+                <Badge variant="outline" className="text-xs">
+                  {readyFiles.length} Hazır
+                </Badge>
+                {distinctDetectedCards.length > 0 && (
+                  <Badge variant="outline" className="text-xs border-purple-500/40 text-purple-400">
+                    {distinctDetectedCards.length} Kart: {distinctDetectedCards.join(', ')}
+                  </Badge>
                 )}
-              </div>
-            </CardHeader>
-
-            <CardContent className="border-t border-border pt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4 text-xs">
-                <span>
-                  Seçili <strong>{selectedCount}</strong> / {transactions.length} hareket
+                {queuedFiles.filter((f) => f.status === 'duplicate').length > 0 && (
+                  <Badge variant="warning" className="text-xs">
+                    {queuedFiles.filter((f) => f.status === 'duplicate').length} Mükerrer Uyarı
+                  </Badge>
+                )}
+                <span>•</span>
+                <span className="text-xs text-muted-foreground">
+                  Seçili: <strong className="text-foreground">{totalSelectedTransactions}</strong> hareket
                 </span>
                 <span>•</span>
-                <span>
-                  Toplam İşlem Hacmi: <strong className="text-foreground font-mono">{formatCurrency(selectedSum)}</strong>
+                <span className="text-xs text-muted-foreground">
+                  Hacim: <strong className="text-foreground font-mono">{formatCurrency(totalSelectedAmount)}</strong>
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addMoreInputRef.current?.click()}
+                  disabled={saving}
+                  className="text-xs gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Dosya Ekle
+                </Button>
+                <input
+                  ref={addMoreInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.csv,.xlsx,.xls,.html,.htm"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      handleIncomingFiles(e.target.files)
+                    }
+                  }}
+                />
+
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setParseResult(null)
-                    setTransactions([])
+                    if (window.confirm('Kuyruktaki tüm dosyalar kaldırılacak. Emin misiniz?')) {
+                      setQueuedFiles([])
+                    }
                   }}
-                  className="text-xs"
+                  disabled={saving}
+                  className="text-xs text-muted-foreground hover:text-destructive"
                 >
-                  Farklı Dosya Yükle
+                  Temizle
                 </Button>
+
                 <Button
                   size="sm"
-                  onClick={handleSaveToSupabase}
-                  disabled={saving || selectedCount === 0}
-                  className="gap-2 text-xs shadow-md"
+                  onClick={handleBulkCommit}
+                  disabled={saving || readyFiles.length === 0 || isAnyFileParsing}
+                  className="text-xs gap-2 shadow-md"
                 >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {saving ? 'Mahsuplaşılıyor...' : `Onayla ve Tüm Sisteme Yansıt`}
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Aktarılıyor...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Tümünü Sisteme Aktar ({readyFiles.length} Dosya)
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
+
+            {/* Commit Progress Bar */}
+            {commitProgress && (
+              <div className="border-t border-border bg-muted/20 px-5 py-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    Aktarılıyor ({commitProgress.current}/{commitProgress.total}):{' '}
+                    <strong className="text-foreground">{commitProgress.currentFileName}</strong>
+                  </span>
+                  <span className="font-mono text-primary font-bold">
+                    {Math.round((commitProgress.current / commitProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-primary h-2 transition-all duration-300"
+                    style={{
+                      width: `${(commitProgress.current / commitProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </Card>
 
-          {/* Interactive Smart Review Table */}
-          <Card className="border-border bg-card shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleToggleSelectAll(true)}
-                  className="text-xs h-7"
-                >
-                  Tümünü Seç
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleToggleSelectAll(false)}
-                  className="text-xs h-7"
-                >
-                  Seçimi Kaldır
-                </Button>
-              </div>
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-                {activeMode === 'credit_card'
-                  ? 'Grup ve proje atamalarını satır bazında kontrol edebilirsiniz.'
-                  : 'Gelen/giden transferlerin akıllı mahsuplaşma aksiyonunu buradan değiştirebilirsiniz.'}
-              </div>
-            </div>
+          {/* Queued Files List */}
+          <div className="space-y-4">
+            {queuedFiles.map((item) => {
+              const fileSelectedCount = item.transactions.filter((t) => t.selected !== false).length
+              const fileSelectedSum = item.transactions
+                .filter((t) => t.selected !== false)
+                .reduce((sum, t) => sum + t.amount, 0)
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
-                  <tr>
-                    <th className="p-3 w-8"></th>
-                    <th className="p-3">Tarih</th>
-                    <th className="p-3">Ham Açıklama</th>
-                    <th className="p-3">Temiz İsim</th>
-                    {activeMode === 'bank_account' && <th className="p-3">Akıllı Eşleşme (Aksiyon)</th>}
-                    <th className="p-3">Grup</th>
-                    <th className="p-3">Oto-Kayıt (Abonelik / Kural)</th>
-                    <th className="p-3">Proje</th>
-                    <th className="p-3 text-right">Tutar</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40 font-mono">
-                  {transactions.map((tx) => (
-                    <tr
-                      key={tx.id}
-                      className={`hover:bg-muted/30 transition-colors ${
-                        !tx.selected ? 'opacity-40 bg-muted/10' : ''
-                      }`}
-                    >
-                      <td className="p-3">
-                        <input
-                          type="checkbox"
-                          checked={tx.selected}
-                          onChange={(e) =>
-                            handleRowChange(tx.id, 'selected', e.target.checked)
-                          }
-                          className="rounded border-border"
-                        />
-                      </td>
-                      <td className="p-3 text-muted-foreground whitespace-nowrap">
-                        {tx.date}
-                      </td>
-                      <td className="p-3 max-w-xs truncate text-muted-foreground font-sans" title={tx.raw_description}>
-                        {tx.raw_description}
-                      </td>
-                      <td className="p-3 font-sans">
-                        <Input
-                          value={tx.merchant}
-                          onChange={(e) =>
-                            handleRowChange(tx.id, 'merchant', e.target.value)
-                          }
-                          className="h-7 text-xs font-medium"
-                        />
-                      </td>
+              return (
+                <Card
+                  key={item.id}
+                  className={`border transition-all ${
+                    item.status === 'error'
+                      ? 'border-destructive/40 bg-destructive/5'
+                      : item.status === 'duplicate'
+                      ? 'border-amber-500/30 bg-card'
+                      : item.status === 'saved'
+                      ? 'border-success/40 bg-card'
+                      : 'border-border bg-card'
+                  }`}
+                >
+                  {/* File Header */}
+                  <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground flex-shrink-0">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
 
-                      {/* Bank Account Mode: Smart Action Selector */}
-                      {activeMode === 'bank_account' && (
-                        <td className="p-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-sm text-foreground">
+                            {item.file.name}
+                          </span>
+
+                          {/* Status Badge */}
+                          {item.status === 'parsing' && (
+                            <Badge variant="outline" className="text-xs gap-1">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Ayrıştırılıyor
+                            </Badge>
+                          )}
+                          {item.status === 'ready' && (
+                            <Badge variant="success" className="text-xs">
+                              Hazır ({item.transactions.length} işlem)
+                            </Badge>
+                          )}
+                          {item.status === 'duplicate' && (
+                            <Badge variant="warning" className="text-xs">
+                              Mükerrer Dosya
+                            </Badge>
+                          )}
+                          {item.status === 'saving' && (
+                            <Badge variant="outline" className="text-xs gap-1 border-primary text-primary">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Kaydediliyor...
+                            </Badge>
+                          )}
+                          {item.status === 'saved' && (
+                            <Badge variant="success" className="text-xs gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Aktarıldı
+                            </Badge>
+                          )}
+                          {item.status === 'error' && (
+                            <Badge variant="destructive" className="text-xs">
+                              Hata
+                            </Badge>
+                          )}
+
+                          {item.parseResult?.detected_bank && (
+                            <Badge variant="outline" className="text-xs">
+                              {item.parseResult.detected_bank} {item.parseResult.last_four ? `• ${item.parseResult.last_four}` : ''}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* File Details Line */}
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {item.parseResult?.statement_date && (
+                            <span>
+                              Ekstre Tarihi:{' '}
+                              <strong className="text-foreground">
+                                {formatDate(item.parseResult.statement_date)}
+                              </strong>
+                            </span>
+                          )}
+                          {item.parseResult?.statement_debt !== undefined && (
+                            <>
+                              <span>•</span>
+                              <span>
+                                Dönem Borcu:{' '}
+                                <strong className="text-foreground font-mono">
+                                  {formatCurrency(item.parseResult.statement_debt)}
+                                </strong>
+                              </span>
+                            </>
+                          )}
+                          {item.transactions.length > 0 && (
+                            <>
+                              <span>•</span>
+                              <span>
+                                Seçili:{' '}
+                                <strong className="text-foreground">{fileSelectedCount}</strong> /{' '}
+                                {item.transactions.length} hareket ({formatCurrency(fileSelectedSum)})
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Target Selector & Accordion Actions */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {activeMode === 'credit_card' ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Kart:</span>
                           <Select
-                            value={tx.action || 'DIRECT_EXPENSE'}
-                            onChange={(e) =>
-                              handleActionChange(
-                                tx.id,
-                                e.target.value as ReconciliationActionType
-                              )
-                            }
-                            className="h-7 text-xs font-semibold"
+                            value={item.selectedCardId || ''}
+                            onChange={(e) => handleCardChange(item.id, e.target.value)}
+                            className="w-44 text-xs"
+                            disabled={item.status === 'saved' || saving}
                           >
-                            <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
-                            <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
-                            <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
-                            <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
-                            <option value="FREE_INCOME">💵 Serbest Gelir</option>
-                            <option value="INTERNAL_TRANSFER">🔄 Hesaplar Arası Transfer</option>
+                            <option value="">(Otomatik Eşleştir)</option>
+                            {cards.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.bank} - {c.card_name}
+                              </option>
+                            ))}
                           </Select>
-                        </td>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Hesap:</span>
+                          <Select
+                            value={item.selectedAccountId || ''}
+                            onChange={(e) => handleAccountChange(item.id, e.target.value)}
+                            className="w-44 text-xs"
+                            disabled={item.status === 'saved' || saving}
+                          >
+                            {accounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name} ({formatCurrency(a.balance)})
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
                       )}
 
-                      <td className="p-3">
-                        <Select
-                          value={tx.analysis_group}
-                          onChange={(e) =>
-                            handleRowChange(tx.id, 'analysis_group', e.target.value)
-                          }
-                          className="h-7 text-xs w-28"
+                      {item.transactions.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleExpand(item.id)}
+                          className="text-xs gap-1 h-8"
                         >
-                          <option value="Kişisel">Kişisel</option>
-                          <option value="İş">İş</option>
-                          <option value="Finansman">Finansman</option>
-                          <option value="Hariç">Hariç</option>
-                          <option value="Gelir">Gelir</option>
-                        </Select>
-                      </td>
+                          {item.expanded ? (
+                            <>
+                              <ChevronUp className="h-3.5 w-3.5" />
+                              Gizle
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="h-3.5 w-3.5" />
+                              İncele ({item.transactions.length})
+                            </>
+                          )}
+                        </Button>
+                      )}
 
-                      <td className="p-3 flex flex-col gap-1.5 font-sans justify-center mt-1">
-                        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!tx.track_as_subscription}
-                            onChange={(e) => handleRowChange(tx.id, 'track_as_subscription', e.target.checked)}
-                            className="rounded border-border h-3 w-3"
-                          />
-                          📌 Abonelik
-                        </label>
-                        <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!tx.save_as_mapping}
-                            onChange={(e) => handleRowChange(tx.id, 'save_as_mapping', e.target.checked)}
-                            className="rounded border-border h-3 w-3"
-                          />
-                          📝 Kural Kaydet
-                        </label>
-                      </td>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveQueueItem(item.id)}
+                        disabled={saving}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                        title="Kuyruktan Çıkar"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
 
-                      <td className="p-3">
-                        <Select
-                          value={tx.project_id || ''}
-                          onChange={(e) =>
-                            handleRowChange(tx.id, 'project_id', e.target.value || undefined)
-                          }
-                          className="h-7 text-xs w-36 font-sans"
-                        >
-                          <option value="">(Yok)</option>
-                          {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
+                  {/* Warning / Error inline notifications */}
+                  {item.duplicateWarning && (
+                    <div className="border-t border-amber-500/20 bg-amber-500/10 px-5 py-2.5 text-xs text-amber-400 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                      <span>{item.duplicateWarning}</span>
+                    </div>
+                  )}
 
-                      <td className="p-3 text-right font-bold whitespace-nowrap">
-                        <span
-                          className={
-                            tx.direction === 'inflow' || tx.analysis_group === 'Gelir'
-                              ? 'text-success'
-                              : tx.analysis_group === 'Hariç'
-                              ? 'text-muted-foreground'
-                              : 'text-foreground'
-                          }
-                        >
-                          {tx.direction === 'inflow' ? '+' : '-'} {formatCurrency(tx.amount)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                  {item.errorMessage && (
+                    <div className="border-t border-destructive/20 bg-destructive/10 px-5 py-2.5 text-xs text-destructive flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      <span>{item.errorMessage}</span>
+                    </div>
+                  )}
+
+                  {/* Expanded Transaction Review Table */}
+                  {item.expanded && item.transactions.length > 0 && (
+                    <div className="border-t border-border">
+                      <div className="p-3 bg-muted/20 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleFileSelectAll(item.id, true)}
+                            className="text-xs h-7"
+                          >
+                            Tümünü Seç
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleFileSelectAll(item.id, false)}
+                            className="text-xs h-7"
+                          >
+                            Seçimi Kaldır
+                          </Button>
+                        </div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                          <span>Bu dosyanın hareketlerini satır bazında düzenleyebilirsiniz.</span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-96">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground sticky top-0">
+                            <tr>
+                              <th className="p-2.5 w-8"></th>
+                              <th className="p-2.5">Tarih</th>
+                              <th className="p-2.5">Açıklama</th>
+                              <th className="p-2.5">İşlem Adı</th>
+                              {activeMode === 'bank_account' && (
+                                <th className="p-2.5">Uzlaştırma Aksiyonu</th>
+                              )}
+                              <th className="p-2.5">Grup</th>
+                              <th className="p-2.5">Proje</th>
+                              <th className="p-2.5 text-right">Tutar</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/40 font-mono">
+                            {item.transactions.map((tx) => (
+                              <tr
+                                key={tx.id}
+                                className={`hover:bg-muted/30 transition-colors ${
+                                  tx.selected === false ? 'opacity-40 bg-muted/10' : ''
+                                }`}
+                              >
+                                <td className="p-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={tx.selected !== false}
+                                    onChange={(e) =>
+                                      handleRowFieldChange(
+                                        item.id,
+                                        tx.id,
+                                        'selected',
+                                        e.target.checked
+                                      )
+                                    }
+                                    className="rounded border-border"
+                                  />
+                                </td>
+                                <td className="p-2.5 text-muted-foreground whitespace-nowrap font-sans">
+                                  {tx.date}
+                                </td>
+                                <td
+                                  className="p-2.5 max-w-xs truncate text-muted-foreground font-sans"
+                                  title={tx.raw_description}
+                                >
+                                  {tx.raw_description}
+                                </td>
+                                <td className="p-2.5 font-sans">
+                                  <Input
+                                    value={tx.merchant}
+                                    onChange={(e) =>
+                                      handleRowFieldChange(
+                                        item.id,
+                                        tx.id,
+                                        'merchant',
+                                        e.target.value
+                                      )
+                                    }
+                                    className="h-7 text-xs font-medium"
+                                  />
+                                </td>
+
+                                {activeMode === 'bank_account' && (
+                                  <td className="p-2.5">
+                                    <Select
+                                      value={tx.action || 'DIRECT_EXPENSE'}
+                                      onChange={(e) =>
+                                        handleActionChange(
+                                          item.id,
+                                          tx.id,
+                                          e.target.value as ReconciliationActionType
+                                        )
+                                      }
+                                      className="h-7 text-xs font-semibold"
+                                    >
+                                      <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
+                                      <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
+                                      <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
+                                      <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
+                                      <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
+                                      <option value="FREE_INCOME">💵 Serbest Gelir</option>
+                                      <option value="INTERNAL_TRANSFER">🔄 Transfer</option>
+                                    </Select>
+                                  </td>
+                                )}
+
+                                <td className="p-2.5">
+                                  <Select
+                                    value={tx.analysis_group}
+                                    onChange={(e) =>
+                                      handleRowFieldChange(
+                                        item.id,
+                                        tx.id,
+                                        'analysis_group',
+                                        e.target.value
+                                      )
+                                    }
+                                    className="h-7 text-xs w-24"
+                                  >
+                                    <option value="Kişisel">Kişisel</option>
+                                    <option value="İş">İş</option>
+                                    <option value="Finansman">Finansman</option>
+                                    <option value="Hariç">Hariç</option>
+                                  </Select>
+                                </td>
+
+                                <td className="p-2.5">
+                                  <Select
+                                    value={tx.project_id || ''}
+                                    onChange={(e) =>
+                                      handleRowFieldChange(
+                                        item.id,
+                                        tx.id,
+                                        'project_id',
+                                        e.target.value || undefined
+                                      )
+                                    }
+                                    className="h-7 text-xs w-32 font-sans"
+                                  >
+                                    <option value="">(Yok)</option>
+                                    {projects.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </td>
+
+                                <td className="p-2.5 text-right font-bold whitespace-nowrap">
+                                  <span
+                                    className={
+                                      tx.direction === 'inflow' || tx.analysis_group === 'Gelir'
+                                        ? 'text-success'
+                                        : tx.analysis_group === 'Hariç'
+                                        ? 'text-muted-foreground'
+                                        : 'text-foreground'
+                                    }
+                                  >
+                                    {tx.direction === 'inflow' ? '+' : '-'} {formatCurrency(tx.amount)}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
