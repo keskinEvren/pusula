@@ -238,9 +238,6 @@ export default function ImportPage() {
             )
             if (matched) matchedAccountId = matched.id
           }
-          if (!matchedAccountId && accounts.length > 0) {
-            matchedAccountId = accounts[0].id
-          }
         }
 
         setQueuedFiles((prev) =>
@@ -953,6 +950,11 @@ export default function ImportPage() {
                             className="w-44 text-xs"
                             disabled={item.status === 'saved' || saving}
                           >
+                            <option value="">
+                              {item.parseResult?.detected_bank
+                                ? `(Yeni Aç: ${item.parseResult.detected_bank})`
+                                : '(Otomatik Eşleştir / Yeni)'}
+                            </option>
                             {accounts.map((a) => (
                               <option key={a.id} value={a.id}>
                                 {a.name} ({formatCurrency(a.balance)})

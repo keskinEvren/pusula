@@ -19,6 +19,7 @@ export interface ImportBatchSnapshot {
     account_id: string
     balance: number
   }
+  created_account_id?: string
   created_subscription_ids?: string[]
   created_card_statement_id?: string
   created_transaction_ids?: string[]
@@ -287,8 +288,14 @@ export async function rollbackImportBatch(
     deletedStatements = count || 0
   }
 
-  // 3. Revert Bank Account balance if snapshot exists
-  if (snapshot.previous_account_state) {
+  // 3. Revert Bank Account: delete if created specifically by this batch, otherwise restore previous balance
+  if (snapshot.created_account_id) {
+    await supabase
+      .from('accounts')
+      .delete()
+      .eq('id', snapshot.created_account_id)
+      .eq('user_id', userId)
+  } else if (snapshot.previous_account_state) {
     const prevAcc = snapshot.previous_account_state
     await supabase
       .from('accounts')
@@ -757,25 +764,57 @@ export async function commitStatementBatch(
     let currentAccountId = selectedAccountId
 
     if (!currentAccountId) {
-      const { data: newAcc, error: newAccErr } = await supabase
-        .from('accounts')
-        .insert({
-          user_id: userId,
-          name: detectedBankName || 'Vadesiz Hesap',
-          type: 'vadesiz',
-          balance: 0,
-        })
-        .select()
-        .single()
+      // 1. Try to find matching existing account from in-memory accounts array
+      let existingAcc = accounts.find(
+        (a) =>
+          (a.name && detectedBankName && a.name.toLowerCase().includes(detectedBankName.toLowerCase())) ||
+          (a.name && detectedBankName && detectedBankName.toLowerCase().includes(a.name.toLowerCase()))
+      )
 
-      if (newAccErr) throw newAccErr
-      if (newAcc) currentAccountId = newAcc.id
+      // 2. If not found in memory, query DB
+      if (!existingAcc && detectedBankName) {
+        const { data: dbAccs } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .ilike('name', `%${detectedBankName}%`)
+
+        if (dbAccs && dbAccs.length > 0) {
+          const found = dbAccs[0]
+          existingAcc = found
+          if (!accounts.some((a) => a.id === found.id)) {
+            accounts.push(found)
+          }
+        }
+      }
+
+      if (existingAcc) {
+        currentAccountId = existingAcc.id
+      } else {
+        const { data: newAcc, error: newAccErr } = await supabase
+          .from('accounts')
+          .insert({
+            user_id: userId,
+            name: detectedBankName || 'Vadesiz Hesap',
+            type: 'vadesiz',
+            balance: 0,
+          })
+          .select()
+          .single()
+
+        if (newAccErr) throw newAccErr
+        if (newAcc) {
+          currentAccountId = newAcc.id
+          accounts.push(newAcc)
+          snapshotData.created_account_id = newAcc.id
+        }
+      }
     }
 
     const targetAccount = accounts.find((a) => a.id === currentAccountId)
     let runningAccountBalance = targetAccount ? Number(targetAccount.balance) : 0
 
-    if (targetAccount) {
+    if (targetAccount && !snapshotData.created_account_id) {
       snapshotData.previous_account_state = {
         account_id: targetAccount.id,
         balance: runningAccountBalance,
