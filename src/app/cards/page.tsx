@@ -11,6 +11,7 @@ import {
   FileText,
   DollarSign,
   Trash2,
+  Edit2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -30,8 +31,24 @@ export default function CardsPage() {
 
   // Modals
   const [isCardModalOpen, setIsCardModalOpen] = useState(false)
+  const [isEditCardModalOpen, setIsEditCardModalOpen] = useState(false)
   const [isStmtModalOpen, setIsStmtModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [editingCard, setEditingCard] = useState<CardType | null>(null)
+
+  // Form states
+  const [editCardForm, setEditCardForm] = useState({
+    bank: '',
+    card_name: '',
+    last_four: '',
+    current_debt: '',
+    statement_debt: '',
+    minimum_payment: '',
+    interest_fees: '',
+    statement_date: '',
+    due_date: '',
+    status_note: '',
+  })
 
   // Form states
   const [cardForm, setCardForm] = useState({
@@ -71,7 +88,26 @@ export default function CardsPage() {
         supabase.from('credit_cards').select('*').order('created_at', { ascending: false }),
         supabase.from('card_statements').select('*').order('statement_date', { ascending: false }),
       ])
-      if (cData) setCards(cData)
+      if (cData) {
+        const healed = await Promise.all(
+          cData.map(async (c) => {
+            if (c.bank === 'Diğer Banka' && (c.last_four === '0887' || c.last_four === '6745')) {
+              const updated = {
+                ...c,
+                bank: 'Ziraat Bankası',
+                card_name: `Bankkart • ${c.last_four}`,
+              }
+              await supabase
+                .from('credit_cards')
+                .update({ bank: 'Ziraat Bankası', card_name: `Bankkart • ${c.last_four}` })
+                .eq('id', c.id)
+              return updated
+            }
+            return c
+          })
+        )
+        setCards(healed)
+      }
       if (sData) setStatements(sData)
     } catch (err) {
       console.error('Error loading cards:', err)
@@ -127,6 +163,60 @@ export default function CardsPage() {
       }
     } catch (err: any) {
       alert(err.message || 'Kart eklenemedi')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleOpenEditModal = (card: CardType) => {
+    setEditingCard(card)
+    setEditCardForm({
+      bank: card.bank,
+      card_name: card.card_name,
+      last_four: card.last_four || '',
+      current_debt: card.current_debt !== undefined && card.current_debt !== null ? card.current_debt.toString() : '',
+      statement_debt: card.statement_debt !== undefined && card.statement_debt !== null ? card.statement_debt.toString() : '',
+      minimum_payment: card.minimum_payment !== undefined && card.minimum_payment !== null ? card.minimum_payment.toString() : '',
+      interest_fees: card.interest_fees !== undefined && card.interest_fees !== null ? card.interest_fees.toString() : '',
+      statement_date: card.statement_date || '',
+      due_date: card.due_date || '',
+      status_note: card.status_note || '',
+    })
+    setIsEditCardModalOpen(true)
+  }
+
+  const handleEditCard = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingCard) return
+    setSubmitting(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('credit_cards')
+        .update({
+          bank: editCardForm.bank,
+          card_name: editCardForm.card_name,
+          last_four: editCardForm.last_four || null,
+          current_debt: parseFloat(editCardForm.current_debt || '0'),
+          statement_debt: parseFloat(editCardForm.statement_debt || '0'),
+          minimum_payment: parseFloat(editCardForm.minimum_payment || '0'),
+          interest_fees: parseFloat(editCardForm.interest_fees || '0'),
+          statement_date: editCardForm.statement_date || null,
+          due_date: editCardForm.due_date || null,
+          status_note: editCardForm.status_note || null,
+        })
+        .eq('id', editingCard.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      if (data) {
+        setCards(cards.map((c) => (c.id === data.id ? data : c)))
+        setIsEditCardModalOpen(false)
+        setEditingCard(null)
+      }
+    } catch (err: any) {
+      alert(err.message || 'Kart güncellenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -234,14 +324,26 @@ export default function CardsPage() {
                   <CreditCard className="h-5 w-5 text-primary" />
                   <CardTitle className="text-base font-bold">{card.bank}</CardTitle>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDeleteCard(card.id)}
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleOpenEditModal(card)}
+                    className="h-7 w-7 text-muted-foreground hover:text-primary"
+                    title="Kartı ve Güncel Borcu Düzenle"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteCard(card.id)}
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    title="Kartı Sil"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
               <CardDescription className="text-xs font-mono">
                 {card.card_name} {card.last_four && `(•• ${card.last_four})`}
@@ -249,11 +351,22 @@ export default function CardsPage() {
             </CardHeader>
 
             <CardContent className="space-y-4">
-              <div>
-                <div className="text-xs text-muted-foreground">Güncel Toplam Borç</div>
-                <div className="text-2xl font-bold font-mono text-foreground">
-                  {formatCurrency(card.current_debt)}
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground">Güncel Toplam Borç</div>
+                  <div className="text-2xl font-bold font-mono text-foreground">
+                    {formatCurrency(card.current_debt)}
+                  </div>
                 </div>
+                {card.current_debt <= 0 ? (
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[11px]">
+                    Borçsuz / Kapandı
+                  </Badge>
+                ) : card.current_debt < card.statement_debt ? (
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[11px]">
+                    Kısmi Ödendi
+                  </Badge>
+                ) : null}
               </div>
 
               <div className="space-y-1.5 pt-3 border-t border-border text-xs">
@@ -263,7 +376,9 @@ export default function CardsPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Asgari Ödeme:</span>
-                  <span className="font-mono font-semibold text-amber-400">{formatCurrency(card.minimum_payment)}</span>
+                  <span className={`font-mono font-semibold ${card.minimum_payment <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {card.minimum_payment <= 0 ? '₺0,00 (Ödendi)' : formatCurrency(card.minimum_payment)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Faiz/Masraf Yükü:</span>
@@ -555,6 +670,123 @@ export default function CardsPage() {
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? 'Kaydediliyor...' : 'Ekstre Kaydet'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Card Modal */}
+      <Modal
+        isOpen={isEditCardModalOpen}
+        onClose={() => {
+          setIsEditCardModalOpen(false)
+          setEditingCard(null)
+        }}
+        title="Kredi Kartı ve Borç Bilgilerini Düzenle"
+        description="Kartınızın güncel toplam borcunu, son dönem borcunu ve ekstre tarihlerini güncelleyin."
+      >
+        <form onSubmit={handleEditCard} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Banka</label>
+              <Input
+                required
+                value={editCardForm.bank}
+                onChange={(e) => setEditCardForm({ ...editCardForm, bank: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Kart Adı</label>
+              <Input
+                required
+                value={editCardForm.card_name}
+                onChange={(e) => setEditCardForm({ ...editCardForm, card_name: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
+              <Input
+                maxLength={4}
+                value={editCardForm.last_four}
+                onChange={(e) => setEditCardForm({ ...editCardForm, last_four: e.target.value })}
+                className="text-xs font-mono"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-primary">Güncel Toplam Borç (TL)</label>
+              <Input
+                type="number"
+                step="0.01"
+                required
+                value={editCardForm.current_debt}
+                onChange={(e) => setEditCardForm({ ...editCardForm, current_debt: e.target.value })}
+                className="text-xs font-mono font-bold border-primary/50"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Son Dönem Borcu (TL)</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editCardForm.statement_debt}
+                onChange={(e) => setEditCardForm({ ...editCardForm, statement_debt: e.target.value })}
+                className="text-xs font-mono"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme (TL)</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editCardForm.minimum_payment}
+                onChange={(e) => setEditCardForm({ ...editCardForm, minimum_payment: e.target.value })}
+                className="text-xs font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
+              <Input
+                type="date"
+                value={editCardForm.statement_date}
+                onChange={(e) => setEditCardForm({ ...editCardForm, statement_date: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
+              <Input
+                type="date"
+                value={editCardForm.due_date}
+                onChange={(e) => setEditCardForm({ ...editCardForm, due_date: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsEditCardModalOpen(false)
+                setEditingCard(null)
+              }}
+            >
+              İptal
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
             </Button>
           </div>
         </form>
