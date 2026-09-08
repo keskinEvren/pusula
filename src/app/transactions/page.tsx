@@ -18,20 +18,21 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { financialBridge } from '@/lib/financial-bridge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
-import type { Transaction, Project, CreditCard, Account } from '@/types/database'
+import { financialBridge, getLinkedDebtId } from '@/lib/financial-bridge'
+import type { Transaction, Project, CreditCard, Account, Debt } from '@/types/database'
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [debts, setDebts] = useState<Debt[]>([])
   const [loading, setLoading] = useState(true)
 
   // Segment Tab: 'all' | 'cards' | 'accounts'
@@ -61,6 +62,12 @@ export default function TransactionsPage() {
     project_id: '',
   })
 
+  // Link to Debt Modal State
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
+  const [selectedTxForLink, setSelectedTxForLink] = useState<Transaction | null>(null)
+  const [targetDebtId, setTargetDebtId] = useState<string>('')
+  const [linking, setLinking] = useState(false)
+
   useEffect(() => {
     loadTransactions()
   }, [])
@@ -69,21 +76,82 @@ export default function TransactionsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: txs }, { data: prjs }, { data: crds }, { data: accs }] = await Promise.all([
+      const [{ data: txs }, { data: prjs }, { data: crds }, { data: accs }, { data: dbts }] = await Promise.all([
         supabase.from('transactions').select('*').order('date', { ascending: false }),
         supabase.from('projects').select('*'),
         supabase.from('credit_cards').select('*'),
         supabase.from('accounts').select('*'),
+        supabase.from('debts').select('*').order('created_at', { ascending: false }),
       ])
 
       if (txs) setTransactions(txs)
       if (prjs) setProjects(prjs)
       if (crds) setCards(crds)
       if (accs) setAccounts(accs)
+      if (dbts) setDebts(dbts)
     } catch (err) {
       console.error('Error loading transactions:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleOpenLinkModal = (tx: Transaction) => {
+    const isIncome = tx.type === 'Gelir' || tx.type === 'Tahsilat'
+    const suitableDebts = debts.filter((d) => (isIncome ? d.type === 'Alacak' : d.type === 'Borç') && d.status === 'Açık')
+    setSelectedTxForLink(tx)
+    setTargetDebtId(suitableDebts[0]?.id || '')
+    setIsLinkModalOpen(true)
+  }
+
+  const handleConfirmLink = async () => {
+    if (!selectedTxForLink || !targetDebtId) return
+    setLinking(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const res = await financialBridge.linkTransactionToDebt({
+        userId: user.id,
+        transactionId: selectedTxForLink.id,
+        debtId: targetDebtId,
+      })
+
+      if (!res.success) throw new Error(res.error)
+
+      setIsLinkModalOpen(false)
+      setSelectedTxForLink(null)
+      await loadTransactions()
+    } catch (err: any) {
+      alert(err.message || 'Eşleme başarısız oldu')
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  const handleUnlinkFromDebt = async (tx: Transaction) => {
+    if (!confirm('Bu hareketin borç/alacak eşlemesini kaldırmak istiyor musunuz? Tutar borç bakiyesine iade edilecektir.')) {
+      return
+    }
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const res = await financialBridge.unlinkTransactionFromDebt({
+        userId: user.id,
+        transactionId: tx.id,
+      })
+
+      if (!res.success) throw new Error(res.error)
+      await loadTransactions()
+    } catch (err: any) {
+      alert(err.message || 'Bağlantı kaldırılamadı')
     }
   }
 
@@ -456,7 +524,7 @@ export default function TransactionsPage() {
                         {tx.type}
                       </Badge>
                     </td>
-                    <td className="p-3 font-sans max-w-xs truncate" title={tx.description || tx.merchant || ''}>
+                    <td className="p-3 font-sans max-w-xs" title={tx.description || tx.merchant || ''}>
                       <span className="font-medium text-foreground">{tx.merchant}</span>
                       {tx.recurrence && (
                         <Badge variant="outline" className="ml-1.5 text-[9px] font-mono">
@@ -464,8 +532,65 @@ export default function TransactionsPage() {
                         </Badge>
                       )}
                       {tx.description && tx.description !== tx.merchant && (
-                        <div className="text-muted-foreground text-[11px] truncate">{tx.description}</div>
+                        <div className="text-muted-foreground text-[11px] truncate">
+                          {tx.description.replace(/\s*\[DEBT:[a-f0-9-]+\]/gi, '').trim()}
+                        </div>
                       )}
+
+                      {/* Debt Link Status & Quick Actions */}
+                      {(() => {
+                        const debtId = getLinkedDebtId(tx)
+                        const linkedDebt = debts.find((d) => d.id === debtId)
+                        if (linkedDebt) {
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                                ✓ {linkedDebt.type === 'Alacak' ? 'Tahsilat' : 'Ödeme'}: {linkedDebt.person_or_entity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUnlinkFromDebt(tx)}
+                                className="text-[10px] text-muted-foreground hover:text-destructive underline transition-colors"
+                                title="Eşleştirmeyi kaldır ve tutarı alacak bakiyesine iade et"
+                              >
+                                Çöz
+                              </button>
+                            </div>
+                          )
+                        }
+
+                        if (tx.type === 'Gelir') {
+                          return (
+                            <div className="mt-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenLinkModal(tx)}
+                                className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline transition-colors"
+                                title="Bu gelen parayı alacak hakedişine bağla"
+                              >
+                                🎯 Alacağa Bağla
+                              </button>
+                            </div>
+                          )
+                        }
+
+                        if (tx.type === 'Harcama' && tx.account_id) {
+                          return (
+                            <div className="mt-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenLinkModal(tx)}
+                                className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
+                                title="Bu harcamayı şahsi borca bağla"
+                              >
+                                🎯 Borca Bağla
+                              </button>
+                            </div>
+                          )
+                        }
+
+                        return null
+                      })()}
                     </td>
                     <td className="p-3 font-sans">
                       <Badge
@@ -639,6 +764,117 @@ export default function TransactionsPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Link Transaction to Debt Modal */}
+      <Modal
+        isOpen={isLinkModalOpen}
+        onClose={() => setIsLinkModalOpen(false)}
+        title={
+          selectedTxForLink?.type === 'Gelir' || selectedTxForLink?.type === 'Tahsilat'
+            ? '🎯 Hareketi Alacağa Tahsilat Olarak Eşle'
+            : '🎯 Hareketi Borca Ödeme Olarak Eşle'
+        }
+        description="Seçilen banka hareketi doğrudan ilgili borç/alacaktan düşülecek ve kalan bakiye otomatik güncellenecektir."
+      >
+        {selectedTxForLink && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tarih:</span>
+                <span className="text-foreground font-semibold">{formatDate(selectedTxForLink.date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Hesap / Kart:</span>
+                <span className="text-foreground">{selectedTxForLink.account_or_card || 'Banka Hesabı'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Açıklama / İşyeri:</span>
+                <span className="text-foreground truncate max-w-[240px]">
+                  {selectedTxForLink.merchant || selectedTxForLink.description}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-border/60">
+                <span className="font-semibold text-muted-foreground">İşlem Tutarı:</span>
+                <span className="font-bold text-success text-base font-mono">
+                  +{formatCurrency(selectedTxForLink.amount)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                {selectedTxForLink.type === 'Gelir' || selectedTxForLink.type === 'Tahsilat'
+                  ? 'Eşleştirilecek Açık Alacak'
+                  : 'Eşleştirilecek Açık Borç'}
+              </label>
+              <Select
+                value={targetDebtId}
+                onChange={(e) => setTargetDebtId(e.target.value)}
+                className="text-xs"
+              >
+                {debts
+                  .filter(
+                    (d) =>
+                      (selectedTxForLink.type === 'Gelir' || selectedTxForLink.type === 'Tahsilat'
+                        ? d.type === 'Alacak'
+                        : d.type === 'Borç') && d.status === 'Açık'
+                  )
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.person_or_entity} ({d.category}) — Kalan: {formatCurrency(d.remaining)}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+
+            {targetDebtId &&
+              (() => {
+                const target = debts.find((d) => d.id === targetDebtId)
+                if (!target) return null
+                const postRemaining = Math.max(
+                  0,
+                  Number(target.remaining) - Number(selectedTxForLink.amount)
+                )
+                return (
+                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs space-y-1">
+                    <div className="text-muted-foreground font-sans">İşlem Sonrası Alacak Bakiyesi:</div>
+                    <div className="flex items-center gap-2 font-mono text-sm">
+                      <span className="line-through text-muted-foreground">
+                        {formatCurrency(target.remaining)}
+                      </span>
+                      <span>➔</span>
+                      <strong className="text-emerald-400 font-bold">
+                        {formatCurrency(postRemaining)}
+                      </strong>
+                      {postRemaining === 0 && (
+                        <Badge variant="success" className="text-[9px]">
+                          Tamamen Kapanacak
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsLinkModalOpen(false)}
+              >
+                İptal
+              </Button>
+              <Button
+                type="button"
+                disabled={linking || !targetDebtId}
+                onClick={handleConfirmLink}
+              >
+                {linking ? 'Eşleniyor...' : 'Eşle ve Bakiyeden Düş'}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

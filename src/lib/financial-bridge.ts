@@ -550,7 +550,176 @@ export class FinancialBridge {
       return { success: false, error: err.message || 'İşlem silinemedi.' }
     }
   }
+
+  /**
+   * 8. Mevcut Banka Hareketini Borç/Alacağa Eşle (Tahsilat veya Borç Ödemesi Olarak Bağla)
+   */
+  async linkTransactionToDebt(params: {
+    userId: string
+    transactionId: string
+    debtId: string
+  }): Promise<FinancialEventResult> {
+    try {
+      const supabase = createClient()
+
+      // 1. Oku: Transaction
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', params.transactionId)
+        .eq('user_id', params.userId)
+        .single()
+
+      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
+
+      // 2. Oku: Debt
+      const { data: debt, error: debtErr } = await supabase
+        .from('debts')
+        .select('*')
+        .eq('id', params.debtId)
+        .eq('user_id', params.userId)
+        .single()
+
+      if (debtErr || !debt) return { success: false, error: 'Borç/Alacak kaydı bulunamadı.' }
+
+      // Eğer hareket önceden başka bir borca bağlıysa, önce eski borçtan çıkar
+      const oldDebtId = getLinkedDebtId(tx)
+      if (oldDebtId && oldDebtId !== params.debtId) {
+        await this.unlinkTransactionFromDebt({ userId: params.userId, transactionId: params.transactionId })
+      }
+
+      // Yeni tip ve etiket
+      const isReceivable = debt.type === 'Alacak'
+      const newType = isReceivable ? 'Tahsilat' : 'Borç Ödemesi'
+      const merchantTag = isReceivable
+        ? `Tahsilat: ${debt.person_or_entity}`
+        : `Ödeme: ${debt.person_or_entity}`
+
+      // Borç güncelle
+      const newPast = Number(debt.past_payments) + Number(tx.amount)
+      const newRemaining = Math.max(0, Number(debt.remaining) - Number(tx.amount))
+      const newStatus = newRemaining <= 0 ? 'Kapatıldı' : 'Açık'
+
+      const { error: dUpdateErr } = await supabase
+        .from('debts')
+        .update({
+          past_payments: newPast,
+          remaining: newRemaining,
+          status: newStatus,
+        })
+        .eq('id', debt.id)
+
+      if (dUpdateErr) throw dUpdateErr
+
+      // Transaction güncelle (güvenli fallback: related_debt_id varsa sütuna, yoksa [DEBT:id] tag'i açıklamaya)
+      const cleanDesc = (tx.description || '').replace(/\s*\[DEBT:[a-f0-9-]+\]/gi, '').trim()
+      const updatePayload: any = {
+        type: newType,
+        merchant: merchantTag,
+        analysis_group: 'Hariç',
+        description: `${cleanDesc} [DEBT:${debt.id}]`,
+      }
+
+      const res1 = await supabase
+        .from('transactions')
+        .update({ ...updatePayload, related_debt_id: debt.id })
+        .eq('id', tx.id)
+
+      if (res1.error) {
+        const res2 = await supabase
+          .from('transactions')
+          .update(updatePayload)
+          .eq('id', tx.id)
+        if (res2.error) throw res2.error
+      }
+
+      return { success: true, transactionId: tx.id }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Hareket borca bağlanamadı.' }
+    }
+  }
+
+  /**
+   * 9. Hareketin Borç/Alacak Bağlantısını Çöz (Geri Al)
+   */
+  async unlinkTransactionFromDebt(params: {
+    userId: string
+    transactionId: string
+  }): Promise<FinancialEventResult> {
+    try {
+      const supabase = createClient()
+
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', params.transactionId)
+        .eq('user_id', params.userId)
+        .single()
+
+      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
+
+      const debtId = getLinkedDebtId(tx)
+      if (debtId) {
+        const { data: debt } = await supabase
+          .from('debts')
+          .select('*')
+          .eq('id', debtId)
+          .eq('user_id', params.userId)
+          .single()
+
+        if (debt) {
+          const restoredPast = Math.max(0, Number(debt.past_payments) - Number(tx.amount))
+          const restoredRemaining = Number(debt.remaining) + Number(tx.amount)
+          await supabase
+            .from('debts')
+            .update({
+              past_payments: restoredPast,
+              remaining: restoredRemaining,
+              status: 'Açık',
+            })
+            .eq('id', debtId)
+        }
+      }
+
+      // Restore transaction
+      const cleanDesc = (tx.description || '').replace(/\s*\[DEBT:[a-f0-9-]+\]/gi, '').trim()
+      const restoredType = tx.type === 'Tahsilat' ? 'Gelir' : tx.type === 'Borç Ödemesi' ? 'Harcama' : tx.type
+
+      const updatePayload: any = {
+        type: restoredType,
+        description: cleanDesc,
+        analysis_group: 'Kişisel',
+      }
+
+      const res1 = await supabase
+        .from('transactions')
+        .update({ ...updatePayload, related_debt_id: null })
+        .eq('id', tx.id)
+
+      if (res1.error) {
+        const res2 = await supabase
+          .from('transactions')
+          .update(updatePayload)
+          .eq('id', tx.id)
+        if (res2.error) throw res2.error
+      }
+
+      return { success: true, transactionId: tx.id }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Bağlantı çözülemedi.' }
+    }
+  }
+}
+
+/**
+ * Harekete bağlı borç/alacak kimliğini döndürür
+ */
+export function getLinkedDebtId(tx: { related_debt_id?: string | null; description?: string | null }): string | null {
+  if (tx.related_debt_id) return tx.related_debt_id
+  const match = tx.description?.match(/\[DEBT:([a-f0-9-]+)\]/i)
+  return match ? match[1] : null
 }
 
 // Singleton export
 export const financialBridge = new FinancialBridge()
+
