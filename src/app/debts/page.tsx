@@ -9,22 +9,28 @@ import {
   CheckCircle2,
   Trash2,
   Wallet,
+  Building2,
+  Calendar,
+  Link2,
+  Search,
+  Check,
+  RotateCcw,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency } from '@/lib/utils'
-import { collectReceivable, payDebt } from '@/lib/finance-engine'
-import { financialBridge } from '@/lib/financial-bridge'
+import { formatCurrency, formatDate } from '@/lib/utils'
+import { financialBridge, getLinkedDebtId } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
-import type { Debt, Account } from '@/types/database'
+import type { Debt, Account, Transaction } from '@/types/database'
 
 export default function DebtsPage() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
 
   // Modals
@@ -34,6 +40,12 @@ export default function DebtsPage() {
   const [paymentAmount, setPaymentAmount] = useState('')
   const [selectedAccountId, setSelectedAccountId] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Bank Match Modal
+  const [isBankMatchModalOpen, setIsBankMatchModalOpen] = useState(false)
+  const [debtForBankMatch, setDebtForBankMatch] = useState<Debt | null>(null)
+  const [bankSearchTerm, setBankSearchTerm] = useState('')
+  const [matchingTxId, setMatchingTxId] = useState<string | null>(null)
 
   // New Debt Form
   const [debtForm, setDebtForm] = useState({
@@ -53,9 +65,10 @@ export default function DebtsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: dData }, { data: aData }] = await Promise.all([
+      const [{ data: dData }, { data: aData }, { data: tData }] = await Promise.all([
         supabase.from('debts').select('*').order('created_at', { ascending: false }),
         supabase.from('accounts').select('*'),
+        supabase.from('transactions').select('*').order('date', { ascending: false }),
       ])
       if (dData) setDebts(dData)
       if (aData) {
@@ -65,6 +78,7 @@ export default function DebtsPage() {
           setDebtForm((prev) => ({ ...prev, linked_account_id: aData[0].id }))
         }
       }
+      if (tData) setTransactions(tData)
     } catch (err) {
       console.error('Error loading debts:', err)
     } finally {
@@ -186,6 +200,62 @@ export default function DebtsPage() {
     }
   }
 
+  const handleOpenBankMatchModal = (debt: Debt) => {
+    setDebtForBankMatch(debt)
+    setBankSearchTerm('')
+    setIsBankMatchModalOpen(true)
+  }
+
+  const handleMatchTransaction = async (txId: string) => {
+    if (!debtForBankMatch) return
+    setMatchingTxId(txId)
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const res = await financialBridge.linkTransactionToDebt({
+        userId: user.id,
+        transactionId: txId,
+        debtId: debtForBankMatch.id,
+      })
+
+      if (!res.success) throw new Error(res.error)
+      await loadDebtsAndAccounts()
+      setIsBankMatchModalOpen(false)
+      setDebtForBankMatch(null)
+    } catch (err: any) {
+      alert(err.message || 'Eşleme başarısız oldu')
+    } finally {
+      setMatchingTxId(null)
+    }
+  }
+
+  const handleUnlinkTx = async (txId: string) => {
+    if (!confirm('Bu hareketin eşleşmesini kaldırmak istiyor musunuz? Tutar borç bakiyesine iade edilecektir.')) {
+      return
+    }
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const res = await financialBridge.unlinkTransactionFromDebt({
+        userId: user.id,
+        transactionId: txId,
+      })
+
+      if (!res.success) throw new Error(res.error)
+      await loadDebtsAndAccounts()
+    } catch (err: any) {
+      alert(err.message || 'Bağlantı kaldırılamadı')
+    }
+  }
+
   const receivables = debts.filter((d) => d.type === 'Alacak')
   const myDebts = debts.filter((d) => d.type === 'Borç')
 
@@ -256,6 +326,155 @@ export default function DebtsPage() {
         </Card>
       </div>
 
+      {/* Salary & Milestone Breakdown Card (Hızır Global) */}
+      {(() => {
+        const hizirDebt = debts.find((d) => d.person_or_entity.includes('Hızır Global'))
+        if (!hizirDebt) return null
+        const hizirTxs = transactions.filter((t) => getLinkedDebtId(t) === hizirDebt.id)
+
+        return (
+          <Card className="border-emerald-500/30 bg-emerald-950/10 shadow-sm overflow-hidden">
+            <CardHeader className="border-b border-emerald-500/20 bg-emerald-500/5 pb-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base text-emerald-400 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Hızır Global — Maaş & Hakediş Tahsilat Çizelgesi
+                  </CardTitle>
+                  <CardDescription className="text-emerald-200/70">
+                    İşten ayrılış (5 Haziran 2026) sonrası toplam hakediş, gerçekleşen banka ödemeleri ve aylık kalan takvim
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleOpenBankMatchModal(hizirDebt)}
+                    className="h-8 text-xs gap-1.5 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    <Building2 className="h-3.5 w-3.5" />
+                    Banka Hareketinden Eşle
+                  </Button>
+                </div>
+              </div>
+
+              {/* Metrics Summary Strip */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+                <div className="rounded-lg bg-card/60 p-2.5 border border-border">
+                  <div className="text-[11px] text-muted-foreground uppercase font-semibold">Toplam Hak Edilen</div>
+                  <div className="text-lg font-bold font-mono text-foreground mt-0.5">
+                    {formatCurrency(hizirDebt.principal)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-card/60 p-2.5 border border-border">
+                  <div className="text-[11px] text-muted-foreground uppercase font-semibold">Tahsil Edilen (Geçmiş Ödemeler)</div>
+                  <div className="text-lg font-bold font-mono text-success mt-0.5">
+                    {formatCurrency(hizirDebt.past_payments)}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    31.08.2026 Akbank (15k + 24k) eşleştirildi ve düşüldü
+                  </div>
+                </div>
+                <div className="rounded-lg bg-card/60 p-2.5 border border-emerald-500/30 bg-emerald-500/10">
+                  <div className="text-[11px] text-emerald-300 uppercase font-semibold">Net Kalan Alacak</div>
+                  <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">
+                    {formatCurrency(hizirDebt.remaining)}
+                  </div>
+                  <div className="text-[10px] text-emerald-300/80 mt-0.5">
+                    Excel tablosu ile birebir örtüşüyor
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-4">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Dönem Kırılımı & Vade Durumu
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                {/* 1. Ağustos (Tahsil Edildi) */}
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-emerald-400">Ağustos 2026</span>
+                      <Badge variant="success" className="text-[9px]">✓ Tahsil Edildi</Badge>
+                    </div>
+                    <div className="text-lg font-bold font-mono text-emerald-300 mt-2">
+                      ₺39.000,00
+                    </div>
+                    <p className="text-[11px] text-emerald-200/80 mt-1">
+                      Akbank hesabına yatan 2 hareket dökümden düşüldü:
+                    </p>
+                    <div className="mt-2 space-y-1 font-mono text-[10px] text-emerald-200/90">
+                      <div>• 31.08: ₺15.000,00</div>
+                      <div>• 31.08: ₺24.000,00</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Eylül (Vadesi Geldi / Bekliyor) */}
+                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-amber-400">Eylül 2026 (Bu Ay)</span>
+                      <Badge variant="outline" className="text-[9px] bg-amber-500/20 text-amber-300 border-amber-500/40">
+                        ⏳ Bekleniyor
+                      </Badge>
+                    </div>
+                    <div className="text-lg font-bold font-mono text-amber-300 mt-2">
+                      ₺49.950,00
+                    </div>
+                    <p className="text-[11px] text-amber-200/80 mt-1">
+                      1. Taksit maaş hakediş alacağı. Hesaba geçtiğinde tek tıkla eşleyin.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleOpenBankMatchModal(hizirDebt)}
+                    className="mt-3 h-7 text-xs border-amber-500/40 text-amber-300 hover:bg-amber-500/20 w-full"
+                  >
+                    Eşle / Tahsil Et
+                  </Button>
+                </div>
+
+                {/* 3. Ekim */}
+                <div className="rounded-xl border border-border bg-card/60 p-3 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-foreground">Ekim 2026</span>
+                      <Badge variant="outline" className="text-[9px]">📅 Gelecek</Badge>
+                    </div>
+                    <div className="text-lg font-bold font-mono text-foreground mt-2">
+                      ₺49.950,00
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      2. Taksit planlanan hakediş alacağı.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4. Kasım */}
+                <div className="rounded-xl border border-border bg-card/60 p-3 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-foreground">Kasım 2026</span>
+                      <Badge variant="outline" className="text-[9px]">📅 Gelecek</Badge>
+                    </div>
+                    <div className="text-lg font-bold font-mono text-foreground mt-2">
+                      ₺49.950,00
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      3. Taksit nihai kapanış hakediş alacağı.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* Receivables Table */}
       <Card className="border-border bg-card shadow-sm overflow-hidden">
         <CardHeader>
@@ -276,7 +495,7 @@ export default function DebtsPage() {
                 <tr>
                   <th className="p-3">Kategori</th>
                   <th className="p-3">Kişi / Kurum</th>
-                  <th className="p-3">Açıklama</th>
+                  <th className="p-3">Açıklama & Eşleşen Hareketler</th>
                   <th className="p-3 text-right">Ana Tutar</th>
                   <th className="p-3 text-right">Tahsil Edilen</th>
                   <th className="p-3 text-right">Kalan Bakiye</th>
@@ -285,55 +504,92 @@ export default function DebtsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-mono">
-                {receivables.map((item) => (
-                  <tr key={item.id} className="hover:bg-muted/30 transition-colors font-sans">
-                    <td className="p-3 font-semibold text-foreground">{item.category}</td>
-                    <td className="p-3 font-medium text-foreground">{item.person_or_entity}</td>
-                    <td className="p-3 text-muted-foreground text-[11px] max-w-xs truncate">
-                      {item.description || '-'}
-                    </td>
-                    <td className="p-3 text-right font-mono text-muted-foreground">
-                      {formatCurrency(item.principal)}
-                    </td>
-                    <td className="p-3 text-right font-mono text-success">
-                      {formatCurrency(item.past_payments)}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-foreground">
-                      {formatCurrency(item.remaining)}
-                    </td>
-                    <td className="p-3">
-                      <Badge
-                        variant={item.status === 'Açık' ? 'success' : 'secondary'}
-                        className="text-[10px]"
-                      >
-                        {item.status}
-                      </Badge>
-                    </td>
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {item.status === 'Açık' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenPaymentModal(item)}
-                            className="h-7 text-xs gap-1 border-success/40 text-success hover:bg-success/15"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Tahsil Et
-                          </Button>
+                {receivables.map((item) => {
+                  const linkedTxs = transactions.filter((t) => getLinkedDebtId(t) === item.id)
+
+                  return (
+                    <tr key={item.id} className="hover:bg-muted/30 transition-colors font-sans">
+                      <td className="p-3 font-semibold text-foreground">{item.category}</td>
+                      <td className="p-3 font-medium text-foreground">{item.person_or_entity}</td>
+                      <td className="p-3 text-muted-foreground text-[11px] max-w-sm">
+                        <div>{item.description || '-'}</div>
+                        {linkedTxs.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-foreground font-semibold">Eşleşen Hareketler:</span>
+                            {linkedTxs.map((lt) => (
+                              <span
+                                key={lt.id}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono"
+                              >
+                                <span>{formatDate(lt.date)}: +{formatCurrency(lt.amount)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlinkTx(lt.id)}
+                                  className="text-[10px] text-muted-foreground hover:text-destructive underline ml-0.5"
+                                  title="Eşleştirmeyi İptal Et (Geri Al)"
+                                >
+                                  ✕
+                                </button>
+                              </span>
+                            ))}
+                          </div>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(item.id)}
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      </td>
+                      <td className="p-3 text-right font-mono text-muted-foreground">
+                        {formatCurrency(item.principal)}
+                      </td>
+                      <td className="p-3 text-right font-mono text-success">
+                        {formatCurrency(item.past_payments)}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-foreground">
+                        {formatCurrency(item.remaining)}
+                      </td>
+                      <td className="p-3">
+                        <Badge
+                          variant={item.status === 'Açık' ? 'success' : 'secondary'}
+                          className="text-[10px]"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {item.status}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {item.status === 'Açık' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenBankMatchModal(item)}
+                                className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/10"
+                                title="Banka hareketlerinden seçerek tahsilat eşle"
+                              >
+                                <Building2 className="h-3.5 w-3.5" />
+                                Banka Eşle
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenPaymentModal(item)}
+                                className="h-7 text-xs gap-1 border-success/40 text-success hover:bg-success/15"
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Tahsil Et
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(item.id)}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {receivables.length === 0 && (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-xs text-muted-foreground">
@@ -365,7 +621,7 @@ export default function DebtsPage() {
                 <tr>
                   <th className="p-3">Kategori</th>
                   <th className="p-3">Kişi / Kurum</th>
-                  <th className="p-3">Açıklama</th>
+                  <th className="p-3">Açıklama & Eşleşen Hareketler</th>
                   <th className="p-3 text-right">Ana Tutar</th>
                   <th className="p-3 text-right">Ödenen</th>
                   <th className="p-3 text-right">Kalan Borç</th>
@@ -374,54 +630,91 @@ export default function DebtsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-mono">
-                {myDebts.map((item) => (
-                  <tr key={item.id} className="hover:bg-muted/30 transition-colors font-sans">
-                    <td className="p-3 font-semibold text-foreground">{item.category}</td>
-                    <td className="p-3 font-medium text-foreground">{item.person_or_entity}</td>
-                    <td className="p-3 text-muted-foreground text-[11px] max-w-xs truncate">
-                      {item.description || '-'}
-                    </td>
-                    <td className="p-3 text-right font-mono text-muted-foreground">
-                      {formatCurrency(item.principal)}
-                    </td>
-                    <td className="p-3 text-right font-mono text-muted-foreground">
-                      {formatCurrency(item.past_payments)}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-destructive">
-                      {formatCurrency(item.remaining)}
-                    </td>
-                    <td className="p-3">
-                      <Badge
-                        variant={item.status === 'Açık' ? 'destructive' : 'secondary'}
-                        className="text-[10px]"
-                      >
-                        {item.status}
-                      </Badge>
-                    </td>
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {item.status === 'Açık' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenPaymentModal(item)}
-                            className="h-7 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/15"
-                          >
-                            Öde
-                          </Button>
+                {myDebts.map((item) => {
+                  const linkedTxs = transactions.filter((t) => getLinkedDebtId(t) === item.id)
+
+                  return (
+                    <tr key={item.id} className="hover:bg-muted/30 transition-colors font-sans">
+                      <td className="p-3 font-semibold text-foreground">{item.category}</td>
+                      <td className="p-3 font-medium text-foreground">{item.person_or_entity}</td>
+                      <td className="p-3 text-muted-foreground text-[11px] max-w-sm">
+                        <div>{item.description || '-'}</div>
+                        {linkedTxs.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-foreground font-semibold">Eşleşen Ödemeler:</span>
+                            {linkedTxs.map((lt) => (
+                              <span
+                                key={lt.id}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-destructive/10 text-destructive border border-destructive/20 font-mono"
+                              >
+                                <span>{formatDate(lt.date)}: {formatCurrency(lt.amount)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlinkTx(lt.id)}
+                                  className="text-[10px] text-muted-foreground hover:text-destructive underline ml-0.5"
+                                  title="Eşleştirmeyi İptal Et (Geri Al)"
+                                >
+                                  ✕
+                                </button>
+                              </span>
+                            ))}
+                          </div>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(item.id)}
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      </td>
+                      <td className="p-3 text-right font-mono text-muted-foreground">
+                        {formatCurrency(item.principal)}
+                      </td>
+                      <td className="p-3 text-right font-mono text-muted-foreground">
+                        {formatCurrency(item.past_payments)}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-destructive">
+                        {formatCurrency(item.remaining)}
+                      </td>
+                      <td className="p-3">
+                        <Badge
+                          variant={item.status === 'Açık' ? 'destructive' : 'secondary'}
+                          className="text-[10px]"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {item.status}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {item.status === 'Açık' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenBankMatchModal(item)}
+                                className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/10"
+                                title="Banka harcamalarından seçerek borç ödemesi eşle"
+                              >
+                                <Building2 className="h-3.5 w-3.5" />
+                                Banka Eşle
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenPaymentModal(item)}
+                                className="h-7 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/15"
+                              >
+                                Öde
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(item.id)}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {myDebts.length === 0 && (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-xs text-muted-foreground">
@@ -592,6 +885,148 @@ export default function DebtsPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Bank Transaction Match Modal */}
+      <Modal
+        isOpen={isBankMatchModalOpen}
+        onClose={() => {
+          setIsBankMatchModalOpen(false)
+          setDebtForBankMatch(null)
+        }}
+        title={`Banka Hareketinden ${debtForBankMatch?.type === 'Alacak' ? 'Tahsilat' : 'Borç Ödemesi'} Eşle`}
+        description={`Hesap dökümlerinizden bir hareketi seçerek "${debtForBankMatch?.person_or_entity}" kaydına bağlayabilir ve kalan bakiyeden otomatik düşebilirsiniz.`}
+      >
+        {debtForBankMatch && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted/40 p-3 border border-border text-xs space-y-1 font-mono">
+              <div className="flex justify-between font-medium">
+                <span className="text-muted-foreground font-sans">Hedef Kayıt:</span>
+                <span className="font-semibold text-foreground font-sans">
+                  {debtForBankMatch.person_or_entity} ({debtForBankMatch.category})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-sans">Kalan Bakiye:</span>
+                <span className="font-bold text-success text-sm">
+                  {formatCurrency(debtForBankMatch.remaining)}
+                </span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="İşlem veya açıklama ara (örn: Hızır, Maaş, 15000)..."
+                value={bankSearchTerm}
+                onChange={(e) => setBankSearchTerm(e.target.value)}
+                className="pl-9 text-xs"
+              />
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1 divide-y divide-border/40">
+              {(() => {
+                const isReceivable = debtForBankMatch.type === 'Alacak'
+                const candidateTxs = transactions.filter((t) => {
+                  if (isReceivable) {
+                    if (t.type !== 'Gelir' && t.type !== 'Tahsilat') return false
+                  } else {
+                    if (t.type !== 'Harcama' && t.type !== 'Borç Ödemesi') return false
+                  }
+
+                  if (bankSearchTerm) {
+                    const q = bankSearchTerm.toLowerCase()
+                    const matchM = t.merchant?.toLowerCase().includes(q)
+                    const matchD = t.description?.toLowerCase().includes(q)
+                    const matchA = t.amount.toString().includes(q)
+                    const matchAcc = t.account_or_card?.toLowerCase().includes(q)
+                    if (!matchM && !matchD && !matchA && !matchAcc) return false
+                  }
+                  return true
+                })
+
+                if (candidateTxs.length === 0) {
+                  return (
+                    <div className="p-6 text-center text-xs text-muted-foreground">
+                      Aramaya uygun banka hareketi bulunamadı.
+                    </div>
+                  )
+                }
+
+                return candidateTxs.slice(0, 20).map((t) => {
+                  const linkedId = getLinkedDebtId(t)
+                  const isAlreadyLinkedToThis = linkedId === debtForBankMatch.id
+
+                  return (
+                    <div
+                      key={t.id}
+                      className="pt-2 pb-2 flex items-center justify-between gap-3 hover:bg-muted/20 px-2 rounded-lg transition-colors"
+                    >
+                      <div className="space-y-0.5 text-xs min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground font-mono">{formatDate(t.date)}</span>
+                          <span className="font-semibold text-foreground">{t.account_or_card || 'Banka'}</span>
+                          {isAlreadyLinkedToThis && (
+                            <Badge variant="success" className="text-[9px]">
+                              Eşleşmiş
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-foreground truncate max-w-sm font-medium">
+                          {t.merchant || t.description}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span
+                          className={`font-bold font-mono text-sm ${
+                            isReceivable ? 'text-success' : 'text-destructive'
+                          }`}
+                        >
+                          {isReceivable ? '+' : '−'}
+                          {formatCurrency(t.amount)}
+                        </span>
+                        {isAlreadyLinkedToThis ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleUnlinkTx(t.id)}
+                            className="h-7 text-xs border-destructive/40 text-destructive hover:bg-destructive/10"
+                          >
+                            Çöz
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={matchingTxId === t.id}
+                            onClick={() => handleMatchTransaction(t.id)}
+                            className="h-7 text-xs gap-1"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            {matchingTxId === t.id ? 'Eşleniyor...' : 'Eşle'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsBankMatchModalOpen(false)
+                  setDebtForBankMatch(null)
+                }}
+              >
+                Kapat
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

@@ -110,4 +110,30 @@ describe('FinancialBridge Unit Tests', () => {
       expect(res.error).toContain('Aynı hesaba transfer yapılamaz')
     })
   })
+
+  describe('getLinkedDebtId helper', () => {
+    it('should return related_debt_id when present', async () => {
+      const { getLinkedDebtId } = await import('../src/lib/financial-bridge')
+      const id = getLinkedDebtId({ related_debt_id: 'debt-uuid-123', description: 'Some text' })
+      expect(id).toBe('debt-uuid-123')
+    })
+
+    it('should extract debt id from description tag [DEBT:<uuid>] when related_debt_id is null', async () => {
+      const { getLinkedDebtId } = await import('../src/lib/financial-bridge')
+      const id = getLinkedDebtId({
+        related_debt_id: null,
+        description: 'Hızır Global Kurye [DEBT:d6a3b5ae-fcec-4347-867b-f085eb780098]',
+      })
+      expect(id).toBe('d6a3b5ae-fcec-4347-867b-f085eb780098')
+    })
+
+    it('should return null when no debt id is present', async () => {
+      const { getLinkedDebtId } = await import('../src/lib/financial-bridge')
+      const id = getLinkedDebtId({
+        related_debt_id: null,
+        description: 'Market Harcaması',
+      })
+      expect(id).toBeNull()
+    })
+  })
 })
