@@ -24,6 +24,24 @@ import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import type { Debt, Account, Transaction } from '@/types/database'
 
+function sortDebtsChronological(items: Debt[]): Debt[] {
+  const getWeight = (d: Debt) => {
+    if (d.type === 'Borç') return 0
+    const desc = (d.description || '').toLowerCase()
+    if (desc.includes('şubat')) return 10
+    if (desc.includes('mart')) return 20
+    if (desc.includes('nisan')) return 30
+    if (desc.includes('mayıs')) return 40
+    if (desc.includes('haziran')) return 50
+    if (desc.includes('temmuz')) return 60
+    if (desc.includes('ağustos')) return 70
+    if (desc.includes('eylül')) return 80
+    if (desc.includes('harcama') || desc.includes('kart')) return 90
+    return 100
+  }
+  return [...items].sort((a, b) => getWeight(a) - getWeight(b))
+}
+
 export default function DebtsPage() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -68,7 +86,7 @@ export default function DebtsPage() {
         supabase.from('transactions').select('*').order('date', { ascending: false }),
       ])
 
-      if (dData) setDebts(dData)
+      if (dData) setDebts(sortDebtsChronological(dData))
       if (aData) {
         setAccounts(aData)
         if (aData.length > 0 && !targetAccountId) {
