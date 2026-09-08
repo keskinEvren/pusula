@@ -112,6 +112,19 @@ export default function IdeasPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
+      // Check active projects count
+      const { data: activeProjects } = await supabase
+        .from('projects')
+        .select('id, status')
+        .not('status', 'in', '("Arşiv", "Canlı")')
+      
+      if (activeProjects && activeProjects.length >= 2) {
+        if (!confirm("Odak kapasiteniz dolu! (Maksimum 2 aktif proje önerilir). Yine de devam etmek istiyor musunuz?")) return
+      }
+
+      const budgetStr = prompt('Proje bütçe limiti (₺) belirleyin (opsiyonel):', '10000')
+      const budgetNum = budgetStr ? parseFloat(budgetStr) : null
+
       const slug = idea.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -126,6 +139,7 @@ export default function IdeasPage() {
           slug,
           description: idea.description,
           status: 'Planlama',
+          budget_limit: budgetNum || null,
         })
         .select()
         .single()

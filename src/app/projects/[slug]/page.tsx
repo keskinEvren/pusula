@@ -19,6 +19,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { calculateProjectTotalCost, evaluateProjectBudget } from '@/lib/finance-engine'
+import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +49,44 @@ export default function ProjectDetailPage({
     title: '',
     category: 'Görev' as ProjectTask['category'],
   })
+
+  // Quick Expense Modal State
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
+  const [expenseForm, setExpenseForm] = useState({
+    amount: '',
+    description: '',
+    accountId: '',
+  })
+
+  const handleQuickExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+    setSubmitting(true)
+
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      await financialBridge.recordExpense({ 
+        userId: user.id, 
+        amount: parseFloat(expenseForm.amount), 
+        description: expenseForm.description, 
+        date: new Date().toISOString().split('T')[0], 
+        accountId: expenseForm.accountId || undefined, 
+        projectId: project.id, 
+        analysisGroup: 'İş' 
+      })
+      
+      setIsExpenseModalOpen(false)
+      setExpenseForm({ amount: '', description: '', accountId: '' })
+      loadProjectData()
+    } catch (err: any) {
+      alert(err.message || 'Harcama eklenemedi')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     loadProjectData()
@@ -183,9 +222,16 @@ export default function ProjectDetailPage({
 
   // Cost & Bridge Calculation via Pure Finance Engine
   const directCost = transactions.reduce((sum, t) => sum + t.amount, 0)
+  
+  const totalRevenue = transactions.filter(t => t.type === 'Gelir').reduce((s, t) => s + t.amount, 0)
+  const totalExpense = transactions.filter(t => t.type === 'Harcama').reduce((s, t) => s + t.amount, 0)
+  
   const monthlySubCost = subscriptions
-    .filter((s) => s.status !== 'İptal')
+    .filter((s) => s.status === 'Aktif')
     .reduce((sum, s) => sum + s.amount, 0)
+    
+  const netStatus = totalRevenue - totalExpense
+  
   const totalCost = calculateProjectTotalCost(project.id, transactions, subscriptions)
   const budgetEvaluation = evaluateProjectBudget(totalCost, project.budget_limit)
 
@@ -237,6 +283,9 @@ export default function ProjectDetailPage({
               </Button>
             </a>
           )}
+          <Button onClick={() => setIsExpenseModalOpen(true)} variant="secondary" className="gap-2 shadow-md">
+            ⚡ Hızlı Harcama Ekle
+          </Button>
           <Button onClick={() => setIsTaskModalOpen(true)} className="gap-2 shadow-md">
             <Plus className="h-4 w-4" />
             Görev Ekle
@@ -251,39 +300,43 @@ export default function ProjectDetailPage({
             <div>
               <CardTitle className="text-base flex items-center gap-2">
                 <DollarSign className="h-5 w-5 text-purple-400" />
-                Proje Gerçek Maliyet Köprüsü (Bridge)
+                Proje P&L (Kâr/Zarar) Özeti
               </CardTitle>
               <CardDescription>
-                Bu projeye cebinizden kuruşu kuruşuna harcanan tüm giderlerin dökümü
+                Bu projenin gelir ve gider durumu ile net pozisyonu
               </CardDescription>
             </div>
             <div className="text-right">
-              <div className="text-xs text-muted-foreground">Toplam Gerçek Harcama</div>
-              <div className="text-2xl font-bold font-mono text-purple-400">
-                {formatCurrency(totalCost)}
+              <div className="text-xs text-muted-foreground">Net Durum</div>
+              <div className={`text-2xl font-bold font-mono ${netStatus >= 0 ? 'text-success' : 'text-destructive'}`}>
+                {netStatus > 0 ? '+' : ''}{formatCurrency(netStatus)}
               </div>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3 pt-2 border-t border-border/50 text-xs">
+          <div className="grid gap-3 sm:grid-cols-4 pt-2 border-t border-border/50 text-xs">
             <div className="rounded-lg bg-card/60 p-3 border border-border/50">
-              <div className="text-muted-foreground">Tekil Doğrudan Harcamalar</div>
-              <div className="text-lg font-bold font-mono text-foreground mt-1">
-                {formatCurrency(directCost)}
-              </div>
-              <div className="text-[10px] text-muted-foreground mt-0.5">
-                {transactions.length} adet işlem kaydı
+              <div className="text-muted-foreground">Toplam Gelir</div>
+              <div className="text-lg font-bold font-mono text-success mt-1">
+                {formatCurrency(totalRevenue)}
               </div>
             </div>
 
             <div className="rounded-lg bg-card/60 p-3 border border-border/50">
-              <div className="text-muted-foreground">Aylık SaaS Yakma Hızı (Burn)</div>
-              <div className="text-lg font-bold font-mono text-foreground mt-1">
+              <div className="text-muted-foreground">Toplam Harcama</div>
+              <div className="text-lg font-bold font-mono text-destructive mt-1">
+                {formatCurrency(totalExpense)}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-card/60 p-3 border border-border/50">
+              <div className="text-muted-foreground">Aylık Abonelik Yükü</div>
+              <div className="text-lg font-bold font-mono text-destructive mt-1">
                 {formatCurrency(monthlySubCost)} / ay
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">
-                {subscriptions.length} adet bağlı abonelik
+                {subscriptions.filter(s => s.status === 'Aktif').length} aktif abonelik
               </div>
             </div>
 
@@ -484,6 +537,59 @@ export default function ProjectDetailPage({
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? 'Ekleniyor...' : 'Görevi Ekle'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Quick Expense Modal */}
+      <Modal
+        isOpen={isExpenseModalOpen}
+        onClose={() => setIsExpenseModalOpen(false)}
+        title="⚡ Hızlı Harcama Ekle"
+        description={`${project.name} projesi için hızlıca harcama kaydedin.`}
+      >
+        <form onSubmit={handleQuickExpense} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Tutar (₺)</label>
+            <Input
+              required
+              type="number"
+              step="0.01"
+              placeholder="Örn: 1500"
+              value={expenseForm.amount}
+              onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+              className="text-xs"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Açıklama</label>
+            <Input
+              required
+              placeholder="Örn: Sunucu ödemesi"
+              value={expenseForm.description}
+              onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+              className="text-xs"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Kasa/Hesap (Opsiyonel)</label>
+            <Input
+              placeholder="Hangi hesaptan ödendi?"
+              value={expenseForm.accountId}
+              onChange={(e) => setExpenseForm({ ...expenseForm, accountId: e.target.value })}
+              className="text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+            <Button type="button" variant="outline" onClick={() => setIsExpenseModalOpen(false)}>
+              İptal
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Kaydediliyor...' : 'Harcama Ekle'}
             </Button>
           </div>
         </form>

@@ -5,7 +5,7 @@ import type { Debt, CreditCard, Project, MerchantMapping } from '@/types/databas
 export interface ReconciliationSuggestion {
   action: ReconciliationActionType
   type: string
-  analysis_group: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç' | 'Gelir'
+  analysis_group: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç'
   merchant: string
   target_card_id?: string
   target_debt_id?: string
@@ -45,8 +45,35 @@ export function reconcileBankMovement(
       return {
         action: 'FAMILY_SUPPORT',
         type: 'Gelir',
-        analysis_group: 'Gelir',
+        analysis_group: 'Hariç',
         merchant: 'Aile Desteği / Transfer',
+        confidence: 'high',
+      }
+    }
+
+    // 1.2. Kredi Kartından Nakit Avans Çekimi (Hesaba Aktarım)
+    if (
+      upper.includes('NAKİT AVANS') ||
+      upper.includes('NAKIT AVANS') ||
+      (upper.includes('KK') && upper.includes('AVANS'))
+    ) {
+      let matchedCard = creditCards.find(
+        (c) =>
+          (c.last_four && upper.includes(c.last_four)) ||
+          upper.includes(c.bank.toUpperCase()) ||
+          upper.includes(c.card_name.toUpperCase())
+      )
+
+      if (!matchedCard && creditCards.length > 0) {
+        matchedCard = creditCards[0]
+      }
+
+      return {
+        action: 'CASH_ADVANCE',
+        type: 'Nakit Avans',
+        analysis_group: 'Hariç',
+        merchant: matchedCard ? `Nakit Avans (${matchedCard.bank})` : 'Kredi Kartı Nakit Avans',
+        target_card_id: matchedCard?.id,
         confidence: 'high',
       }
     }
@@ -68,7 +95,7 @@ export function reconcileBankMovement(
         return {
           action: 'COLLECT_RECEIVABLE',
           type: 'Tahsilat',
-          analysis_group: 'Gelir',
+          analysis_group: 'Hariç',
           merchant: `Tahsilat: ${rec.person_or_entity}`,
           target_debt_id: rec.id,
           confidence: 'high',
@@ -80,7 +107,7 @@ export function reconcileBankMovement(
         return {
           action: 'COLLECT_RECEIVABLE',
           type: 'Tahsilat',
-          analysis_group: 'Gelir',
+          analysis_group: 'Hariç',
           merchant: `Tahsilat: ${rec.person_or_entity}`,
           target_debt_id: rec.id,
           confidence: 'high',
@@ -92,7 +119,7 @@ export function reconcileBankMovement(
     return {
       action: 'FREE_INCOME',
       type: 'Gelir',
-      analysis_group: 'Gelir',
+      analysis_group: 'Hariç',
       merchant: rawDescription.replace(/^(?:GELEN\s+EFT|GELEN\s+HAVALE|GELEN\s+FAST)\s*[-:,]?\s*/i, '').trim() || 'Gelen Transfer',
       confidence: 'medium',
     }
@@ -106,6 +133,15 @@ export function reconcileBankMovement(
   if (
     upper.includes('KREDİ KARTI') ||
     upper.includes('KREDI KARTI') ||
+    upper.includes('KK TAHSİLAT') ||
+    upper.includes('KK TAHSILAT') ||
+    upper.includes('KK ODEME') ||
+    upper.includes('KK ÖDEME') ||
+    upper.includes('KK OTOMATİK ÖDEME') ||
+    upper.includes('KK OTOMATIK ODEME') ||
+    (upper.includes('KK') && (upper.includes('ÖDEME') || upper.includes('ODEME') || upper.includes('TAHSİLAT') || upper.includes('TAHSILAT'))) ||
+    upper.includes('KK BORÇ') ||
+    upper.includes('KK BORC') ||
     upper.includes('KART BORC') ||
     upper.includes('KART ODEME') ||
     upper.includes('KART ÖDEME') ||
@@ -116,8 +152,8 @@ export function reconcileBankMovement(
   ) {
     let matchedCard = creditCards.find(
       (c) =>
-        upper.includes(c.bank.toUpperCase()) ||
         (c.last_four && upper.includes(c.last_four)) ||
+        upper.includes(c.bank.toUpperCase()) ||
         upper.includes(c.card_name.toUpperCase())
     )
 

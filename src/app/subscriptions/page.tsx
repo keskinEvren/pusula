@@ -26,12 +26,13 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
-import type { Subscription, Project, Transaction } from '@/types/database'
+import type { Subscription, Project, Transaction, CreditCard } from '@/types/database'
 
 export default function SubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([])
   const [loading, setLoading] = useState(true)
 
   // Tab: 'active' | 'archived'
@@ -49,6 +50,7 @@ export default function SubscriptionsPage() {
     end_date: '',
     decision: 'Devam' as any,
     payment_method: 'Enpara Kredi Kartı',
+    payment_card_id: '',
     project_id: '',
   })
 
@@ -60,14 +62,16 @@ export default function SubscriptionsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: sData }, { data: pData }, { data: tData }] = await Promise.all([
+      const [{ data: sData }, { data: pData }, { data: tData }, { data: cData }] = await Promise.all([
         supabase.from('subscriptions').select('*').order('amount', { ascending: false }),
         supabase.from('projects').select('*'),
         supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('credit_cards').select('*'),
       ])
       if (sData) setSubscriptions(sData)
       if (pData) setProjects(pData)
       if (tData) setTransactions(tData)
+      if (cData) setCreditCards(cData)
     } catch (err) {
       console.error('Error loading subscriptions:', err)
     } finally {
@@ -92,12 +96,14 @@ export default function SubscriptionsPage() {
           service: subForm.service,
           group_type: subForm.group_type,
           model: subForm.model,
+          strategic_tag: subForm.model,
           amount: parseFloat(subForm.amount || '0'),
           currency: 'TRY',
           period: subForm.period,
           end_date: subForm.end_date || null,
           decision: 'Devam',
           payment_method: subForm.payment_method || null,
+          payment_card_id: subForm.payment_card_id || null,
           project_id: subForm.project_id || null,
           status: 'Aktif',
         })
@@ -117,6 +123,7 @@ export default function SubscriptionsPage() {
           end_date: '',
           decision: 'Devam',
           payment_method: 'Enpara Kredi Kartı',
+          payment_card_id: '',
           project_id: '',
         })
       }
@@ -144,6 +151,7 @@ export default function SubscriptionsPage() {
           decision: newDecision as any,
           status: newStatus as any,
           model: tag,
+          strategic_tag: tag,
         })
         .eq('id', id)
 
@@ -181,11 +189,12 @@ export default function SubscriptionsPage() {
 
   // Active tools: either appeared in latest month statement OR explicitly marked as 'Vazgeçilmez' / 'Esnek'
   const activeSubs = subscriptions.filter((s) => {
-    if (s.status === 'İptal' || s.decision === 'İptal Et' || s.model === 'Tek Seferlik' || s.model === 'İptal') {
+    const currentTag = s.strategic_tag || s.model
+    if (s.status === 'İptal' || s.decision === 'İptal Et' || currentTag === 'Tek Seferlik' || currentTag === 'İptal') {
       return false
     }
 
-    const explicitlyActive = s.model === 'Vazgeçilmez' || s.model === 'Esnek'
+    const explicitlyActive = currentTag === 'Vazgeçilmez' || currentTag === 'Esnek'
     if (explicitlyActive) return true
 
     // If auto-discovered without explicit user tag: check if it appeared in latest statement month!
@@ -204,8 +213,8 @@ export default function SubscriptionsPage() {
   const archivedSubs = subscriptions.filter((s) => !activeSubs.some((a) => a.id === s.id))
 
   // Calculations
-  const essentialSubs = activeSubs.filter((s) => s.model === 'Vazgeçilmez' || !s.model)
-  const flexibleSubs = activeSubs.filter((s) => s.model === 'Esnek')
+  const essentialSubs = activeSubs.filter((s) => (s.strategic_tag || s.model) === 'Vazgeçilmez' || !(s.strategic_tag || s.model))
+  const flexibleSubs = activeSubs.filter((s) => (s.strategic_tag || s.model) === 'Esnek')
 
   const totalEssentialMonthly = essentialSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
   const totalFlexibleMonthly = flexibleSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
@@ -362,9 +371,10 @@ export default function SubscriptionsPage() {
             </div>
           ) : (
             displayedList.map((sub) => {
+              const actualTag = sub.strategic_tag || sub.model
               const currentTag =
-                sub.model === 'Vazgeçilmez' || sub.model === 'Esnek' || sub.model === 'Tek Seferlik' || sub.model === 'İptal'
-                  ? sub.model
+                actualTag === 'Vazgeçilmez' || actualTag === 'Esnek' || actualTag === 'Tek Seferlik' || actualTag === 'İptal'
+                  ? actualTag
                   : sub.decision === 'İptal Et'
                   ? 'İptal'
                   : 'Vazgeçilmez'
@@ -520,6 +530,21 @@ export default function SubscriptionsPage() {
               <option value="Vazgeçilmez">🟢 Vazgeçilmez (Çekirdek SaaS)</option>
               <option value="Esnek">🟡 Esnek (Dönemsel / Bütçeye Bağlı)</option>
               <option value="Tek Seferlik">⚡ Tek Seferlik / Yıllık Fatura</option>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Ödeme Kartı</label>
+            <Select
+              value={subForm.payment_card_id || ''}
+              onChange={(e) => setSubForm({ ...subForm, payment_card_id: e.target.value })}
+            >
+              <option value="">(Belirtilmedi)</option>
+              {creditCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.bank} - {c.card_name}
+                </option>
+              ))}
             </Select>
           </div>
 

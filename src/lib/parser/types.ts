@@ -7,6 +7,7 @@ export type ReconciliationActionType =
   | 'DIRECT_EXPENSE'      // Direkt Harcama (Kişisel / İş / Finansman)
   | 'FREE_INCOME'         // Serbest Gelir
   | 'INTERNAL_TRANSFER'   // Hesaplar Arası Transfer (Hariç)
+  | 'CASH_ADVANCE'        // Kredi Kartından Nakit Avans Çekimi (Borç Artışı)
 
 export interface ExtractedTransaction {
   id: string
@@ -26,6 +27,7 @@ export interface ExtractedTransaction {
   action?: ReconciliationActionType
   target_card_id?: string
   target_debt_id?: string
+  target_account_id?: string
 }
 
 export interface BankDetectionResult {

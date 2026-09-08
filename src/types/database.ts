@@ -224,6 +224,7 @@ export interface Database {
           remaining: number
           status: 'Açık' | 'Kapatıldı'
           linked_account_id: string | null
+          project_id: string | null
           created_at: string
           updated_at: string
         }
@@ -239,6 +240,7 @@ export interface Database {
           remaining?: number
           status?: 'Açık' | 'Kapatıldı'
           linked_account_id?: string | null
+          project_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -254,6 +256,7 @@ export interface Database {
           remaining?: number
           status?: 'Açık' | 'Kapatıldı'
           linked_account_id?: string | null
+          project_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -273,6 +276,8 @@ export interface Database {
           payment_method: string | null
           status: 'Aktif' | 'İptal' | 'Donduruldu'
           project_id: string | null
+          payment_card_id: string | null
+          strategic_tag: 'Vazgeçilmez' | 'Esnek' | 'Tek Seferlik' | 'İptal' | null
           created_at: string
           updated_at: string
         }
@@ -290,6 +295,8 @@ export interface Database {
           payment_method?: string | null
           status?: 'Aktif' | 'İptal' | 'Donduruldu'
           project_id?: string | null
+          payment_card_id?: string | null
+          strategic_tag?: 'Vazgeçilmez' | 'Esnek' | 'Tek Seferlik' | 'İptal' | null
           created_at?: string
           updated_at?: string
         }
@@ -307,6 +314,8 @@ export interface Database {
           payment_method?: string | null
           status?: 'Aktif' | 'İptal' | 'Donduruldu'
           project_id?: string | null
+          payment_card_id?: string | null
+          strategic_tag?: 'Vazgeçilmez' | 'Esnek' | 'Tek Seferlik' | 'İptal' | null
           updated_at?: string
         }
         Relationships: []
@@ -368,6 +377,9 @@ export interface Database {
           card_id: string | null
           account_id: string | null
           project_id: string | null
+          source_account_id: string | null
+          target_account_id: string | null
+          related_debt_id: string | null
           import_id: string | null
           created_at: string
           updated_at: string
@@ -387,6 +399,9 @@ export interface Database {
           card_id?: string | null
           account_id?: string | null
           project_id?: string | null
+          source_account_id?: string | null
+          target_account_id?: string | null
+          related_debt_id?: string | null
           import_id?: string | null
           created_at?: string
           updated_at?: string
@@ -406,6 +421,9 @@ export interface Database {
           card_id?: string | null
           account_id?: string | null
           project_id?: string | null
+          source_account_id?: string | null
+          target_account_id?: string | null
+          related_debt_id?: string | null
           import_id?: string | null
           updated_at?: string
         }
