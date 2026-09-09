@@ -42,73 +42,85 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card shadow-2xl">
-        <CardHeader className="space-y-2 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-[#090d16] overflow-hidden">
+      {/* Ambient Radial Glows */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute -bottom-20 -right-20 w-[400px] h-[400px] bg-blue-600/5 rounded-full blur-[100px] pointer-events-none" />
+
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#121622]/85 p-6 sm:p-8 backdrop-blur-2xl shadow-[0_24px_64px_-12px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+        {/* Brand Header */}
+        <div className="text-center space-y-2 pb-6">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 border border-white/20">
             <Compass className="h-6 w-6" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">Pusula</CardTitle>
-          <CardDescription>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground pt-1">Pusula</h1>
+          <p className="text-xs text-muted-foreground max-w-xs mx-auto">
             Kişisel finans ve proje komuta merkezinize giriş yapın
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <div className="mb-4 rounded-lg bg-destructive/15 border border-destructive/30 p-3 text-sm text-destructive font-medium">
-              {error}
-            </div>
-          )}
+          </p>
+        </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                E-posta Adresi
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  required
-                  placeholder="kurucu@sirket.com"
-                  className="pl-9"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-            </div>
+        {error && (
+          <div className="mb-5 rounded-xl bg-destructive/15 border border-destructive/30 p-3 text-xs text-destructive font-medium">
+            {error}
+          </div>
+        )}
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+              E-posta Adresi
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="email"
+                required
+                placeholder="kurucu@sirket.com"
+                className="pl-10 h-10 rounded-xl bg-white/[0.03] border-white/[0.08] text-xs focus:border-primary/50 focus:bg-white/[0.05]"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
                 Şifre
               </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  className="pl-9"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
             </div>
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
-              <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            Hesabınız yok mu?{' '}
-            <Link href="/signup" className="font-semibold text-primary hover:underline">
-              Kayıt Olun
-            </Link>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="password"
+                required
+                placeholder="••••••••"
+                className="pl-10 h-10 rounded-xl bg-white/[0.03] border-white/[0.08] text-xs focus:border-primary/50 focus:bg-white/[0.05]"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="pt-2">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-11 text-xs font-semibold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </form>
+
+        <div className="mt-6 pt-5 border-t border-white/[0.06] text-center text-xs text-muted-foreground">
+          Hesabınız yok mu?{' '}
+          <Link href="/signup" className="font-semibold text-primary hover:underline ml-1">
+            Kayıt Olun
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }
