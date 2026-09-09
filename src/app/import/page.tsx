@@ -367,6 +367,9 @@ export default function ImportPage() {
             } else if (newAction === 'INTERNAL_TRANSFER') {
               newType = 'Transfer'
               newGroup = 'Hariç'
+            } else if (newAction === 'INVESTMENT_TRANSFER') {
+              newType = 'Transfer'
+              newGroup = 'Hariç'
             }
 
             return {
@@ -1160,6 +1163,7 @@ export default function ImportPage() {
                                         className="h-7 text-xs font-semibold"
                                       >
                                         <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
+                                        <option value="INVESTMENT_TRANSFER">📈 Yatırım Transferi (Hariç)</option>
                                         <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
                                         <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
                                         <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
