@@ -405,3 +405,31 @@ export function payDebt(
     isClosed,
   }
 }
+
+/**
+ * 10. Kademeli Alım & Ağırlıklı Ortalama Maliyet (DCA - Dollar Cost Averaging)
+ * Yeni Adet = Eski Adet + Alınan Adet
+ * Yeni Birim Maliyet = ((Eski Adet * Eski Maliyet) + (Alınan Adet * Alış Fiyatı)) / Yeni Adet
+ */
+export function calculateDcaAverageCost(
+  currentQty: number,
+  currentUnitCost: number,
+  addedQty: number,
+  purchasePrice: number
+): { newQuantity: number; newUnitCost: number; totalCost: number } {
+  const cQty = Math.max(0, currentQty || 0)
+  const cCost = Math.max(0, currentUnitCost || 0)
+  const aQty = Math.max(0, addedQty || 0)
+  const aPrice = Math.max(0, purchasePrice || 0)
+
+  const newQuantity = round2(cQty + aQty)
+  const totalCost = round2(cQty * cCost + aQty * aPrice)
+  const newUnitCost = newQuantity > 0 ? round2(totalCost / newQuantity) : 0
+
+  return {
+    newQuantity,
+    newUnitCost,
+    totalCost,
+  }
+}
+

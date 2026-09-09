@@ -20,10 +20,12 @@ import {
   Info,
   CheckCircle2,
   AlertCircle,
+  Layers,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
-import { calculatePortfolioMetrics, round2 } from '@/lib/finance-engine'
+import { calculatePortfolioMetrics, calculateDcaAverageCost, round2 } from '@/lib/finance-engine'
+import { searchAssetCatalog, type CatalogAsset } from '@/lib/market/assets-catalog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +34,36 @@ import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import type { Investment } from '@/types/database'
+
+function getPriceFreshness(lastUpdated?: string | null): {
+  label: string
+  colorClass: string
+  dotClass: string
+} {
+  if (!lastUpdated) {
+    return { label: 'Bilinmiyor', colorClass: 'text-muted-foreground', dotClass: 'bg-muted-foreground' }
+  }
+  const diffMs = Date.now() - new Date(lastUpdated).getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffMins < 15) {
+    return { label: 'Canlı', colorClass: 'text-emerald-400 font-medium', dotClass: 'bg-emerald-400 animate-pulse' }
+  }
+  if (diffHours < 24) {
+    const timeStr = new Date(lastUpdated).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    return { label: `Bugün ${timeStr}`, colorClass: 'text-emerald-400', dotClass: 'bg-emerald-400' }
+  }
+  if (diffDays === 1) {
+    return { label: 'Dün', colorClass: 'text-amber-400', dotClass: 'bg-amber-400' }
+  }
+  return {
+    label: `${diffDays}g önce`,
+    colorClass: 'text-rose-400',
+    dotClass: 'bg-rose-400',
+  }
+}
 
 const CATEGORIES = [
   'Tümü',
@@ -83,6 +115,16 @@ function InvestmentsContent() {
   // Quick Inline Price Update Modal
   const [quickUpdateItem, setQuickUpdateItem] = useState<Investment | null>(null)
   const [quickNewPrice, setQuickNewPrice] = useState('')
+
+  // Autocomplete Suggestions State
+  const [catalogSuggestions, setCatalogSuggestions] = useState<CatalogAsset[]>([])
+  const [showCatalogDropdown, setShowCatalogDropdown] = useState(false)
+
+  // DCA (Kademeli Alım) Modal State
+  const [dcaItem, setDcaItem] = useState<Investment | null>(null)
+  const [dcaAddedQty, setDcaAddedQty] = useState('')
+  const [dcaUnitPrice, setDcaUnitPrice] = useState('')
+  const [dcaSubmitting, setDcaSubmitting] = useState(false)
 
   useEffect(() => {
     loadInvestments()
@@ -257,6 +299,8 @@ function InvestmentsContent() {
     setFormCurrentPrice('')
     setFormNote('')
     setPriceNotice(null)
+    setCatalogSuggestions([])
+    setShowCatalogDropdown(false)
     setIsModalOpen(true)
   }
 
@@ -271,7 +315,125 @@ function InvestmentsContent() {
     setFormCurrentPrice(item.current_price.toString())
     setFormNote(item.note || '')
     setPriceNotice(null)
+    setCatalogSuggestions([])
+    setShowCatalogDropdown(false)
     setIsModalOpen(true)
+  }
+
+  const handleNameChange = (val: string) => {
+    setFormName(val)
+    if (val.trim().length >= 1) {
+      const results = searchAssetCatalog(val, formCategory)
+      setCatalogSuggestions(results)
+      setShowCatalogDropdown(results.length > 0)
+    } else {
+      setCatalogSuggestions([])
+      setShowCatalogDropdown(false)
+    }
+  }
+
+  const handleSymbolChange = (val: string) => {
+    const sym = val.toUpperCase()
+    setFormSymbol(sym)
+    if (sym.trim().length >= 1) {
+      const results = searchAssetCatalog(sym, formCategory)
+      setCatalogSuggestions(results)
+      setShowCatalogDropdown(results.length > 0)
+    } else {
+      setCatalogSuggestions([])
+      setShowCatalogDropdown(false)
+    }
+  }
+
+  const handleSelectCatalogItem = (item: CatalogAsset) => {
+    setFormName(item.name)
+    setFormSymbol(item.symbol)
+    setFormCategory(item.category)
+    if (item.defaultInstitution && !formInstitution) {
+      setFormInstitution(item.defaultInstitution)
+    }
+    setShowCatalogDropdown(false)
+    setCatalogSuggestions([])
+
+    // Automatically trigger live price fetch
+    fetch(
+      `/api/market-prices?symbol=${encodeURIComponent(item.symbol)}&category=${encodeURIComponent(
+        item.category
+      )}`
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.price) {
+          setFormCurrentPrice(d.price.toString())
+          setPriceNotice(`Canlı piyasa fiyatı aktarıldı: ₺${d.price}`)
+        }
+      })
+      .catch(() => {})
+  }
+
+  const handleOpenDcaModal = (item: Investment) => {
+    setDcaItem(item)
+    setDcaAddedQty('')
+    setDcaUnitPrice(item.current_price > 0 ? item.current_price.toString() : item.unit_cost.toString())
+  }
+
+  const handleSaveDca = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!dcaItem) return
+    const addedQty = parseFloat(dcaAddedQty.replace(',', '.'))
+    const purchasePrice = parseFloat(dcaUnitPrice.replace(',', '.'))
+
+    if (isNaN(addedQty) || addedQty <= 0 || isNaN(purchasePrice) || purchasePrice <= 0) {
+      alert('Lütfen geçerli bir miktar ve alış fiyatı giriniz.')
+      return
+    }
+
+    setDcaSubmitting(true)
+    try {
+      const dcaResult = calculateDcaAverageCost(
+        dcaItem.quantity,
+        dcaItem.unit_cost,
+        addedQty,
+        purchasePrice
+      )
+
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const { error } = await supabase
+          .from('investments')
+          .update({
+            quantity: dcaResult.newQuantity,
+            unit_cost: dcaResult.newUnitCost,
+            current_price: purchasePrice,
+            last_price_updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', dcaItem.id)
+
+        if (error) throw error
+        await loadInvestments()
+      } else {
+        const updated = investments.map((inv) =>
+          inv.id === dcaItem.id
+            ? {
+                ...inv,
+                quantity: dcaResult.newQuantity,
+                unit_cost: dcaResult.newUnitCost,
+                current_price: purchasePrice,
+                last_price_updated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }
+            : inv
+        )
+        syncLocal(updated)
+      }
+
+      setDcaItem(null)
+    } catch (err: any) {
+      alert(err.message || 'Kademeli alım kaydedilemedi.')
+    } finally {
+      setDcaSubmitting(false)
+    }
   }
 
   const handlePresetSelect = (preset: typeof COMMON_PRESETS[0]) => {
@@ -658,7 +820,7 @@ function InvestmentsContent() {
                         {formatCurrency(inv.unit_cost)}
                       </td>
 
-                      {/* Current Price */}
+                      {/* Current Price & Freshness Badge */}
                       <td className="p-3.5 text-right font-bold text-foreground">
                         <button
                           onClick={() => {
@@ -670,6 +832,22 @@ function InvestmentsContent() {
                         >
                           {formatCurrency(inv.current_price)}
                         </button>
+                        {(() => {
+                          const freshness = getPriceFreshness(inv.last_price_updated_at)
+                          return (
+                            <div
+                              className="flex items-center justify-end gap-1 text-[10px] mt-0.5"
+                              title={`Son güncelleme: ${
+                                inv.last_price_updated_at
+                                  ? new Date(inv.last_price_updated_at).toLocaleString('tr-TR')
+                                  : 'Bilinmiyor'
+                              }`}
+                            >
+                              <span className={`inline-block h-1.5 w-1.5 rounded-full ${freshness.dotClass}`} />
+                              <span className={freshness.colorClass}>{freshness.label}</span>
+                            </div>
+                          )
+                        })()}
                       </td>
 
                       {/* Total Value */}
@@ -700,6 +878,16 @@ function InvestmentsContent() {
                       {/* Actions */}
                       <td className="p-3.5 text-center font-sans">
                         <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenDcaModal(inv)}
+                            className="h-7 px-2 text-[11px] gap-1 text-primary border-primary/30 hover:bg-primary/10"
+                            title="Kademeli alım ekle (Ağırlıklı ortalama maliyeti otomatik hesaplar)"
+                          >
+                            <Layers className="h-3 w-3" />
+                            <span>+ Kademe</span>
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -770,25 +958,58 @@ function InvestmentsContent() {
             </div>
           )}
 
-          {/* Name & Symbol */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Varlık / Şirket Adı</label>
-              <Input
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="Örn: Türk Hava Yolları, Gram Altın..."
-                required
-              />
+          {/* Name & Symbol with Autocomplete */}
+          <div className="relative">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground">Varlık / Şirket Adı</label>
+                  <span className="text-[10px] text-muted-foreground">Akıllı Arama Aktif</span>
+                </div>
+                <Input
+                  value={formName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  placeholder="Örn: Türk Hava Yolları, Gram Altın, Koç..."
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Sembol / Kod</label>
+                <Input
+                  value={formSymbol}
+                  onChange={(e) => handleSymbolChange(e.target.value)}
+                  placeholder="THYAO, BTC"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Sembol / Kod</label>
-              <Input
-                value={formSymbol}
-                onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
-                placeholder="THYAO, BTC"
-              />
-            </div>
+
+            {/* Catalog Autocomplete Suggestions Dropdown */}
+            {showCatalogDropdown && catalogSuggestions.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                <div className="p-1.5 text-[10px] uppercase font-semibold text-muted-foreground bg-muted/40 border-b border-border/40 flex items-center justify-between">
+                  <span>Önerilen Varlıklar (Katalog)</span>
+                  <span>{catalogSuggestions.length} eşleşme</span>
+                </div>
+                <div className="divide-y divide-border/30">
+                  {catalogSuggestions.map((item) => (
+                    <button
+                      key={`${item.category}-${item.symbol}`}
+                      type="button"
+                      onClick={() => handleSelectCatalogItem(item)}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-muted/70 transition-colors flex items-center justify-between group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono text-[10px] group-hover:border-primary group-hover:text-primary">
+                          {item.symbol}
+                        </Badge>
+                        <span className="font-semibold text-foreground">{item.name}</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{item.category}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Category & Institution */}
@@ -946,6 +1167,161 @@ function InvestmentsContent() {
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* DCA (Kademeli Alım) Modal */}
+      {dcaItem && (
+        <Modal
+          isOpen={!!dcaItem}
+          onClose={() => setDcaItem(null)}
+          title={`Kademeli Alım (Ağırlıklı Maliyet Sihirbazı): ${dcaItem.name}`}
+        >
+          {(() => {
+            const addedQtyNum = parseFloat(dcaAddedQty.replace(',', '.')) || 0
+            const unitPriceNum = parseFloat(dcaUnitPrice.replace(',', '.')) || 0
+            const hasValidInputs = addedQtyNum > 0 && unitPriceNum > 0
+            const dcaRes = hasValidInputs
+              ? calculateDcaAverageCost(dcaItem.quantity, dcaItem.unit_cost, addedQtyNum, unitPriceNum)
+              : null
+
+            const costDiff = dcaRes ? round2(dcaRes.newUnitCost - dcaItem.unit_cost) : 0
+
+            return (
+              <form onSubmit={handleSaveDca} className="space-y-4">
+                {/* Mevcut Durum Kartı */}
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5">
+                  <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Wallet className="h-3.5 w-3.5 text-primary" />
+                    <span>Mevcut Portföy Pozisyonu</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-1 font-mono">
+                    <div>
+                      <span className="text-muted-foreground block text-[11px] font-sans">Mevcut Adet</span>
+                      <span className="font-semibold text-foreground">
+                        {dcaItem.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[11px] font-sans">Birim Maliyet</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(dcaItem.unit_cost)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[11px] font-sans">Toplam Maliyet</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(round2(dcaItem.quantity * dcaItem.unit_cost))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Yeni Alım Bilgileri */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">Alınan Yeni Miktar / Adet</label>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={dcaAddedQty}
+                      onChange={(e) => setDcaAddedQty(e.target.value)}
+                      placeholder="Örn: 50"
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground">Alış Fiyatı (₺)</label>
+                      {dcaItem.current_price > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setDcaUnitPrice(dcaItem.current_price.toString())}
+                          className="text-[10px] text-primary font-semibold hover:underline"
+                        >
+                          ⚡ Canlı Fiyat ({formatCurrency(dcaItem.current_price)})
+                        </button>
+                      )}
+                    </div>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={dcaUnitPrice}
+                      onChange={(e) => setDcaUnitPrice(e.target.value)}
+                      placeholder="Birim alış fiyatı"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Canlı DCA Hesaplama Sonuç Kartı */}
+                {dcaRes && (
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3.5 text-xs space-y-2">
+                    <div className="text-[11px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Yeni Ağırlıklı Ortalama Maliyet Sonucu</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="bg-background/70 p-2.5 rounded border border-border/50">
+                        <span className="text-muted-foreground block text-[11px]">Yeni Toplam Adet</span>
+                        <span className="font-mono text-sm font-bold text-foreground">
+                          {dcaRes.newQuantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
+                        </span>
+                        <span className="text-[10px] text-emerald-400 block font-mono">
+                          (+{addedQtyNum.toLocaleString('tr-TR')} adet eklendi)
+                        </span>
+                      </div>
+                      <div className="bg-background/70 p-2.5 rounded border border-border/50">
+                        <span className="text-muted-foreground block text-[11px]">Yeni Ortalama Maliyet</span>
+                        <span className="font-mono text-sm font-bold text-foreground">
+                          {formatCurrency(dcaRes.newUnitCost)}
+                        </span>
+                        <span
+                          className={`text-[10px] block font-mono ${
+                            costDiff <= 0 ? 'text-emerald-400' : 'text-amber-400'
+                          }`}
+                        >
+                          {costDiff > 0
+                            ? `+${formatCurrency(costDiff)} maliyet yükseldi`
+                            : costDiff < 0
+                            ? `${formatCurrency(costDiff)} maliyet düştü`
+                            : 'Maliyet değişmedi'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1 border-t border-border/40 font-mono">
+                      <span className="font-sans">Eklenen Yeni Sermaye:</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(round2(addedQtyNum * unitPriceNum))}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-muted-foreground font-mono">
+                      <span className="font-sans">Yeni Toplam Maliyet Havuzu:</span>
+                      <span className="font-bold text-foreground">
+                        {formatCurrency(dcaRes.totalCost)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setDcaItem(null)}>
+                    Vazgeç
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={dcaSubmitting || !hasValidInputs}
+                    className="font-semibold gap-1.5"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>{dcaSubmitting ? 'Kaydediliyor...' : 'Kademeyi Kaydet & Portföyü Güncelle'}</span>
+                  </Button>
+                </div>
+              </form>
+            )
+          })()}
         </Modal>
       )}
     </div>

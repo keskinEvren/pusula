@@ -136,4 +136,23 @@ describe('FinancialBridge Unit Tests', () => {
       expect(id).toBeNull()
     })
   })
+
+  describe('getLinkedInvestmentId helper', () => {
+    it('should extract investment id from description tag [INV:<uuid>]', async () => {
+      const { getLinkedInvestmentId } = await import('../src/lib/financial-bridge')
+      const id = getLinkedInvestmentId({
+        description: 'Midas Menkul Değerler Para Girişi [INV:inv-9988-aabb]',
+      })
+      expect(id).toBe('inv-9988-aabb')
+    })
+
+    it('should return null when no [INV:...] tag is present', async () => {
+      const { getLinkedInvestmentId } = await import('../src/lib/financial-bridge')
+      const id = getLinkedInvestmentId({
+        description: 'Migros Market Alışverişi',
+      })
+      expect(id).toBeNull()
+    })
+  })
 })
+
