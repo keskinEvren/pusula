@@ -12,6 +12,8 @@ import {
   Trash2,
   Tag,
   CheckCircle2,
+  FileText,
+  Edit3,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -22,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { MarkdownEditor } from '@/components/markdown'
 import { useToast } from '@/lib/toast-context'
 import type { Idea } from '@/types/database'
 
@@ -44,6 +47,16 @@ function IdeasContent() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [ideaForm, setIdeaForm] = useState({
+    title: '',
+    description: '',
+    status: 'inbox' as Idea['status'],
+    tags: '',
+  })
+
+  // Idea Detail & Edit Modal State
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null)
+  const [updatingIdea, setUpdatingIdea] = useState(false)
+  const [editForm, setEditForm] = useState({
     title: '',
     description: '',
     status: 'inbox' as Idea['status'],
@@ -126,6 +139,51 @@ function IdeasContent() {
       toast.error(err.message || 'Fikir eklenemedi')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleOpenIdeaDetail = (idea: Idea) => {
+    setSelectedIdea(idea)
+    setEditForm({
+      title: idea.title,
+      description: idea.description || '',
+      status: idea.status,
+      tags: (idea.tags || []).join(', '),
+    })
+  }
+
+  const handleSaveIdeaDetail = async () => {
+    if (!selectedIdea) return
+    setUpdatingIdea(true)
+    try {
+      const supabase = createClient()
+      const tagsArray = editForm.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+
+      const { data, error } = await supabase
+        .from('ideas')
+        .update({
+          title: editForm.title,
+          description: editForm.description,
+          status: editForm.status,
+          tags: tagsArray,
+        })
+        .eq('id', selectedIdea.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      if (data) {
+        setSelectedIdea(data)
+        setIdeas((prev) => prev.map((i) => (i.id === data.id ? data : i)))
+        toast.success('Fikir ve şartname başarıyla kaydedildi!')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Güncellenemedi')
+    } finally {
+      setUpdatingIdea(false)
     }
   }
 
@@ -271,23 +329,34 @@ function IdeasContent() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredIdeas.map((idea) => (
           <Card key={idea.id} className="border-border bg-card shadow-sm flex flex-col justify-between">
-            <CardHeader className="pb-3">
+            <CardHeader
+              className="pb-3 cursor-pointer hover:bg-muted/10 transition-colors rounded-t-xl group"
+              onClick={() => handleOpenIdeaDetail(idea)}
+            >
               <div className="flex items-start justify-between gap-2">
-                <CardTitle className="text-base font-semibold text-foreground line-clamp-1">
-                  {idea.title}
+                <CardTitle className="text-base font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-primary/70 shrink-0" />
+                  <span>{idea.title}</span>
                 </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(idea.id)}
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDelete(idea.id)}
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    title="Fikri Sil"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
-              {idea.description && (
-                <CardDescription className="text-xs line-clamp-3">
+              {idea.description ? (
+                <CardDescription className="text-xs line-clamp-3 mt-1 text-muted-foreground font-mono">
                   {idea.description}
+                </CardDescription>
+              ) : (
+                <CardDescription className="text-xs text-muted-foreground/60 italic mt-1">
+                  Şartname / not girilmedi. Tıklayarak ekleyin.
                 </CardDescription>
               )}
             </CardHeader>
@@ -305,13 +374,13 @@ function IdeasContent() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-3 border-t border-border">
+              <div className="flex items-center justify-between pt-3 border-t border-border gap-2">
                 <Select
                   value={idea.status}
                   onChange={(e) =>
                     handleStatusChange(idea.id, e.target.value as Idea['status'])
                   }
-                  className="h-7 text-xs w-36"
+                  className="h-7 text-xs w-32"
                 >
                   <option value="inbox">Gelenler</option>
                   <option value="maybe">Değerlendirilecek</option>
@@ -319,27 +388,40 @@ function IdeasContent() {
                   <option value="promoted">Projeye Dönüşen</option>
                 </Select>
 
-                {idea.status !== 'promoted' ? (
+                <div className="flex items-center gap-1.5">
                   <Button
                     size="sm"
-                    onClick={() => handleOpenPromoteModal(idea)}
-                    className="h-7 text-xs gap-1.5 shadow-sm"
+                    variant="ghost"
+                    onClick={() => handleOpenIdeaDetail(idea)}
+                    className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground"
+                    title="Şartnameyi Aç & Düzenle"
                   >
-                    <FolderPlus className="h-3.5 w-3.5" />
-                    Projeye Dönüştür
+                    <Edit3 className="h-3 w-3" />
+                    <span>İncele</span>
                   </Button>
-                ) : (
-                  <Link href="/projects">
+
+                  {idea.status !== 'promoted' ? (
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                      onClick={() => handleOpenPromoteModal(idea)}
+                      className="h-7 text-xs gap-1.5 shadow-sm px-2.5"
                     >
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                      Projelerde Gör
+                      <FolderPlus className="h-3.5 w-3.5" />
+                      <span>Projeye</span>
                     </Button>
-                  </Link>
-                )}
+                  ) : (
+                    <Link href="/projects">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 px-2"
+                      >
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                        <span>Projelerde</span>
+                      </Button>
+                    </Link>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -357,7 +439,8 @@ function IdeasContent() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title="Yeni Fikir Not Et"
-        description="Aklınıza gelen fikirleri hızlıca not alın."
+        description="Aklınıza gelen fikirleri, Markdown şartnamesi veya notlarıyla birlikte hızlıca kaydedin."
+        size="2xl"
       >
         <form onSubmit={handleAddIdea} className="space-y-4">
           <div className="space-y-1">
@@ -368,16 +451,6 @@ function IdeasContent() {
               value={ideaForm.title}
               onChange={(e) => setIdeaForm({ ...ideaForm, title: e.target.value })}
               className="text-xs"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Açıklama & Notlar</label>
-            <Textarea
-              placeholder="Bu fikir neyi çözer, kimin için faydalı? İlk düşünceler..."
-              value={ideaForm.description}
-              onChange={(e) => setIdeaForm({ ...ideaForm, description: e.target.value })}
-              className="text-xs min-h-[60px]"
             />
           </div>
 
@@ -407,6 +480,21 @@ function IdeasContent() {
             </div>
           </div>
 
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground">
+              Şartname & Notlar (Markdown)
+            </label>
+            <MarkdownEditor
+              value={ideaForm.description}
+              onChange={(val) => setIdeaForm({ ...ideaForm, description: val })}
+              docName={ideaForm.title || 'fikir-notu'}
+              title="Fikir Notları & Dokümantasyon"
+              placeholder="Fikir neyi çözer? MVP hedefleri, teknik stack veya - [ ] checklist maddeleri..."
+              minHeight="240px"
+              defaultMode="write"
+            />
+          </div>
+
           <div className="flex justify-end gap-2 pt-4 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
               İptal
@@ -416,6 +504,125 @@ function IdeasContent() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Idea Detail & Full Markdown Workspace Modal */}
+      <Modal
+        isOpen={!!selectedIdea}
+        onClose={() => setSelectedIdea(null)}
+        title={selectedIdea?.title || 'Fikir İncele'}
+        description="Fikir detaylarını, teknik şartnamesini ve Markdown notlarını yönetin."
+        size="2xl"
+      >
+        {selectedIdea && (
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Başlık</label>
+              <Input
+                required
+                value={editForm.title}
+                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Etiketler</label>
+                <Input
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                  placeholder="b2b, saas, ai"
+                  className="text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Durum</label>
+                <Select
+                  value={editForm.status}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, status: e.target.value as Idea['status'] })
+                  }
+                  className="text-xs"
+                >
+                  <option value="inbox">Gelenler</option>
+                  <option value="maybe">Değerlendirilecek</option>
+                  <option value="killed">Arşiv</option>
+                  <option value="promoted">Projeye Dönüşen</option>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Dokümantasyon & Şartname (Markdown)
+              </label>
+              <MarkdownEditor
+                value={editForm.description}
+                onChange={(val) => setEditForm({ ...editForm, description: val })}
+                onSave={handleSaveIdeaDetail}
+                docName={editForm.title || 'fikir-sartname'}
+                title={`${editForm.title || 'Fikir'} - Şartname & Notlar`}
+                placeholder="Teknik mimari, kullanıcı senaryoları, API gereksinimleri..."
+                minHeight="340px"
+                defaultMode="split"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  const id = selectedIdea.id
+                  setSelectedIdea(null)
+                  handleDelete(id)
+                }}
+                className="h-8 text-xs text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Fikri Sil
+              </Button>
+
+              <div className="flex items-center gap-2">
+                {selectedIdea.status !== 'promoted' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const target = selectedIdea
+                      setSelectedIdea(null)
+                      handleOpenPromoteModal(target)
+                    }}
+                    className="h-8 text-xs gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5" />
+                    Projeye Dönüştür
+                  </Button>
+                )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSelectedIdea(null)}
+                  className="h-8 text-xs"
+                >
+                  Kapat
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleSaveIdeaDetail}
+                  disabled={updatingIdea}
+                  className="h-8 text-xs font-semibold gap-1.5"
+                >
+                  {updatingIdea ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Promote to Project Modal */}
