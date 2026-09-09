@@ -20,6 +20,7 @@ import {
   Lightbulb,
   ChevronDown,
   TrendingUp,
+  Sparkles,
 } from 'lucide-react'
 
 interface HeaderProps {
@@ -28,6 +29,7 @@ interface HeaderProps {
 
 const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   '': { category: 'Genel', title: 'Komuta Merkezi' },
+  dreams: { category: 'Genel', title: 'Hayallerim & Vizyon' },
   transactions: { category: 'Finans', title: 'Hareketler' },
   import: { category: 'Finans', title: 'Ekstre Merkezi' },
   imports: { category: 'Finans', title: 'Ekstre Geçmişi' },
@@ -208,6 +210,15 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               >
                 <Lightbulb className="h-3.5 w-3.5 text-yellow-400" />
                 <span>Hızlı Fikir Not Et</span>
+              </Link>
+              <div className="my-1 border-t border-border/50" />
+              <Link
+                href="/dreams?new=true"
+                onClick={() => setIsQuickAddOpen(false)}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                <span>+ Hayal / Hedef Ekle</span>
               </Link>
             </div>
           )}

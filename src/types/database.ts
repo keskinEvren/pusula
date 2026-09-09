@@ -581,6 +581,68 @@ export interface Database {
         }
         Relationships: []
       }
+      dreams: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          description: string | null
+          identity_persona: string | null
+          motivation_why: string | null
+          horizon: 'horizon_1y' | 'horizon_1_3y' | 'horizon_3_5y' | 'horizon_lifetime'
+          category: string
+          status: 'active' | 'incubating' | 'achieved' | 'archived'
+          next_focus_note: string | null
+          cover_image_url: string | null
+          target_year: string | null
+          achieved_at: string | null
+          achieved_note: string | null
+          achieved_image_url: string | null
+          order_index: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          description?: string | null
+          identity_persona?: string | null
+          motivation_why?: string | null
+          horizon?: 'horizon_1y' | 'horizon_1_3y' | 'horizon_3_5y' | 'horizon_lifetime'
+          category?: string
+          status?: 'active' | 'incubating' | 'achieved' | 'archived'
+          next_focus_note?: string | null
+          cover_image_url?: string | null
+          target_year?: string | null
+          achieved_at?: string | null
+          achieved_note?: string | null
+          achieved_image_url?: string | null
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          description?: string | null
+          identity_persona?: string | null
+          motivation_why?: string | null
+          horizon?: 'horizon_1y' | 'horizon_1_3y' | 'horizon_3_5y' | 'horizon_lifetime'
+          category?: string
+          status?: 'active' | 'incubating' | 'achieved' | 'archived'
+          next_focus_note?: string | null
+          cover_image_url?: string | null
+          target_year?: string | null
+          achieved_at?: string | null
+          achieved_note?: string | null
+          achieved_image_url?: string | null
+          order_index?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -611,4 +673,5 @@ export type ProjectTask = Database['public']['Tables']['project_tasks']['Row']
 export type Idea = Database['public']['Tables']['ideas']['Row']
 export type MerchantMapping = Database['public']['Tables']['merchant_mappings']['Row']
 export type Investment = Database['public']['Tables']['investments']['Row']
+export type Dream = Database['public']['Tables']['dreams']['Row']
 
