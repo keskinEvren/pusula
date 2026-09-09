@@ -476,8 +476,8 @@ export function calculateMonthlyCashFlow(
       desc.includes('gönd:') ||
       merch.includes('vakıf katılım')
 
-    if (type === 'Gelir' || group === 'Gelir') {
-      if (!isInternalTransfer || desc.includes('maaş')) {
+    if (type === 'Gelir' || type === 'Tahsilat' || group === 'Gelir' || group === 'Tahsilat') {
+      if (!isInternalTransfer || desc.includes('maaş') || desc.includes('tahsilat') || desc.includes('hızır')) {
         totalInflow = round2(totalInflow + amount)
         inflowCount++
       }
