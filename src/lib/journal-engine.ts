@@ -302,7 +302,11 @@ export function buildDayContextSummary(
   const dayTxs = transactions.filter(
     (t) =>
       t.date === dateStr &&
-      t.amount < 0 &&
+      (t.type === 'Harcama' || t.amount < 0) &&
+      t.type !== 'Gelir' &&
+      t.type !== 'Tahsilat' &&
+      t.type !== 'Transfer' &&
+      t.type !== 'Kart Ödemesi' &&
       t.analysis_group !== 'Hariç'
   )
 
