@@ -468,16 +468,17 @@ export function calculateMonthlyCashFlow(
     const type = t.type || ''
     const group = t.analysis_group || ''
 
-    // İç transferleri filtrele (kendi hesapları arasındaki FAST/Havale)
-    // Maaş veya harici gelirleri al
+    // Kendi hesapları ve kartları arasındaki iç transferleri filtrele (mükerrerliği önle)
     const isInternalTransfer =
       desc.includes('fast anlık ödeme') ||
       desc.includes('transfer') ||
       desc.includes('gönd:') ||
-      merch.includes('vakıf katılım')
+      merch.includes('vakıf katılım') ||
+      type === 'Transfer' ||
+      group === 'Transfer'
 
     if (type === 'Gelir' || type === 'Tahsilat' || group === 'Gelir' || group === 'Tahsilat') {
-      if (!isInternalTransfer || desc.includes('maaş') || desc.includes('tahsilat') || desc.includes('hızır')) {
+      if (!isInternalTransfer || desc.includes('maaş') || desc.includes('ücret') || desc.includes('hakediş')) {
         totalInflow = round2(totalInflow + amount)
         inflowCount++
       }
