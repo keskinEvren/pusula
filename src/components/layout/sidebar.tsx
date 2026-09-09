@@ -18,6 +18,7 @@ import {
   Compass,
   Sparkles,
   Orbit,
+  BookOpen,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,7 @@ const navGroups: NavGroup[] = [
     title: 'Genel',
     items: [
       { name: 'Komuta Merkezi', href: '/', icon: LayoutDashboard },
+      { name: 'Seyir Defteri', href: '/journal', icon: BookOpen },
       { name: 'Hayallerim & Vizyon', href: '/dreams', icon: Sparkles },
       { name: 'Günlük Rutinler & Gökyüzü', href: '/routines', icon: Orbit },
     ],
