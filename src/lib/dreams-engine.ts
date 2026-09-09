@@ -12,10 +12,10 @@ export interface VisionWallpaper {
 }
 
 export const DREAM_HORIZONS: { key: DreamHorizon; label: string; shortLabel: string; icon: string }[] = [
-  { key: 'horizon_1y', label: '🎯 Yakın Radar (0 - 12 Ay)', shortLabel: '0 - 12 Ay', icon: '🎯' },
-  { key: 'horizon_1_3y', label: '🏔️ Orta Vade (1 - 3 Yıl)', shortLabel: '1 - 3 Yıl', icon: '🏔️' },
-  { key: 'horizon_3_5y', label: '🌌 Gelecek (3 - 5+ Yıl)', shortLabel: '3 - 5+ Yıl', icon: '🌌' },
-  { key: 'horizon_lifetime', label: '♾️ Kuzey Yıldızı (Ömür Boyu)', shortLabel: 'Ömür Boyu', icon: '♾️' },
+  { key: 'horizon_1y', label: 'Kısa Vade (0 - 12 Ay)', shortLabel: '0 - 12 Ay', icon: '' },
+  { key: 'horizon_1_3y', label: 'Orta Vade (1 - 3 Yıl)', shortLabel: '1 - 3 Yıl', icon: '' },
+  { key: 'horizon_3_5y', label: 'Uzun Vade (3 - 5 Yıl)', shortLabel: '3 - 5 Yıl', icon: '' },
+  { key: 'horizon_lifetime', label: 'Uzun Vade (Ömür Boyu)', shortLabel: 'Ömür Boyu', icon: '' },
 ]
 
 export const DREAM_CATEGORIES = [
@@ -121,7 +121,7 @@ export const CURATED_VISION_WALLPAPERS: VisionWallpaper[] = [
  */
 export function formatHorizonLabel(horizon?: string | null): string {
   const found = DREAM_HORIZONS.find((h) => h.key === horizon)
-  return found ? found.label : '🏔️ Orta Vade (1 - 3 Yıl)'
+  return found ? found.label : 'Orta Vade (1 - 3 Yıl)'
 }
 
 /**

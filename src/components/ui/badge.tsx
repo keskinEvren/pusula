@@ -2,18 +2,19 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'purple'
+  variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'muted' | 'purple'
 }
 
 function Badge({ className, variant = 'default', ...props }: BadgeProps) {
   const variants = {
     default: 'border-transparent bg-primary text-primary-foreground',
     secondary: 'border-transparent bg-secondary text-secondary-foreground',
-    destructive: 'border-transparent bg-destructive/15 text-destructive border border-destructive/30',
-    outline: 'border-border text-foreground',
-    success: 'border-transparent bg-success/15 text-success border border-success/30',
-    warning: 'border-transparent bg-amber-500/15 text-amber-400 border border-amber-500/30',
-    purple: 'border-transparent bg-purple-500/15 text-purple-400 border border-purple-500/30',
+    destructive: 'border-destructive/25 bg-destructive/10 text-destructive',
+    outline: 'border-border text-foreground/80 bg-transparent',
+    muted: 'border-border/60 bg-muted/60 text-muted-foreground',
+    success: 'border-success/25 bg-success/10 text-success',
+    warning: 'border-warning/25 bg-warning/10 text-warning',
+    purple: 'border-purple-500/25 bg-purple-500/10 text-purple-400',
   }
 
   return (

@@ -26,10 +26,10 @@ import { useToast } from '@/lib/toast-context'
 import type { Idea } from '@/types/database'
 
 const TABS = [
-  { key: 'inbox', label: '📥 Gelen Kutusu (Inbox)' },
-  { key: 'maybe', label: '🤔 Belki (Maybe)' },
-  { key: 'killed', label: '💀 İptal Edilenler (Killed)' },
-  { key: 'promoted', label: '🚀 Projeye Dönüşenler' },
+  { key: 'inbox', label: 'Gelenler' },
+  { key: 'maybe', label: 'Değerlendirilecekler' },
+  { key: 'killed', label: 'Arşiv' },
+  { key: 'promoted', label: 'Projeye Dönüşenler' },
 ]
 
 function IdeasContent() {
@@ -229,12 +229,12 @@ function IdeasContent() {
     <div className="space-y-6">
       {/* Top PageHeader */}
       <PageHeader
-        title="Fikir Kuluçkası (Ideas)"
-        description="Aklınıza gelen fikirleri not edin, değerlendirin ve olgunlaşınca tek tıkla projeye dönüştürün."
+        title="Fikirler"
+        description="Yeni fikirlerinizi kaydedin, değerlendirin ve hayata geçirmek için projeye dönüştürün."
         actions={
           <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm text-xs h-9 font-semibold">
             <Plus className="h-4 w-4" />
-            Yeni Fikir Not Et
+            Yeni Fikir
           </Button>
         }
       />
@@ -273,7 +273,7 @@ function IdeasContent() {
           <Card key={idea.id} className="border-border bg-card shadow-sm flex flex-col justify-between">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
-                <CardTitle className="text-base font-bold text-foreground line-clamp-1">
+                <CardTitle className="text-base font-semibold text-foreground line-clamp-1">
                   {idea.title}
                 </CardTitle>
                 <Button
@@ -311,12 +311,12 @@ function IdeasContent() {
                   onChange={(e) =>
                     handleStatusChange(idea.id, e.target.value as Idea['status'])
                   }
-                  className="h-7 text-xs w-32"
+                  className="h-7 text-xs w-36"
                 >
-                  <option value="inbox">📥 Inbox</option>
-                  <option value="maybe">🤔 Maybe</option>
-                  <option value="killed">💀 Killed</option>
-                  <option value="promoted">🚀 Promoted</option>
+                  <option value="inbox">Gelenler</option>
+                  <option value="maybe">Değerlendirilecek</option>
+                  <option value="killed">Arşiv</option>
+                  <option value="promoted">Projeye Dönüşen</option>
                 </Select>
 
                 {idea.status !== 'promoted' ? (
@@ -401,8 +401,8 @@ function IdeasContent() {
                 }
                 className="text-xs"
               >
-                <option value="inbox">📥 Inbox</option>
-                <option value="maybe">🤔 Maybe</option>
+                <option value="inbox">Gelenler</option>
+                <option value="maybe">Değerlendirilecek</option>
               </Select>
             </div>
           </div>

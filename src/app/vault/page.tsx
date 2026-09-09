@@ -343,76 +343,76 @@ function VaultPageContent() {
 
   return (
     <div className="space-y-6">
-      {/* 1. Üst Başlık ve Veri Egemenliği Rozeti */}
+      {/* 1. Üst Başlık ve Rozet */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageHeader
-          title="Kişisel Kasa & Veri Bağımsızlığı"
-          description="Pusula'daki tüm finans, üretim, hayal ve günlük verilerin mutlak kontrolü senin elinde."
+          title="Veri ve Yedekleme"
+          description="Tüm finansal hareketlerinizi, projelerinizi ve sistem kayıtlarınızı tek dosyada yedekleyin veya geri yükleyin."
         />
 
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1.5 text-xs py-1 px-3 shadow-sm"
+            className="border-border text-foreground gap-1.5 text-xs py-1 px-3 shadow-sm"
           >
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Sıfır Bulut Bağımlılığı • İstemci Tarafı Güvenlik</span>
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+            <span>İstemci Tarafı Şifreleme</span>
           </Badge>
         </div>
       </div>
 
-      {/* 2. Kasa Envanteri KPI Kartları */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="border-border/60 bg-card/40 p-3.5 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
-            <Database className="h-5 w-5" />
+      {/* 2. Unified Segmented Metric Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Toplam Kayıt
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {currentManifest.total_records.toLocaleString()}
           </div>
-          <div>
-            <div className="text-xl font-bold">{currentManifest.total_records.toLocaleString()}</div>
-            <div className="text-[11px] text-muted-foreground">Toplam Kasa Kaydı</div>
-          </div>
-        </Card>
+          <p className="text-[11px] text-muted-foreground">Tüm tablolardaki kayıtlar</p>
+        </div>
 
-        <Card className="border-border/60 bg-card/40 p-3.5 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400">
-            <Layers className="h-5 w-5" />
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Kapsanan Modüller
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            15 Modül
           </div>
-          <div>
-            <div className="text-xl font-bold">15 Modül</div>
-            <div className="text-[11px] text-muted-foreground">Kapsanan Tablo</div>
-          </div>
-        </Card>
+          <p className="text-[11px] text-muted-foreground">İlişkili veritabanı tabloları</p>
+        </div>
 
-        <Card className="border-border/60 bg-card/40 p-3.5 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400">
-            <HardDrive className="h-5 w-5" />
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Tahmini Boyut
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            ~{currentManifest.estimated_size_kb} KB
           </div>
-          <div>
-            <div className="text-xl font-bold">~{currentManifest.estimated_size_kb} KB</div>
-            <div className="text-[11px] text-muted-foreground">Tahmini Veri Hacmi</div>
-          </div>
-        </Card>
+          <p className="text-[11px] text-muted-foreground">Sıkıştırılmamış JSON hacmi</p>
+        </div>
 
-        <Card className="border-border/60 bg-card/40 p-3.5 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
-            <Lock className="h-5 w-5" />
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Güvenlik Standardı
+          </p>
+          <div className="text-lg font-semibold tracking-tight text-foreground">
+            AES-GCM-256
           </div>
-          <div>
-            <div className="text-sm font-semibold text-emerald-400">AES-GCM-256</div>
-            <div className="text-[11px] text-muted-foreground">Donanım Seviyesi Şifreleme</div>
-          </div>
-        </Card>
+          <p className="text-[11px] text-muted-foreground">PBKDF2 anahtar türetimi</p>
+        </div>
       </div>
 
       {/* 3. Sekme Navigasyonu */}
-      <div className="flex items-center gap-2 border-b border-border/60 pb-2">
+      <div className="flex items-center gap-2 border-b border-border pb-2">
         <button
           type="button"
           onClick={() => setActiveTab('export')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'export'
               ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
           <Download className="h-3.5 w-3.5" />
@@ -425,11 +425,11 @@ function VaultPageContent() {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'restore'
               ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
           <Upload className="h-3.5 w-3.5" />
-          <span>Geri Yükleme Sihirbazı</span>
+          <span>Yedekten Geri Yükle</span>
         </button>
 
         <button
@@ -438,11 +438,11 @@ function VaultPageContent() {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'diagnostics'
               ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
           <FolderArchive className="h-3.5 w-3.5" />
-          <span>Kasa Envanteri & Teşhis</span>
+          <span>Veri Envanteri</span>
         </button>
       </div>
 
@@ -568,10 +568,9 @@ function VaultPageContent() {
                       className="flex items-center justify-between p-2 rounded-lg bg-background/50 border border-border/40"
                     >
                       <div className="flex items-center gap-2">
-                        <span>{info.icon}</span>
                         <span className="font-medium text-foreground">{info.label}</span>
                       </div>
-                      <Badge variant="outline" className="text-[10px] font-mono">
+                      <Badge variant="outline" className="text-[10px] tabular-nums">
                         {count} kayıt
                       </Badge>
                     </div>
@@ -815,19 +814,16 @@ function VaultPageContent() {
                   const count = currentManifest.counts[key as keyof PusulaVaultData] || 0
                   return (
                     <div key={key} className="py-2.5 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-base">{meta.icon}</span>
-                        <div>
-                          <div className="font-semibold text-foreground">{meta.label}</div>
-                          <div className="text-[10px] text-muted-foreground font-mono">public.{key}</div>
-                        </div>
+                      <div>
+                        <div className="font-medium text-foreground">{meta.label}</div>
+                        <div className="text-[10px] text-muted-foreground font-mono">public.{key}</div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <span className="text-[11px] text-muted-foreground font-medium">
+                        <span className="text-[11px] text-muted-foreground">
                           {meta.category}
                         </span>
-                        <Badge variant="outline" className="font-mono text-xs">
+                        <Badge variant="outline" className="tabular-nums text-xs">
                           {count} kayıt
                         </Badge>
                       </div>
@@ -848,7 +844,7 @@ export default function VaultPage() {
     <Suspense
       fallback={
         <div className="p-8 text-center text-muted-foreground text-sm">
-          Kişisel Kasa yükleniyor...
+          Veri ve yedekleme yükleniyor...
         </div>
       }
     >

@@ -450,8 +450,8 @@ function RoutinesPageContent() {
       {/* 1. Üst Başlık & Kontroller */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageHeader
-          title="Günlük Rutinler & Gökyüzü"
-          description="Günün ritmini yakala, zincirleri kenetle ve kendi takımyıldızını gökyüzünde inşa et."
+          title="Rutinler & Alışkanlıklar"
+          description="Günlük alışkanlıklarınızı takip edin, tutarlılık zincirini koruyun ve aylık ritminizi inceleyin."
         />
 
         <div className="flex items-center gap-2">
@@ -461,23 +461,23 @@ function RoutinesPageContent() {
             onClick={() => setIsLowBattery(!isLowBattery)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
               isLowBattery
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/10'
-                : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted'
+                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-sm'
+                : 'bg-card text-muted-foreground border-border hover:bg-muted'
             }`}
-            title="Enerjinin düşük olduğu günlerde rutinleri 2 dakikalık mikro-doz versiyonuna çevirir. Zincirin yanmaz!"
+            title="Enerjinizin düşük olduğu günlerde rutinleri 2 dakikalık mikro versiyonuna çevirir."
           >
             {isLowBattery ? (
-              <BatteryCharging className="h-4 w-4 text-amber-400 animate-pulse" />
+              <BatteryCharging className="h-4 w-4 text-amber-400" />
             ) : (
               <Battery className="h-4 w-4" />
             )}
-            <span>{isLowBattery ? 'Düşük Pil: Minimum Doz Aktif' : 'Düşük Pil Modu'}</span>
+            <span>{isLowBattery ? 'Düşük Enerji Modu Aktif' : 'Düşük Enerji Modu'}</span>
           </button>
 
           {/* Yeni Rutin Ekle Butonu */}
           <Button onClick={handleOpenCreateModal} className="gap-2">
             <Plus className="h-4 w-4" />
-            <span>Yeni Rutin Ekle</span>
+            <span>Yeni Rutin</span>
           </Button>
         </div>
       </div>
@@ -587,7 +587,7 @@ function RoutinesPageContent() {
                 </div>
                 <span className="text-[11px] text-muted-foreground">
                   {dailyCompletion.percent === 100
-                    ? 'Gökyüzü tamamen kenetlendi'
+                    ? 'Tüm rutinler tamamlandı'
                     : `${dailyCompletion.totalActive - dailyCompletion.completedCount} adım kaldı`}
                 </span>
               </div>
@@ -596,10 +596,10 @@ function RoutinesPageContent() {
 
           {/* Düşük Pil Uyarısı */}
           {isLowBattery && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center gap-2">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center gap-2">
               <BatteryCharging className="h-4 w-4 shrink-0 text-amber-400" />
               <span>
-                <strong>Düşük Pil Modu Açık:</strong> Bugün yüksek irade gerektiren hedefler yerine sadece 2 dakikalık <em>Minimum Etkili Dozları</em> tamamla. Ateşi söndürmediğin sürece zincir kırılmaz!
+                <strong>Düşük Enerji Modu:</strong> Yoğun hedefler yerine 2 dakikalık <em>Minimum Etkili Dozları</em> uygulayarak devamlılığı koruyabilirsiniz.
               </span>
             </div>
           )}
@@ -812,36 +812,33 @@ function RoutinesPageContent() {
           )}
         </div>
 
-        {/* SAĞ SÜTUN: TAKIMYILDIZI TUVALİ & AYLIK TAKVİM (lg:col-span-5) */}
+        {/* SAĞ SÜTUN: ALIŞKANLIK AĞI & AYLIK TAKVİM (lg:col-span-5) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* ÜST KUTU: İNTERAKTİF TAKIMYILDIZI GÖKYÜZÜ (COSMOS CANVAS) */}
-          <Card className="border-border/60 bg-[#070a14] overflow-hidden relative shadow-xl">
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
+          {/* ÜST KUTU: İNTERAKTİF ALIŞKANLIK AĞI */}
+          <Card className="border-border bg-card overflow-hidden relative shadow-sm">
+            <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4 text-emerald-400" />
-                  <h3 className="text-sm font-semibold text-white tracking-wide">
-                    Takımyıldızı Gökyüzü
+                  <Target className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground tracking-wide">
+                    Alışkanlık & Ritim Ağı
                   </h3>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-muted-foreground mt-0.5">
                   {constellationGraph.formationDescription}
                 </p>
               </div>
 
               <Badge
                 variant="outline"
-                className="border-emerald-500/40 text-emerald-300 bg-emerald-500/10 text-xs px-2"
+                className="text-xs px-2 text-foreground border-border"
               >
                 {constellationGraph.formationName}
               </Badge>
             </div>
 
-            {/* Kozmik SVG Alanı */}
-            <div className="relative w-full aspect-square max-h-[360px] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-950/40 via-[#070a14] to-[#04060b] flex items-center justify-center p-4">
-              {/* Arka Plan Tozu & Rastgele Minik Yıldızlar */}
-              <div className="absolute inset-0 opacity-40 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
-
+            {/* SVG Alanı */}
+            <div className="relative w-full aspect-square max-h-[360px] bg-muted/20 flex items-center justify-center p-4">
               <svg viewBox="0 0 100 100" className="w-full h-full relative z-10 overflow-visible">
                 <defs>
                   <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -850,7 +847,7 @@ function RoutinesPageContent() {
                   </filter>
                   <linearGradient id="activeBeam" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#10b981" stopOpacity="0.9" />
-                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0.9" />
                   </linearGradient>
                 </defs>
 
@@ -924,8 +921,8 @@ function RoutinesPageContent() {
               {constellationGraph.nodes.length === 0 && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
                   <Compass className="h-8 w-8 text-slate-600 mb-2" />
-                  <p className="text-xs text-slate-400">
-                    Rutin eklediğinizde gökyüzü haritası aydınlanacaktır.
+                  <p className="text-xs text-muted-foreground">
+                    Rutin eklediğinizde aktivite haritası görüntülenecektir.
                   </p>
                 </div>
               )}

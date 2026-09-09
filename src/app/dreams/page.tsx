@@ -430,8 +430,8 @@ function DreamsContent() {
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Hayallerim & Vizyon"
-        description="Nereye gitmek istiyorsun, kime dönüşmek istiyorsun? Hayat vizyonunu zaman ufuklarına yerleştir ve kişisel zaferlerini kutla."
+        title="Hedefler & Vizyon"
+        description="Kişisel hedeflerinizi zaman dilimlerine göre planlayın, takip edin ve tamamlananları arşivleyin."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -439,10 +439,10 @@ function DreamsContent() {
               size="sm"
               onClick={handleOpenZenMode}
               disabled={activeDreams.length === 0}
-              className="gap-2 h-9 text-xs font-semibold shadow-sm border-primary/30 hover:bg-primary/10 text-primary"
+              className="gap-2 h-9 text-xs font-semibold shadow-sm border-border text-foreground hover:bg-muted"
             >
               <Maximize2 className="h-3.5 w-3.5" />
-              <span>🧘 Vizyon Modu (Zen)</span>
+              <span>Odak Görünümü</span>
             </Button>
             <Button
               onClick={() => handleOpenAddModal(activeTab === 'incubating' ? 'incubating' : 'active')}
@@ -450,85 +450,53 @@ function DreamsContent() {
               className="gap-2 h-9 text-xs font-semibold shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
-              <span>+ Yeni Hedef Ekle</span>
+              <span>Yeni Hedef</span>
             </Button>
           </div>
         }
       />
 
-      {/* Hero Overview Metric Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Active Focus */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Aktif Odaklar
-              </p>
-              <div className="text-2xl font-bold font-mono text-foreground mt-0.5">
-                {metrics.activeCount}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Zaman tünelindeki canlı hedefler</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-              <Star className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Unified Segmented Metric Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Aktif Hedefler
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {metrics.activeCount}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Aktif takipteli hedefler</p>
+        </div>
 
-        {/* Horizons Breakdown */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Yakın Radar (Bu Yıl)
-              </p>
-              <div className="text-2xl font-bold font-mono text-emerald-400 mt-0.5">
-                {metrics.horizonCounts.horizon_1y}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">0-12 ay içinde gerçekleşecek</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-              <Target className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Kısa Vade (1 Yıl)
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {metrics.horizonCounts.horizon_1y}
+          </div>
+          <p className="text-[11px] text-muted-foreground">12 ay içinde planlanan</p>
+        </div>
 
-        {/* Incubating Ideas */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Kuluçka Havuzu
-              </p>
-              <div className="text-2xl font-bold font-mono text-cyan-400 mt-0.5">
-                {metrics.incubatingCount}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Zamanı bekleyen ham arzular</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
-              <Egg className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Bekleyenler
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {metrics.incubatingCount}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Değerlendirme aşamasında</p>
+        </div>
 
-        {/* Hall of Triumphs */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Zafer Müzesi
-              </p>
-              <div className="text-2xl font-bold font-mono text-amber-400 mt-0.5">
-                {metrics.achievedCount}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Gerçekleşmiş kişisel başarılar</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
-              <Trophy className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Tamamlananlar
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {metrics.achievedCount}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Ulaşılan hedefler</p>
+        </div>
       </div>
 
       {/* Main Tabs Navigation */}
@@ -542,8 +510,8 @@ function DreamsContent() {
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            <Star className="h-3.5 w-3.5" />
-            <span>⭐ Aktif Vizyon & Ufuklar ({activeDreams.length})</span>
+            <Target className="h-3.5 w-3.5" />
+            <span>Aktif Hedefler ({activeDreams.length})</span>
           </button>
 
           <button
@@ -554,20 +522,20 @@ function DreamsContent() {
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            <Egg className="h-3.5 w-3.5" />
-            <span>🥚 Kuluçka Havuzu ({incubatingDreams.length})</span>
+            <Clock className="h-3.5 w-3.5" />
+            <span>Bekleyenler ({incubatingDreams.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('achieved')}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold whitespace-nowrap transition-all ${
               activeTab === 'achieved'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
+                ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            <Trophy className="h-3.5 w-3.5 text-amber-400" />
-            <span>🏆 Zafer Müzesi ({achievedDreams.length})</span>
+            <Trophy className="h-3.5 w-3.5" />
+            <span>Tamamlananlar ({achievedDreams.length})</span>
           </button>
         </div>
 
@@ -594,7 +562,6 @@ function DreamsContent() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <span>{h.icon}</span>
                 <span>{h.shortLabel}</span>
               </button>
             ))}
@@ -657,8 +624,8 @@ function DreamsContent() {
 
                     {/* Year / Date badge */}
                     {dream.target_year && (
-                      <div className="absolute bottom-2.5 right-3 text-[11px] font-mono font-semibold text-foreground/90 bg-background/80 backdrop-blur-md px-2 py-0.5 rounded-full border border-border/60">
-                        🗓️ {dream.target_year}
+                      <div className="absolute bottom-2.5 right-3 text-[11px] font-medium text-foreground/90 bg-background/80 backdrop-blur-md px-2 py-0.5 rounded-md border border-border/60">
+                        {dream.target_year}
                       </div>
                     )}
                   </div>
@@ -668,14 +635,13 @@ function DreamsContent() {
                     <div className="space-y-2">
                       {/* Identity Tag */}
                       {dream.identity_persona && (
-                        <div className="flex items-center gap-1 text-[11px] font-medium text-amber-400">
-                          <Sparkles className="h-3 w-3 shrink-0" />
+                        <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                           <span>{dream.identity_persona}</span>
                         </div>
                       )}
 
                       {/* Title */}
-                      <h3 className="text-base font-bold text-foreground leading-snug group-hover:text-primary transition-colors">
+                      <h3 className="text-base font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">
                         {dream.title}
                       </h3>
 
@@ -689,7 +655,7 @@ function DreamsContent() {
                       {/* Motivation Why */}
                       {dream.motivation_why && (
                         <div className="rounded-lg bg-muted/40 p-2.5 border border-border/50 text-[11px] text-muted-foreground italic flex gap-1.5">
-                          <Quote className="h-3 w-3 shrink-0 text-primary opacity-60 mt-0.5" />
+                          <Quote className="h-3 w-3 shrink-0 text-muted-foreground opacity-60 mt-0.5" />
                           <span className="line-clamp-2">{dream.motivation_why}</span>
                         </div>
                       )}
@@ -698,9 +664,9 @@ function DreamsContent() {
                     {/* Bottom: Next Focus Note + Actions */}
                     <div className="pt-2 space-y-3 border-t border-border/60">
                       {dream.next_focus_note && (
-                        <div className="flex items-center gap-1.5 text-[11px] bg-primary/10 text-primary px-2.5 py-1.5 rounded-md border border-primary/20">
-                          <Target className="h-3.5 w-3.5 shrink-0" />
-                          <span className="font-semibold truncate">
+                        <div className="flex items-center gap-1.5 text-[11px] bg-muted/60 text-foreground px-2.5 py-1.5 rounded-md border border-border">
+                          <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="font-medium truncate">
                             Sıradaki Odak: {dream.next_focus_note}
                           </span>
                         </div>
@@ -711,10 +677,10 @@ function DreamsContent() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenCelebration(dream)}
-                          className="h-7 px-2.5 text-[11px] font-semibold gap-1 text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                          className="h-7 px-2.5 text-[11px] font-medium gap-1 text-foreground border-border hover:bg-muted"
                         >
-                          <Trophy className="h-3 w-3" />
-                          <span>Gerçekleşti!</span>
+                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                          <span>Tamamla</span>
                         </Button>
 
                         <div className="flex items-center gap-1">
@@ -722,10 +688,10 @@ function DreamsContent() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDemoteToIncubating(dream)}
-                            className="h-7 w-7 text-muted-foreground hover:text-cyan-400"
-                            title="Kuluçka havuzuna taşı"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="Bekleyenlere taşı"
                           >
-                            <Egg className="h-3.5 w-3.5" />
+                            <Clock className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -756,40 +722,40 @@ function DreamsContent() {
         </div>
       )}
 
-      {/* Tab 2: Incubating Dreams (Kuluçka Havuzu) */}
+      {/* Tab 2: Incubating Dreams (Bekleyen Hedefler) */}
       {activeTab === 'incubating' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 flex items-center justify-between">
+          <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-between shadow-sm">
             <div className="space-y-0.5">
-              <h4 className="text-xs font-semibold text-cyan-400 flex items-center gap-1.5">
-                <Egg className="h-4 w-4" />
-                <span>Kuluçka Havuzu (Someday / Maybe)</span>
+              <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span>Bekleyen Hedefler</span>
               </h4>
               <p className="text-[11px] text-muted-foreground">
-                Henüz zamanı netleşmemiş, aklına gelen ham arzular. Zamanı geldiğinde tek tıkla aktif vizyona taşıyabilirsin.
+                Zamanı henüz netleşmemiş veya ileri bir tarihte değerlendirilecek hedefler.
               </p>
             </div>
             <Button
               size="sm"
               variant="outline"
               onClick={() => handleOpenAddModal('incubating')}
-              className="text-xs font-semibold gap-1 shrink-0"
+              className="text-xs font-medium gap-1 shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Yeni Fikir Ekle</span>
+              <span>Yeni Hedef Ekle</span>
             </Button>
           </div>
 
           {incubatingDreams.length === 0 ? (
             <Card className="border-border border-dashed p-10 text-center bg-card/40">
-              <p className="text-xs text-muted-foreground">Kuluçka havuzunda bekleyen bir hayal bulunmuyor.</p>
+              <p className="text-xs text-muted-foreground">Bekleyen bir hedef bulunmuyor.</p>
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {incubatingDreams.map((dream) => (
                 <Card
                   key={dream.id}
-                  className="border-border bg-card/70 hover:border-cyan-500/40 transition-colors p-4 space-y-3 flex flex-col justify-between"
+                  className="border-border bg-card hover:border-border/80 transition-colors p-4 space-y-3 flex flex-col justify-between shadow-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-1">
@@ -797,7 +763,7 @@ function DreamsContent() {
                         {dream.category}
                       </Badge>
                       {dream.target_year && (
-                        <span className="text-[10px] font-mono text-muted-foreground">
+                        <span className="text-[10px] font-medium text-muted-foreground">
                           {dream.target_year}
                         </span>
                       )}
@@ -807,7 +773,7 @@ function DreamsContent() {
                       <p className="text-xs text-muted-foreground line-clamp-2">{dream.description}</p>
                     )}
                     {dream.identity_persona && (
-                      <span className="text-[11px] text-cyan-400 block">🪞 {dream.identity_persona}</span>
+                      <span className="text-[11px] text-muted-foreground block">{dream.identity_persona}</span>
                     )}
                   </div>
 
@@ -816,10 +782,10 @@ function DreamsContent() {
                       variant="outline"
                       size="sm"
                       onClick={() => handlePromoteToActive(dream)}
-                      className="h-7 px-2.5 text-[11px] font-semibold gap-1 text-primary hover:bg-primary/10"
+                      className="h-7 px-2.5 text-[11px] font-medium gap-1 text-foreground hover:bg-muted"
                     >
-                      <Star className="h-3 w-3" />
-                      <span>Aktif Odağa Al</span>
+                      <Target className="h-3 w-3 text-primary" />
+                      <span>Aktif Hedeflere Al</span>
                     </Button>
                     <div className="flex items-center gap-1">
                       <Button
@@ -847,25 +813,25 @@ function DreamsContent() {
         </div>
       )}
 
-      {/* Tab 3: Hall of Triumphs (Zafer Müzesi) */}
+      {/* Tab 3: Completed Dreams (Tamamlananlar) */}
       {activeTab === 'achieved' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-1">
-            <h4 className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
-              <Trophy className="h-4 w-4" />
-              <span>Zafer Müzesi & Şükran Vitrini</span>
+          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+            <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <Trophy className="h-4 w-4 text-muted-foreground" />
+              <span>Tamamlanan Hedefler</span>
             </h4>
             <p className="text-[11px] text-muted-foreground">
-              İnsan beyni hedeflere ulaştığında çabuk unutur. Zor günlerinde buraya dön ve neleri başardığını hatırla!
+              Başarıyla sonuçlanan ve kayda geçirilen kişisel hedefleriniz.
             </p>
           </div>
 
           {achievedDreams.length === 0 ? (
             <Card className="border-border border-dashed p-12 text-center bg-card/40">
               <Trophy className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-foreground">Zafer Müzesi Henüz Boş</p>
+              <p className="text-sm font-semibold text-foreground">Tamamlanan Hedef Bulunmuyor</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Aktif hedeflerinden birini gerçekleştirdiğinde <strong>"Gerçekleşti!"</strong> butonuna basarak buraya ekleyebilirsin.
+                Aktif hedeflerinizden birini tamamladığınızda <strong>"Tamamla"</strong> butonuna basarak buraya taşıyabilirsiniz.
               </p>
             </Card>
           ) : (
@@ -873,7 +839,7 @@ function DreamsContent() {
               {achievedDreams.map((dream) => (
                 <div
                   key={dream.id}
-                  className="rounded-2xl border border-amber-500/30 bg-card overflow-hidden shadow-md flex flex-col justify-between"
+                  className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm flex flex-col justify-between"
                 >
                   <div className="relative h-44 w-full bg-muted">
                     <img
@@ -887,28 +853,28 @@ function DreamsContent() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
                     <div className="absolute top-3 right-3">
-                      <Badge className="bg-amber-500/90 text-black font-bold text-[10px] gap-1 shadow-md">
-                        <Trophy className="h-3 w-3" />
-                        <span>Başarıldı</span>
+                      <Badge variant="outline" className="bg-background/80 backdrop-blur-md text-[10px] font-medium border-border gap-1">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                        <span>Tamamlandı</span>
                       </Badge>
                     </div>
                     {dream.achieved_at && (
-                      <div className="absolute bottom-2 left-3 text-[10px] font-mono text-muted-foreground bg-background/80 px-2 py-0.5 rounded-md backdrop-blur-sm">
-                        🗓️ {new Date(dream.achieved_at).toLocaleDateString('tr-TR')}
+                      <div className="absolute bottom-2 left-3 text-[10px] text-muted-foreground bg-background/80 px-2 py-0.5 rounded-md backdrop-blur-sm border border-border/60">
+                        {new Date(dream.achieved_at).toLocaleDateString('tr-TR')}
                       </div>
                     )}
                   </div>
 
                   <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                     <div className="space-y-1.5">
-                      <h4 className="font-bold text-base text-foreground">{dream.title}</h4>
+                      <h4 className="font-semibold text-base text-foreground">{dream.title}</h4>
                       {dream.identity_persona && (
-                        <span className="text-[11px] text-amber-400 block font-medium">
-                          🪞 {dream.identity_persona}
+                        <span className="text-[11px] text-muted-foreground block font-medium">
+                          {dream.identity_persona}
                         </span>
                       )}
                       {dream.achieved_note && (
-                        <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-2.5 text-xs text-amber-200/90 italic mt-2">
+                        <div className="rounded-lg bg-muted/40 border border-border/60 p-2.5 text-xs text-muted-foreground italic mt-2">
                           "{dream.achieved_note}"
                         </div>
                       )}
@@ -1059,7 +1025,7 @@ function DreamsContent() {
                 onClick={() => setShowWallpaperPicker(!showWallpaperPicker)}
                 className="text-[11px] text-primary hover:underline font-semibold"
               >
-                {showWallpaperPicker ? 'Gizle' : '🎨 Hazır Şablonlardan Seç'}
+                {showWallpaperPicker ? 'Gizle' : 'Hazır Şablonlardan Seç'}
               </button>
             </div>
 
@@ -1112,27 +1078,27 @@ function DreamsContent() {
         <Modal
           isOpen={isCelebrationOpen}
           onClose={() => setIsCelebrationOpen(false)}
-          title={`🏆 Bir Hayal Gerçeğe Dönüştü: ${celebratingDream.title}`}
+          title={`Hedef Tamamlandı: ${celebratingDream.title}`}
         >
           <form onSubmit={handleConfirmCelebration} className="space-y-4">
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 space-y-2">
-              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-                <Trophy className="h-4 w-4" />
-                <span>Tebrikler! Kişisel bir zafere imza attın.</span>
+            <div className="rounded-xl border border-border bg-muted/40 p-3.5 space-y-1">
+              <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <span>Hedefi Tamamla</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Bu anı tarihe not düşelim. Gelecekte zor bir gün yaşadığında bu duyguyu hatırlamak sana güç verecek.
+                Bu hedefe ulaştığınız anı ve duygularınızı not alarak arşivinize kaydedin.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">
-                Bu anı başardığın andaki hissin / notun:
+                Tamamlama Notu:
               </label>
               <textarea
                 value={achievedNoteInput}
                 onChange={(e) => setAchievedNoteInput(e.target.value)}
-                placeholder="Örn: İlk adımı atmak çok zordu ama vazgeçmedim ve başardım!..."
+                placeholder="Bu hedefi gerçekleştirirken edindiğiniz tecrübeler ve hisleriniz..."
                 rows={3}
                 required
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1141,12 +1107,12 @@ function DreamsContent() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">
-                Zafer Fotoğrafı / Anı Görseli (İsteğe Bağlı URL):
+                Anı / Fotoğraf Görseli (İsteğe Bağlı URL):
               </label>
               <Input
                 value={achievedImageInput}
                 onChange={(e) => setAchievedImageInput(e.target.value)}
-                placeholder="Görsel linki..."
+                placeholder="https://..."
                 className="text-xs font-mono"
               />
             </div>
@@ -1155,8 +1121,8 @@ function DreamsContent() {
               <Button type="button" variant="outline" size="sm" onClick={() => setIsCelebrationOpen(false)}>
                 Vazgeç
               </Button>
-              <Button type="submit" size="sm" className="font-semibold bg-amber-500 hover:bg-amber-400 text-black">
-                🏆 Zafer Müzesi'ne Taşı
+              <Button type="submit" size="sm" className="font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
+                Tamamlananlara Ekle
               </Button>
             </div>
           </form>
@@ -1171,9 +1137,9 @@ function DreamsContent() {
             {/* Zen Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Compass className="h-5 w-5 text-primary animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Pusula • Vizyon & Gelecek Odak Modu
+                <Compass className="h-5 w-5 text-foreground" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                  Pusula • Odak Görünümü
                 </span>
               </div>
               <Button

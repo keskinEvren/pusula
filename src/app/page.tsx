@@ -160,14 +160,14 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Top Welcome & Quick Actions */}
       <PageHeader
-        title="Komuta Merkezi"
-        description="Kişisel finansınız, kasalarınız ve aktif projelerinizin anlık durumu"
+        title="Genel Bakış"
+        description="Finansal durumunuz, yaklaşan ödemeleriniz ve aktif projeleriniz"
         actions={
           <>
             <Link href="/import">
               <Button className="gap-2 shadow-sm h-9 text-xs font-semibold">
                 <Receipt className="h-4 w-4" />
-                Ekstre Yükle
+                Ekstre İçe Aktar
               </Button>
             </Link>
             <Link href="/transactions?new=true">
@@ -189,143 +189,117 @@ export default function DashboardPage() {
           <AlertTriangle className="h-5 w-5 flex-shrink-0 text-amber-400 mt-0.5" />
           <div className="flex-1">
             <div className="font-semibold text-sm">
-              Odak Kapasitesi Uyarısı ({activeDevProjects.length}/2 Proje Aktif)
+              Aktif Proje Sınırı ({activeDevProjects.length}/2 Proje)
             </div>
             <div className="mt-0.5 text-xs text-amber-200/80">
               Şu anda aynı anda <strong>{activeDevProjects.map((p) => p.name).join(', ')}</strong> projelerini geliştiriyorsunuz. 
-              Odak bölünmesini önlemek için yeni bir projeye başlamadan önce mevcutlardan birini canlıya alın veya askıya alın.
+              Odak kuralınız gereği yeni bir projeye başlamadan önce mevcut projelerden birini tamamlayın veya arşivleyin.
             </div>
           </div>
           <Link href="/projects">
             <Button size="sm" variant="outline" className="text-xs border-amber-500/40 hover:bg-amber-500/20 text-amber-200">
-              Projeleri Yönet
+              Projeleri Gör
             </Button>
           </Link>
         </div>
       )}
 
-      {/* Primary KPI Row (Net Worth & Balances) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {/* Net Worth */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Net Varlık
-            </CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold font-mono ${
-                netWorth >= 0 ? 'text-success' : 'text-destructive'
-              }`}
-            >
+      {/* Linear Tarzı Konsolide KPI Şeridi */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm">
+        {/* 1. Net Varlık */}
+        <div className="p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>Net Varlık</span>
+            <span className={`h-2 w-2 rounded-full ${netWorth >= 0 ? 'bg-success' : 'bg-destructive'}`} />
+          </div>
+          <div className="mt-3">
+            <div className={`text-2xl font-semibold tracking-tight tabular-nums ${netWorth >= 0 ? 'text-foreground' : 'text-destructive'}`}>
               {formatCurrency(netWorth)}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <div className="mt-1 text-[11px] text-muted-foreground">
               (Nakit + Alacak + Portföy) − Borç
-            </p>
-          </CardContent>
-        </Card>
+            </div>
+          </div>
+        </div>
 
-        {/* Ready Cash */}
-        <Link href="/accounts">
-          <Card className="border-border bg-card shadow-sm hover:border-primary/50 transition-all cursor-pointer">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Hazır Para & Likit Kasa
-              </CardTitle>
-              <Building2 className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold font-mono text-foreground">
-                {formatCurrency(totalCash)}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
-                <span>{accounts.length} hesap ve kasa</span>
-                <span className="text-primary text-[11px] font-semibold">Kasaları Gör →</span>
-              </p>
-            </CardContent>
-          </Card>
+        {/* 2. Hazır Nakit */}
+        <Link href="/accounts" className="p-4 sm:p-5 flex flex-col justify-between group hover:bg-accent/40 transition-colors">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground group-hover:text-foreground">
+            <span>Hazır Nakit</span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+              {formatCurrency(totalCash)}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {accounts.length} banka ve kasa
+            </div>
+          </div>
         </Link>
 
-        {/* Investments & Portfolio */}
-        <Link href="/investments">
-          <Card className="border-border bg-card shadow-sm hover:border-purple-500/50 transition-all cursor-pointer">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Portföy & Yatırımlar
-              </CardTitle>
-              <TrendingUp className="h-4 w-4 text-purple-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold font-mono text-foreground">
-                {formatCurrency(totalInvestments)}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
-                <span>{investments.length} varlık kalemi</span>
-                <span className="text-purple-400 text-[11px] font-semibold">Portföyü Gör →</span>
-              </p>
-            </CardContent>
-          </Card>
+        {/* 3. Portföy */}
+        <Link href="/investments" className="p-4 sm:p-5 flex flex-col justify-between group hover:bg-accent/40 transition-colors">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground group-hover:text-foreground">
+            <span>Yatırımlar & Portföy</span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+              {formatCurrency(totalInvestments)}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {investments.length} varlık kalemi
+            </div>
+          </div>
         </Link>
 
-        {/* Credit Card Debts */}
-        <Link href="/cards">
-          <Card className="border-border bg-card shadow-sm hover:border-destructive/50 transition-all cursor-pointer">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Kredi Kartı Borçları
-              </CardTitle>
-              <CreditCard className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold font-mono text-destructive">
-                {formatCurrency(totalCardDebt)}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
-                <span>{cards.length} aktif kart</span>
-                <span className="text-destructive text-[11px] font-semibold">Kartları Gör →</span>
-              </p>
-            </CardContent>
-          </Card>
+        {/* 4. Kredi Kartı Borçları */}
+        <Link href="/cards" className="p-4 sm:p-5 flex flex-col justify-between group hover:bg-accent/40 transition-colors">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground group-hover:text-foreground">
+            <span>Kredi Kartı Borcu</span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-semibold tracking-tight text-destructive tabular-nums">
+              {formatCurrency(totalCardDebt)}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {cards.length} aktif kart
+            </div>
+          </div>
         </Link>
 
-        {/* Receivables & Other Debts */}
-        <Link href="/debts">
-          <Card className="border-border bg-card shadow-sm hover:border-success/50 transition-all cursor-pointer">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Kesin Alacaklar
-              </CardTitle>
-              <HandCoins className="h-4 w-4 text-success" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold font-mono text-success">
-                {formatCurrency(totalReceivables)}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
-                <span>Bekleyen tahsilatlar</span>
-                <span className="text-success text-[11px] font-semibold">Borç/Alacak →</span>
-              </p>
-            </CardContent>
-          </Card>
+        {/* 5. Alacaklar */}
+        <Link href="/debts" className="p-4 sm:p-5 flex flex-col justify-between group hover:bg-accent/40 transition-colors">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground group-hover:text-foreground">
+            <span>Kesin Alacaklar</span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-semibold tracking-tight text-success tabular-nums">
+              {formatCurrency(totalReceivables)}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Bekleyen tahsilatlar
+            </div>
+          </div>
         </Link>
       </div>
 
       {/* Secondary Strategic KPI Row (Active Month Spending vs Next Month Committed Load) */}
       <div className="grid gap-4 md:grid-cols-3">
         {/* 1. Aktif Ay Tüketimi */}
-        <Card className="border-border bg-card shadow-sm hover:border-primary/40 transition-all">
+        <Card className="border-border bg-card shadow-sm hover:border-border/80 transition-all">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <Link
                 href={`/transactions?month=${activeMonthPrefix}`}
-                className="text-sm font-bold text-foreground hover:text-primary transition-colors flex items-center gap-1.5"
+                className="text-sm font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1.5"
                 title="İşlem defterinde filtrele"
               >
-                <span>🛒 Aktif Ay Tüketimi ({activeMonthName})</span>
-                <span className="text-[10px] text-primary">→</span>
+                <span>Bu Ayki Harcamalar ({activeMonthName})</span>
+                <span className="text-[10px] text-muted-foreground">→</span>
               </Link>
               <Link href={`/transactions?month=${activeMonthPrefix}`}>
                 <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-muted">
@@ -334,13 +308,13 @@ export default function DashboardPage() {
               </Link>
             </div>
             <CardDescription className="text-xs">
-              Bu döneme ait gerçek kişisel ve finansman harcamaları
+              Bu döneme ait gerçekleşen tüketim ve finansman giderleri
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
             <Link
               href={`/transactions?month=${activeMonthPrefix}`}
-              className="text-2xl font-bold font-mono text-foreground hover:text-primary transition-colors block"
+              className="text-2xl font-semibold tracking-tight text-foreground tabular-nums hover:text-primary transition-colors block"
             >
               {formatCurrency(totalConsumption)}
             </Link>
@@ -351,7 +325,7 @@ export default function DashboardPage() {
                 title="Kişisel harcamaları filtrele"
               >
                 <span className="text-muted-foreground block text-[10px]">Kişisel →</span>
-                <span className="font-mono font-semibold text-foreground">{formatCurrency(personalSpent)}</span>
+                <span className="font-semibold text-foreground tabular-nums">{formatCurrency(personalSpent)}</span>
               </Link>
               <Link
                 href={`/transactions?month=${activeMonthPrefix}&group=İş`}
@@ -359,7 +333,7 @@ export default function DashboardPage() {
                 title="İş & SaaS harcamalarını filtrele"
               >
                 <span className="text-muted-foreground block text-[10px]">İş & SaaS →</span>
-                <span className="font-mono font-semibold text-purple-400">{formatCurrency(businessSpent)}</span>
+                <span className="font-semibold text-foreground tabular-nums">{formatCurrency(businessSpent)}</span>
               </Link>
               <Link
                 href={`/transactions?month=${activeMonthPrefix}&group=Finansman`}
@@ -367,7 +341,7 @@ export default function DashboardPage() {
                 title="Faiz ve masrafları filtrele"
               >
                 <span className="text-muted-foreground block text-[10px]">Faiz/Masraf →</span>
-                <span className="font-mono font-semibold text-destructive">{formatCurrency(financeCost)}</span>
+                <span className="font-semibold text-destructive tabular-nums">{formatCurrency(financeCost)}</span>
               </Link>
             </div>
           </CardContent>
@@ -375,14 +349,14 @@ export default function DashboardPage() {
 
         {/* 2. Gelecek Ay Sabit / Planlı Yük */}
         <Link href="/subscriptions">
-          <Card className="border-border bg-card shadow-sm hover:border-purple-500/50 transition-all cursor-pointer h-full">
+          <Card className="border-border bg-card shadow-sm hover:border-border/80 transition-all cursor-pointer h-full">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                  <CalendarClock className="h-4 w-4 text-purple-400" />
-                  📅 Gelecek Ay Sabit Yükü
+                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                  <span>Gelecek Ay Sabit Giderler</span>
                 </CardTitle>
-                <Badge variant="purple" className="text-[10px]">
+                <Badge variant="secondary" className="text-[10px]">
                   Planlı Çıkış
                 </Badge>
               </div>
@@ -391,37 +365,37 @@ export default function DashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
-              <div className="text-2xl font-bold font-mono text-purple-400">
-                {formatCurrency(nextMonthCommittedLoad)} <span className="text-xs text-muted-foreground font-sans">/ ay</span>
+              <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                {formatCurrency(nextMonthCommittedLoad)} <span className="text-xs text-muted-foreground font-normal">/ ay</span>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2 text-[11px]">
                 <div>
                   <span className="text-muted-foreground block">Sabit Yükler ({activeSubs.length})</span>
-                  <span className="font-mono font-semibold text-foreground">{formatCurrency(monthlyActiveSaaS)}</span>
+                  <span className="font-semibold text-foreground tabular-nums">{formatCurrency(monthlyActiveSaaS)}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Devam Eden Taksit</span>
-                  <span className="font-mono font-semibold text-foreground">{formatCurrency(monthlyInstallmentsLoad)}</span>
+                  <span className="font-semibold text-foreground tabular-nums">{formatCurrency(monthlyInstallmentsLoad)}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
         </Link>
 
-        {/* 3. Kurucu Runway (Hayatta Kalma Tamponu) */}
+        {/* 3. Kurucu Runway (Nakit Dayanma Süresi) */}
         <Card className="border-border bg-card shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                <Zap className="h-4 w-4 text-primary" />
-                ⏳ Kurucu Runway
+              <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                <Zap className="h-4 w-4 text-muted-foreground" />
+                <span>Nakit Dayanma Süresi (Runway)</span>
               </CardTitle>
               {(() => {
                 const numRunway = typeof runwayMonths === 'number' ? runwayMonths : 99
                 const isInf = runwayMonths === 'infinite'
                 return (
                   <Badge
-                    variant={isInf || numRunway > 3 ? 'success' : numRunway > 1 ? 'outline' : 'destructive'}
+                    variant={isInf || numRunway > 3 ? 'success' : numRunway > 1 ? 'warning' : 'destructive'}
                     className="text-[10px]"
                   >
                     {isInf ? 'Sonsuz' : numRunway > 3 ? 'Güvenli' : numRunway > 1 ? 'Dikkat' : 'Kritik'}
@@ -430,18 +404,18 @@ export default function DashboardPage() {
               })()}
             </div>
             <CardDescription className="text-xs">
-              Mevcut nakit ile yeni gelir olmadan hayatta kalma süresi
+              Mevcut nakit ile yeni gelir olmadan tahmini sürdürülebilirlik süresi
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold font-mono text-foreground">
+              <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
                 {typeof runwayMonths === 'number' ? runwayMonths.toFixed(1) : '∞'}
               </span>
-              <span className="text-sm font-semibold text-muted-foreground">Ay</span>
+              <span className="text-sm font-medium text-muted-foreground">Ay</span>
             </div>
             <p className="mt-3 text-[11px] text-muted-foreground border-t border-border pt-2">
-              Aylık Tahmini Çıkış: <strong className="text-foreground font-mono">{formatCurrency(totalMonthlyCashDrain)}</strong>
+              Aylık Tahmini Çıkış: <strong className="text-foreground tabular-nums font-semibold">{formatCurrency(totalMonthlyCashDrain)}</strong>
             </p>
           </CardContent>
         </Card>

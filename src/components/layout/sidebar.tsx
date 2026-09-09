@@ -38,42 +38,42 @@ interface NavGroup {
 
 const navGroups: NavGroup[] = [
   {
-    title: 'Kokpit',
+    title: 'Genel',
     items: [
-      { name: 'Komuta Merkezi', href: '/', icon: LayoutDashboard },
+      { name: 'Genel Bakış', href: '/', icon: LayoutDashboard },
     ],
   },
   {
-    title: 'Finans & Likidite',
+    title: 'Finans',
     items: [
-      { name: 'Hareketler & Ekstre', href: '/transactions', icon: ReceiptText },
-      { name: 'Banka & Kasalar', href: '/accounts', icon: Building2 },
+      { name: 'Hareketler', href: '/transactions', icon: ReceiptText },
+      { name: 'Hesaplar', href: '/accounts', icon: Building2 },
       { name: 'Kredi Kartları', href: '/cards', icon: CreditCard },
-      { name: 'Yatırımlar & Portföy', href: '/investments', icon: TrendingUp },
+      { name: 'Yatırımlar', href: '/investments', icon: TrendingUp },
       { name: 'Borç & Alacak', href: '/debts', icon: HandCoins },
-      { name: 'Tasarruf & Abonelik', href: '/subscriptions', icon: CalendarClock },
+      { name: 'Abonelikler', href: '/subscriptions', icon: CalendarClock },
     ],
   },
   {
-    title: 'Yaşam & Zihin (Life OS)',
-    items: [
-      { name: 'Hayallerim & Vizyon', href: '/dreams', icon: Sparkles },
-      { name: 'Günlük Rutinler & Gökyüzü', href: '/routines', icon: Orbit },
-      { name: 'Seyir Defteri', href: '/journal', icon: BookOpen },
-    ],
-  },
-  {
-    title: 'Stüdyo & Üretim',
+    title: 'Çalışma',
     items: [
       { name: 'Projeler', href: '/projects', icon: FolderKanban },
-      { name: 'Fikir Havuzu', href: '/ideas', icon: Lightbulb },
+      { name: 'Fikirler', href: '/ideas', icon: Lightbulb },
     ],
   },
   {
-    title: 'Sistem & Kasa',
+    title: 'Kişisel',
     items: [
-      { name: 'Kişisel Kasa', href: '/vault', icon: ShieldCheck },
-      { name: 'Ayarlar & Kurallar', href: '/settings', icon: Settings },
+      { name: 'Hedefler', href: '/dreams', icon: Sparkles },
+      { name: 'Rutinler', href: '/routines', icon: Orbit },
+      { name: 'Günlük', href: '/journal', icon: BookOpen },
+    ],
+  },
+  {
+    title: 'Sistem',
+    items: [
+      { name: 'Veri & Yedekleme', href: '/vault', icon: ShieldCheck },
+      { name: 'Ayarlar', href: '/settings', icon: Settings },
     ],
   },
 ]
@@ -193,11 +193,11 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
           <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-muted-foreground border border-border/40">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-foreground text-[11px]">Pusula v1.1</span>
-              <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400 border border-emerald-500/20">
+              <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary border border-primary/20">
                 PRO
               </span>
             </div>
-            <div className="mt-0.5 text-[10px] text-muted-foreground/80">Solo Kurucu Komuta Merkezi</div>
+            <div className="mt-0.5 text-[10px] text-muted-foreground/80">Kişisel Yönetim Sistemi</div>
           </div>
         </div>
       </aside>

@@ -591,132 +591,102 @@ function InvestmentsContent() {
               className="gap-2 h-9 text-xs font-semibold shadow-sm"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-primary' : ''}`} />
-              <span>{refreshing ? 'Güncelleniyor...' : '⚡ Canlı Fiyatları Güncelle'}</span>
+              <span>{refreshing ? 'Güncelleniyor...' : 'Fiyatları Güncelle'}</span>
             </Button>
             <Button onClick={handleOpenAddModal} size="sm" className="gap-2 h-9 text-xs font-semibold shadow-sm">
               <Plus className="h-4 w-4" />
-              <span>+ Varlık Ekle</span>
+              <span>Yeni Varlık</span>
             </Button>
           </div>
         }
       />
 
-      {/* Hero KPI Summary */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Unified Segmented Metric Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         {/* Total Portfolio Value */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Toplam Portföy Değeri
-            </CardTitle>
-            <Wallet className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono text-foreground">
-              {formatCurrency(metrics.totalValue)}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {metrics.assetCount} farklı yatırım kalemi üzerinden
-            </p>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Toplam Portföy Değeri
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(metrics.totalValue)}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {metrics.assetCount} farklı yatırım kalemi
+          </p>
+        </div>
 
         {/* Total Invested Capital */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Yatırılan Toplam Maliyet
-            </CardTitle>
-            <Coins className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono text-muted-foreground">
-              {formatCurrency(metrics.totalCost)}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Ortalama alış maliyeti toplamı
-            </p>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Yatırılan Sermaye
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-muted-foreground tabular-nums">
+            {formatCurrency(metrics.totalCost)}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Alış maliyeti toplamı
+          </p>
+        </div>
 
         {/* Net Profit / Loss */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Net Kâr / Zarar & Getiri
-            </CardTitle>
-            {metrics.totalProfitLoss >= 0 ? (
-              <TrendingUp className="h-4 w-4 text-success" />
-            ) : (
-              <TrendingDown className="h-4 w-4 text-destructive" />
-            )}
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold font-mono ${
-                metrics.totalProfitLoss >= 0 ? 'text-success' : 'text-destructive'
-              }`}
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Net Kâr / Zarar
+          </p>
+          <div
+            className={`text-2xl font-semibold tracking-tight tabular-nums ${
+              metrics.totalProfitLoss >= 0 ? 'text-success' : 'text-destructive'
+            }`}
+          >
+            {metrics.totalProfitLoss >= 0 ? '+' : ''}
+            {formatCurrency(metrics.totalProfitLoss)}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <Badge
+              variant={metrics.totalProfitLoss >= 0 ? 'success' : 'destructive'}
+              className="text-[10px] tabular-nums px-1.5 py-0"
             >
-              {metrics.totalProfitLoss >= 0 ? '+' : ''}
-              {formatCurrency(metrics.totalProfitLoss)}
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-xs">
-              <Badge
-                variant={metrics.totalProfitLoss >= 0 ? 'success' : 'destructive'}
-                className="text-[10px] font-mono px-1.5 py-0"
-              >
-                {metrics.totalProfitLossPct >= 0 ? '+' : ''}
-                %{metrics.totalProfitLossPct.toFixed(2)}
-              </Badge>
-              <span className="text-muted-foreground text-[11px]">toplam getiri</span>
-            </div>
-          </CardContent>
-        </Card>
+              {metrics.totalProfitLossPct >= 0 ? '+' : ''}
+              %{metrics.totalProfitLossPct.toFixed(2)}
+            </Badge>
+            <span className="text-muted-foreground text-[11px]">toplam getiri</span>
+          </div>
+        </div>
 
         {/* Allocation Bar */}
-        <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Varlık Dağılımı
-            </CardTitle>
-            <PieChart className="h-4 w-4 text-cyan-400" />
-          </CardHeader>
-          <CardContent>
-            {/* Progress bar */}
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted/50 mt-1">
-              {metrics.categoryAllocations.map((alloc, idx) => {
-                const colors = [
-                  'bg-amber-400',
-                  'bg-blue-500',
-                  'bg-emerald-500',
-                  'bg-purple-500',
-                  'bg-cyan-400',
-                  'bg-rose-400',
-                ]
-                return (
-                  <div
-                    key={alloc.category}
-                    style={{ width: `${alloc.pct}%` }}
-                    className={`${colors[idx % colors.length]} transition-all`}
-                    title={`${alloc.category}: %${alloc.pct.toFixed(1)}`}
-                  />
-                )
-              })}
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-              {metrics.categoryAllocations.slice(0, 3).map((a, i) => (
-                <span key={a.category} className="flex items-center gap-1">
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      ['bg-amber-400', 'bg-blue-500', 'bg-emerald-500'][i]
-                    }`}
-                  />
-                  <span>{a.category.split(' ')[0]}: %{a.pct.toFixed(0)}</span>
-                </span>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Varlık Dağılımı
+          </p>
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted mt-2">
+            {metrics.categoryAllocations.map((alloc, idx) => {
+              const colors = [
+                'bg-primary',
+                'bg-blue-400',
+                'bg-emerald-400',
+                'bg-amber-400',
+                'bg-purple-400',
+                'bg-rose-400',
+              ]
+              return (
+                <div
+                  key={alloc.category}
+                  style={{ width: `${alloc.pct}%` }}
+                  className={`${colors[idx % colors.length]} transition-all`}
+                  title={`${alloc.category}: %${alloc.pct.toFixed(1)}`}
+                />
+              )
+            })}
+          </div>
+          <div className="pt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
+            {metrics.categoryAllocations.slice(0, 3).map((a) => (
+              <span key={a.category}>
+                {a.category.split(' ')[0]}: %{a.pct.toFixed(0)}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Filter Tabs & Search Toolbar */}
@@ -727,7 +697,7 @@ function InvestmentsContent() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${
                 selectedCategory === cat
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -738,14 +708,14 @@ function InvestmentsContent() {
           ))}
         </div>
 
-        {/* Search */}
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+        {/* Search Input */}
+        <div className="relative w-full sm:w-64 shrink-0">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
+            placeholder="Hisse, fon, kurum veya sembol ara..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Varlık veya kurum ara..."
-            className="pl-8 h-8 text-xs bg-muted/30"
+            className="pl-9 h-9 text-xs"
           />
         </div>
       </div>
@@ -766,7 +736,7 @@ function InvestmentsContent() {
                 <th className="p-3.5 text-center">İşlemler</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/40 font-mono">
+            <tbody className="divide-y divide-border/40">
               {filteredInvestments.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-12 text-center text-muted-foreground font-sans">
@@ -888,11 +858,11 @@ function InvestmentsContent() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleOpenDcaModal(inv)}
-                            className="h-7 px-2 text-[11px] gap-1 text-primary border-primary/30 hover:bg-primary/10"
+                            className="h-7 px-2 text-[11px] gap-1 text-foreground border-border hover:bg-muted"
                             title="Kademeli alım ekle (Ağırlıklı ortalama maliyeti otomatik hesaplar)"
                           >
                             <Layers className="h-3 w-3" />
-                            <span>+ Kademe</span>
+                            <span>Kademeli Alım</span>
                           </Button>
                           <Button
                             variant="ghost"
@@ -1185,7 +1155,7 @@ function InvestmentsContent() {
         <Modal
           isOpen={!!dcaItem}
           onClose={() => setDcaItem(null)}
-          title={`Kademeli Alım (Ağırlıklı Maliyet Sihirbazı): ${dcaItem.name}`}
+          title={`Kademeli Alım & Ortalama Maliyet: ${dcaItem.name}`}
           size="lg"
         >
           {(() => {
@@ -1206,21 +1176,21 @@ function InvestmentsContent() {
                     <Wallet className="h-3.5 w-3.5 text-primary" />
                     <span>Mevcut Portföy Pozisyonu</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 pt-1 font-mono">
+                  <div className="grid grid-cols-3 gap-2 pt-1 tabular-nums">
                     <div>
-                      <span className="text-muted-foreground block text-[11px] font-sans">Mevcut Adet</span>
+                      <span className="text-muted-foreground block text-[11px]">Mevcut Adet</span>
                       <span className="font-semibold text-foreground">
                         {dcaItem.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px] font-sans">Birim Maliyet</span>
+                      <span className="text-muted-foreground block text-[11px]">Birim Maliyet</span>
                       <span className="font-semibold text-foreground">
                         {formatCurrency(dcaItem.unit_cost)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px] font-sans">Toplam Maliyet</span>
+                      <span className="text-muted-foreground block text-[11px]">Toplam Maliyet</span>
                       <span className="font-semibold text-foreground">
                         {formatCurrency(round2(dcaItem.quantity * dcaItem.unit_cost))}
                       </span>
@@ -1251,7 +1221,7 @@ function InvestmentsContent() {
                           onClick={() => setDcaUnitPrice(dcaItem.current_price.toString())}
                           className="text-[10px] text-primary font-semibold hover:underline"
                         >
-                          ⚡ Canlı Fiyat ({formatCurrency(dcaItem.current_price)})
+                          Güncel Fiyat ({formatCurrency(dcaItem.current_price)})
                         </button>
                       )}
                     </div>
@@ -1269,29 +1239,28 @@ function InvestmentsContent() {
 
                 {/* Canlı DCA Hesaplama Sonuç Kartı */}
                 {dcaRes && (
-                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3.5 text-xs space-y-2">
-                    <div className="text-[11px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Yeni Ağırlıklı Ortalama Maliyet Sonucu</span>
+                  <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
+                    <div className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
+                      Yeni Ağırlıklı Ortalama Maliyet
                     </div>
                     <div className="grid grid-cols-2 gap-3 pt-1">
                       <div className="bg-background/70 p-2.5 rounded border border-border/50">
                         <span className="text-muted-foreground block text-[11px]">Yeni Toplam Adet</span>
-                        <span className="font-mono text-sm font-bold text-foreground">
+                        <span className="text-sm font-semibold text-foreground tabular-nums">
                           {dcaRes.newQuantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
                         </span>
-                        <span className="text-[10px] text-emerald-400 block font-mono">
+                        <span className="text-[10px] text-muted-foreground block tabular-nums">
                           (+{addedQtyNum.toLocaleString('tr-TR')} adet eklendi)
                         </span>
                       </div>
                       <div className="bg-background/70 p-2.5 rounded border border-border/50">
                         <span className="text-muted-foreground block text-[11px]">Yeni Ortalama Maliyet</span>
-                        <span className="font-mono text-sm font-bold text-foreground">
+                        <span className="text-sm font-semibold text-foreground tabular-nums">
                           {formatCurrency(dcaRes.newUnitCost)}
                         </span>
                         <span
-                          className={`text-[10px] block font-mono ${
-                            costDiff <= 0 ? 'text-emerald-400' : 'text-amber-400'
+                          className={`text-[10px] block tabular-nums ${
+                            costDiff <= 0 ? 'text-success' : 'text-warning'
                           }`}
                         >
                           {costDiff > 0
@@ -1302,15 +1271,15 @@ function InvestmentsContent() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1 border-t border-border/40 font-mono">
-                      <span className="font-sans">Eklenen Yeni Sermaye:</span>
-                      <span className="font-semibold text-foreground">
+                    <div className="flex justify-between items-center text-[11px] text-muted-foreground pt-1 border-t border-border/40">
+                      <span>Eklenen Yeni Sermaye:</span>
+                      <span className="font-semibold text-foreground tabular-nums">
                         {formatCurrency(round2(addedQtyNum * unitPriceNum))}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-muted-foreground font-mono">
-                      <span className="font-sans">Yeni Toplam Maliyet Havuzu:</span>
-                      <span className="font-bold text-foreground">
+                    <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                      <span>Yeni Toplam Maliyet:</span>
+                      <span className="font-semibold text-foreground tabular-nums">
                         {formatCurrency(dcaRes.totalCost)}
                       </span>
                     </div>

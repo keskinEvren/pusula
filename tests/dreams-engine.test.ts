@@ -135,8 +135,8 @@ describe('Dreams & Vision Engine', () => {
   })
 
   it('ufuk etiketleri ve simgeleri doğru formatlar', () => {
-    expect(formatHorizonLabel('horizon_1y')).toContain('Yakın Radar')
-    expect(formatHorizonLabel('horizon_lifetime')).toContain('Kuzey Yıldızı')
+    expect(formatHorizonLabel('horizon_1y')).toContain('Kısa Vade')
+    expect(formatHorizonLabel('horizon_lifetime')).toContain('Ömür Boyu')
     expect(formatShortHorizonLabel('horizon_1_3y')).toBe('1 - 3 Yıl')
     expect(formatHorizonLabel(null)).toContain('Orta Vade')
   })
