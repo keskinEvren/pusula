@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Plus,
   Search,
@@ -15,6 +16,7 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownLeft,
+  X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -24,10 +26,11 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
 import { financialBridge, getLinkedDebtId } from '@/lib/financial-bridge'
 import type { Transaction, Project, CreditCard, Account, Debt } from '@/types/database'
 
-export default function TransactionsPage() {
+function TransactionsContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
@@ -42,11 +45,29 @@ export default function TransactionsPage() {
   const [selectedEntityId, setSelectedEntityId] = useState<string>('ALL')
 
   // Filters
+  const searchParams = useSearchParams()
   const [searchTerm, setSearchTerm] = useState('')
   const [groupFilter, setGroupFilter] = useState<string>('ALL')
   const [typeFilter, setTypeFilter] = useState<string>('ALL')
   const [projectFilter, setProjectFilter] = useState<string>('ALL')
   const [monthFilter, setMonthFilter] = useState<string>('ALL')
+  const [importFilter, setImportFilter] = useState<string>('ALL')
+
+  // Sync with URL Search Params
+  useEffect(() => {
+    const month = searchParams.get('month')
+    if (month) setMonthFilter(month)
+    const group = searchParams.get('group')
+    if (group) setGroupFilter(group)
+    const projectId = searchParams.get('project_id')
+    if (projectId) setProjectFilter(projectId)
+    const search = searchParams.get('search')
+    if (search) setSearchTerm(search)
+    const importId = searchParams.get('import_id')
+    if (importId) setImportFilter(importId)
+    const isNew = searchParams.get('new')
+    if (isNew === 'true') setIsAddModalOpen(true)
+  }, [searchParams])
 
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -67,6 +88,86 @@ export default function TransactionsPage() {
   const [selectedTxForLink, setSelectedTxForLink] = useState<Transaction | null>(null)
   const [targetDebtId, setTargetDebtId] = useState<string>('')
   const [linking, setLinking] = useState(false)
+
+  // Convert to Recurring (Subscription/Bill/Installment) Modal State
+  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false)
+  const [recurringSaving, setRecurringSaving] = useState(false)
+  const [recurringForm, setRecurringForm] = useState({
+    service: '',
+    category: 'Abonelik' as 'Abonelik' | 'Fatura' | 'Taksit' | 'Düzenli Gider',
+    group_type: 'Kişisel' as 'Kişisel' | 'İş',
+    amount: '',
+    period: 'Aylık',
+    end_date: '',
+    payment_method: '',
+    project_id: '',
+  })
+
+  const handleOpenRecurringModal = (tx: Transaction) => {
+    const m = (tx.merchant || tx.description || '').toLowerCase()
+    let guessedCategory: 'Abonelik' | 'Fatura' | 'Taksit' | 'Düzenli Gider' = 'Abonelik'
+    if (
+      m.includes('telekom') ||
+      m.includes('turkcell') ||
+      m.includes('vodafone') ||
+      m.includes('enerji') ||
+      m.includes('elektrik') ||
+      m.includes('su ') ||
+      m.includes('gaz') ||
+      m.includes('fatura')
+    ) {
+      guessedCategory = 'Fatura'
+    } else if (m.includes('kredi') || m.includes('taksit') || m.includes('finans')) {
+      guessedCategory = 'Taksit'
+    }
+
+    setRecurringForm({
+      service: tx.merchant || tx.description || '',
+      category: guessedCategory,
+      group_type: tx.analysis_group === 'İş' ? 'İş' : 'Kişisel',
+      amount: tx.amount.toString(),
+      period: 'Aylık',
+      end_date: '',
+      payment_method: tx.account_or_card || 'Kredi Kartı',
+      project_id: tx.project_id || '',
+    })
+    setIsRecurringModalOpen(true)
+  }
+
+  const handleSaveRecurring = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRecurringSaving(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const { error } = await supabase.from('subscriptions').insert({
+        user_id: user.id,
+        service: recurringForm.service.trim(),
+        group_type: recurringForm.group_type,
+        model: recurringForm.category,
+        amount: parseFloat(recurringForm.amount || '0'),
+        currency: 'TRY',
+        period: recurringForm.period,
+        end_date: recurringForm.end_date || null,
+        decision: 'Devam',
+        payment_method: recurringForm.payment_method || null,
+        project_id: recurringForm.project_id || null,
+        status: 'Aktif',
+      })
+
+      if (error) throw error
+      setIsRecurringModalOpen(false)
+      alert(`"${recurringForm.service}" başarıyla Sabit Yükler & Düzenli Giderler listenize eklendi!`)
+    } catch (err: any) {
+      alert(err.message || 'Sabit yüke eklenemedi')
+    } finally {
+      setRecurringSaving(false)
+    }
+  }
 
   useEffect(() => {
     loadTransactions()
@@ -306,6 +407,9 @@ export default function TransactionsPage() {
     // 7. Project Filter
     if (projectFilter !== 'ALL' && t.project_id !== projectFilter) return false
 
+    // 8. Import Batch Filter
+    if (importFilter !== 'ALL' && t.import_id !== importFilter) return false
+
     return true
   })
 
@@ -317,23 +421,32 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Genel İşlem Defteri
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Kredi kartı harcamaları ve banka nakit hareketlerinin konsolide dökümü ({transactions.length} hareket).
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => setIsAddModalOpen(true)} className="gap-2 shadow-md">
+      {/* Standart PageHeader */}
+      <PageHeader
+        title="Genel İşlem Defteri"
+        description={`Kredi kartı harcamaları ve banka nakit hareketlerinin konsolide dökümü (${transactions.length} toplam hareket).`}
+        badge={
+          importFilter !== 'ALL' ? (
+            <div className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary border border-primary/30">
+              <span>Paket Filtresi Aktif</span>
+              <button
+                type="button"
+                onClick={() => setImportFilter('ALL')}
+                className="hover:text-destructive"
+                title="Filtreyi Kaldır"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : undefined
+        }
+        actions={
+          <Button onClick={() => setIsAddModalOpen(true)} className="gap-2 shadow-sm h-9 text-xs font-semibold">
             <Plus className="h-4 w-4" />
             Manuel Hareket Ekle
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Segment Selector Tabs */}
       <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
@@ -574,16 +687,26 @@ export default function TransactionsPage() {
                           )
                         }
 
-                        if (tx.type === 'Harcama' && tx.account_id) {
+                        if (tx.type === 'Harcama') {
                           return (
-                            <div className="mt-1">
+                            <div className="flex items-center gap-2 mt-1">
+                              {tx.account_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenLinkModal(tx)}
+                                  className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
+                                  title="Bu harcamayı şahsi borca bağla"
+                                >
+                                  🎯 Borca Bağla
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => handleOpenLinkModal(tx)}
-                                className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
-                                title="Bu harcamayı şahsi borca bağla"
+                                onClick={() => handleOpenRecurringModal(tx)}
+                                className="inline-flex items-center gap-1 text-[10px] text-primary/80 hover:text-primary font-medium hover:underline transition-colors"
+                                title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
                               >
-                                🎯 Borca Bağla
+                                ⚡ Düzenli Gider Yap
                               </button>
                             </div>
                           )
@@ -876,6 +999,123 @@ export default function TransactionsPage() {
           </div>
         )}
       </Modal>
+
+      {/* Convert to Recurring Modal */}
+      <Modal
+        isOpen={isRecurringModalOpen}
+        onClose={() => setIsRecurringModalOpen(false)}
+        title="Düzenli Gider / Abonelik / Fatura Olarak Ekle"
+      >
+        <form onSubmit={handleSaveRecurring} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground">
+              Hizmet / Kurum / Fatura Adı
+            </label>
+            <Input
+              required
+              value={recurringForm.service}
+              onChange={(e) => setRecurringForm({ ...recurringForm, service: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
+              <Select
+                value={recurringForm.category}
+                onChange={(e) => setRecurringForm({ ...recurringForm, category: e.target.value as any })}
+              >
+                <option value="Abonelik">💳 SaaS / Abonelik</option>
+                <option value="Fatura">⚡ Fatura (GSM, Elektrik, vb.)</option>
+                <option value="Taksit">📆 Dış Hesap Taksiti / Kredi</option>
+                <option value="Düzenli Gider">🏠 Düzenli Gider (Kira, Aidat)</option>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Kapsam Grubu</label>
+              <Select
+                value={recurringForm.group_type}
+                onChange={(e) => setRecurringForm({ ...recurringForm, group_type: e.target.value as any })}
+              >
+                <option value="Kişisel">Kişisel</option>
+                <option value="İş">İş (Girişim / Şirket)</option>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar (₺)</label>
+              <Input
+                type="number"
+                step="0.01"
+                required
+                value={recurringForm.amount}
+                onChange={(e) => setRecurringForm({ ...recurringForm, amount: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
+              <Select
+                value={recurringForm.period}
+                onChange={(e) => setRecurringForm({ ...recurringForm, period: e.target.value })}
+              >
+                <option value="Aylık">Aylık</option>
+                <option value="Yıllık">Yıllık</option>
+                <option value="Haftalık">Haftalık</option>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Ödeme Yolu / Kart / Kasa
+              </label>
+              <Input
+                value={recurringForm.payment_method}
+                onChange={(e) => setRecurringForm({ ...recurringForm, payment_method: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Bitiş Tarihi (Taksitler için Opsiyonel)
+              </label>
+              <Input
+                type="date"
+                value={recurringForm.end_date}
+                onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setIsRecurringModalOpen(false)}>
+              İptal
+            </Button>
+            <Button type="submit" disabled={recurringSaving}>
+              {recurringSaving ? 'Kaydediliyor...' : 'Sabit Yüke Ekle'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
+  )
+}
+
+export default function TransactionsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          İşlem defteri yükleniyor...
+        </div>
+      }
+    >
+      <TransactionsContent />
+    </Suspense>
   )
 }

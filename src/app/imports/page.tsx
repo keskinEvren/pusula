@@ -35,6 +35,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
 import type { Transaction } from '@/types/database'
 
 export default function ImportsPage() {
@@ -204,33 +205,29 @@ export default function ImportsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-            <Link href="/import" className="hover:text-primary transition-colors flex items-center gap-1">
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Ekstre Yükleme Merkezine Dön
+      {/* Standart PageHeader */}
+      <PageHeader
+        title="Ekstre Merkezi"
+        description="Sisteme yüklenen ekstre paketlerini inceleyin, paket hareketlerini görüntüleyin veya tek tıkla geri alın."
+        actions={
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/60 border border-border">
+            <Link
+              href="/import"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>Yeni Ekstre Yükle</span>
             </Link>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-background text-foreground shadow-sm"
+            >
+              <GitCommit className="h-3.5 w-3.5 text-primary" />
+              <span>Yükleme Geçmişi ({batches.length})</span>
+            </button>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <GitCommit className="h-7 w-7 text-primary" />
-            Ekstre Kayıtları & Geri Alma
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sisteme yüklenen ekstre paketlerini Git commit mantığıyla inceleyin, mükerrer veya hatalı paketleri tek tıkla geri alın.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link href="/import">
-            <Button className="shadow-md">
-              <FileText className="h-4 w-4 mr-2" />
-              Yeni Ekstre Yükle
-            </Button>
-          </Link>
-        </div>
-      </div>
+        }
+      />
 
       {/* Notifications */}
       {notice && (
@@ -569,11 +566,21 @@ export default function ImportsPage() {
                 <span className="font-semibold uppercase tracking-wider">
                   Bağlı Hareketler ({batchTransactions.length})
                 </span>
-                {inspectBatch.batch_status === 'ROLLED_BACK' && (
-                  <span className="text-amber-400">
-                    (Bu ekstre geri alındığı için hareketler silinmiştir)
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {inspectBatch.batch_status === 'COMPLETED' && batchTransactions.length > 0 && (
+                    <Link href={`/transactions?import_id=${inspectBatch.id}`}>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-primary/40 text-primary hover:bg-primary/10">
+                        <ExternalLink className="h-3 w-3" />
+                        İşlem Defterinde Aç
+                      </Button>
+                    </Link>
+                  )}
+                  {inspectBatch.batch_status === 'ROLLED_BACK' && (
+                    <span className="text-amber-400">
+                      (Bu ekstre geri alındığı için hareketler silinmiştir)
+                    </span>
+                  )}
+                </div>
               </div>
 
               {loadingTx ? (
