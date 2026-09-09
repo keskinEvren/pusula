@@ -110,27 +110,14 @@ export default function DashboardPage() {
   const { personal: personalSpent, business: businessSpent, financing: financeCost, totalConsumption } =
     calculateSpendingBreakdown(activeMonthTxs)
 
-  // 3. Ongoing Installments Extraction (e.g. Masterpass 9/12 -> 3 months remaining)
-  const activeInstallments = transactions
-    .filter((t) => t.recurrence && /Taksit\s*\(\d+\/\d+\)/i.test(t.recurrence))
-    .map((t) => {
-      const m = t.recurrence!.match(/(\d+)\/(\d+)/)
-      if (!m) return null
-      const current = parseInt(m[1], 10)
-      const total = parseInt(m[2], 10)
-      const remaining = Math.max(0, total - current)
-      return remaining > 0 ? { amountPerMonth: t.amount, remainingMonths: remaining } : null
-    })
-    .filter((inst): inst is { amountPerMonth: number; remainingMonths: number } => inst !== null)
-
-  // 4. Active Subscriptions & Next Month Committed Load
+  // 3. Active Subscriptions & Next Month Committed Load
   const activeSubs = subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et')
   const monthlyActiveSaaS = activeSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
-  const monthlyInstallmentsLoad = activeInstallments.reduce((sum, i) => sum + Number(i.amountPerMonth || 0), 0)
-  const nextMonthCommittedLoad = round2(monthlyActiveSaaS + monthlyInstallmentsLoad)
+  const yearlyActiveSaaS = round2(monthlyActiveSaaS * 12)
+  const nextMonthCommittedLoad = round2(monthlyActiveSaaS)
 
-  // 5. 6-Month Combined Projection
-  const cashForecast = projectSixMonthCashLoad(activeSubs, activeInstallments, 6)
+  // 4. 6-Month Combined Projection (based on recurring subscriptions)
+  const cashForecast = projectSixMonthCashLoad(activeSubs, [], 6)
 
   // 6. Realistic Founder Runway (Survival Buffer)
   const monthlyBurn = totalConsumption > 0 ? totalConsumption : 15000
@@ -357,11 +344,11 @@ export default function DashboardPage() {
                   <span>Gelecek Ay Sabit Giderler</span>
                 </CardTitle>
                 <Badge variant="secondary" className="text-[10px]">
-                  Planlı Çıkış
+                  Sabit Yük
                 </Badge>
               </div>
               <CardDescription className="text-xs">
-                Abonelikler, faturalar ve taksitlerin gelecek ayki toplam yükü
+                Abonelikler, faturalar ve düzenli giderlerin gelecek ayki toplam yükü
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
@@ -370,12 +357,12 @@ export default function DashboardPage() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2 text-[11px]">
                 <div>
-                  <span className="text-muted-foreground block">Sabit Yükler ({activeSubs.length})</span>
-                  <span className="font-semibold text-foreground tabular-nums">{formatCurrency(monthlyActiveSaaS)}</span>
+                  <span className="text-muted-foreground block">Aktif Kalemler</span>
+                  <span className="font-semibold text-foreground tabular-nums">{activeSubs.length} adet</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block">Devam Eden Taksit</span>
-                  <span className="font-semibold text-foreground tabular-nums">{formatCurrency(monthlyInstallmentsLoad)}</span>
+                  <span className="text-muted-foreground block">Yıllık İzdüşüm</span>
+                  <span className="font-semibold text-foreground tabular-nums">{formatCurrency(yearlyActiveSaaS)}</span>
                 </div>
               </div>
             </CardContent>
@@ -429,7 +416,7 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="text-base">6 Aylık Planlı Nakit Yükü Projeksiyonu</CardTitle>
                 <CardDescription className="text-xs">
-                  Aktif abonelikler ve taksitlerin gelecek 6 aydaki seyri
+                  Aktif abonelikler ve sabit giderlerin gelecek 6 aydaki seyri
                 </CardDescription>
               </div>
               <Link href="/subscriptions">
