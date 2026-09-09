@@ -1,10 +1,14 @@
-# Restore script for Antigravity Session 4f656576-acae-42f2-8392-9de76f24d183 on Windows
+# Restore script for Antigravity Session a4db2f68-0ce6-413a-8015-b6c93a0f71ff on Windows
 # Run this on Windows where you want to restore the exact chat session.
+
+param (
+    [string]$SessionId = "a4db2f68-0ce6-413a-8015-b6c93a0f71ff"
+)
 
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$tarFile = Join-Path $scriptDir "session-4f656576-acae-42f2-8392-9de76f24d183.tar.gz"
+$tarFile = Join-Path $scriptDir "session-$SessionId.tar.gz"
 
 if (-not (Test-Path $tarFile)) {
     Write-Error "Hata: Paket dosyası bulunamadı: $tarFile"
@@ -19,12 +23,13 @@ New-Item -ItemType Directory -Force -Path (Join-Path $destDir "brain") | Out-Nul
 
 Write-Host "=== Antigravity Chat Oturumu Geri Yükleniyor ===" -ForegroundColor Cyan
 Write-Host "Hedef Dizin: $destDir"
+Write-Host "Paket Dosyası: $tarFile"
 
 tar -xzf $tarFile -C $destDir
 
 # macOS metadata dosyalarını temizle
-Get-ChildItem -Path (Join-Path $destDir "conversations"), (Join-Path $destDir "brain\4f656576-acae-42f2-8392-9de76f24d183") -Filter "._*" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem -Path (Join-Path $destDir "conversations"), (Join-Path $destDir "brain\$SessionId") -Filter "._*" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force
 
 Write-Host "Başarıyla tamamlandı!" -ForegroundColor Green
-Write-Host "Oturum ID: 4f656576-acae-42f2-8392-9de76f24d183"
+Write-Host "Oturum ID: $SessionId"
 Write-Host "Antigravity IDE veya agy CLI açıldığında bu oturum otomatik olarak geçmişte görünecektir."

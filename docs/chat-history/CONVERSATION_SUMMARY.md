@@ -1,58 +1,92 @@
-# Antigravity Chat Oturumu ve Geliştirme Özeti
+# Pusula Geliştirme & Chat Oturumu Özeti
 
-* **Oturum ID**: `4f656576-acae-42f2-8392-9de76f24d183`
+* **Aktif Oturum ID**: `a4db2f68-0ce6-413a-8015-b6c93a0f71ff`
+* **Önceki Oturum ID**: `4f656576-acae-42f2-8392-9de76f24d183`
 * **Proje**: Pusula (`keskinEvren/pusula`)
 * **Tarih**: 9 Eylül 2026
+* **Durum**: Production derlemesi (`next build`) ve tüm 11 test paketi (`vitest`) %100 yeşil.
 
 ---
 
-## 1. Bu Oturumda Alınan Kararlar ve Yapılan Geliştirmeler
+## 🚀 Bu Oturumda Tamamlanan Başlıca Geliştirmeler
 
-### A. Hızır Global Alacak & Tahsilat Mutabakatı
-1. **İşten Ayrılış Sonrası Hakediş**: Kullanıcı 5 Haziran'da işten ayrıldı. Toplam brüt maaş hakedişi 227.850 TL idi.
-2. **Geçmiş Tahsilatlar**:
-   * Şubat çalışması (Mart maaşı): 30.000 TL geçmişte ödendi, 33.300 TL yeni hesap hareketleriyle ödendi -> **Kapandı (0 TL)**.
-   * Mart çalışması (Nisan maaşı): 25.000 TL geçmişte ödendi, 25.600 TL yeni hesap hareketleriyle (31 Ağustos'taki 17.600 TL ve 8.000 TL transferleri) ödendi -> **Kalan: 12.700 TL**.
-   * Nisan çalışması (Mayıs maaşı): **Kalan: 63.300 TL**.
-   * Mayıs çalışması (Haziran maaşı): **Kalan: 63.300 TL** (Kullanıcı talimatıyla daha önce buraya yazılmış olan 25.000 TL düşüm en eski borç olan Mart ayına aktarıldı).
-   * Haziran çalışması (Temmuz maaşı - 5 günlük): **Kalan: 10.550 TL**.
-   * Şahsi Kart Harcamaları Farkı: **Kalan: 15.723 TL**.
-3. **Kalan Kesin Alacak**: `12.700 + 63.300 + 63.300 + 10.550 + 15.723 = 165.573,00 TL`.
-4. **İptal Edilen / Hariç Tutulan Kalemler**:
-   * 50.000 TL borç iptal edildiği için eklenmedi.
-   * Garanti Bankası kapatıldığı için eklenmedi.
-   * Akbank Artı Para: 74,91 TL borç olarak eklendi.
-5. **Net Bakiye**: `+165.498,09 TL`.
+### 1. 📖 Günlük Modülü (Pusula Günlük / Journal - `/journal`)
+* **Odak & Zen Editör**: Markdown destekli, daktilo hissi veren, minimalist ve estetik yazı alanı.
+* **Stoik & Rehberli Şablonlar**:
+  - Serbest Akış
+  - Stoik Akşam Muhasebesi (Marcus Aurelius: Neyi iyi yaptım, neyi sakin karşılayabilirdim?)
+  - Şükran & Günün Zaferi
+  - Haftalık Kapanış & Rota Tayini (MIT)
+* **Günün Otomatik Bağlamı (Smart Day Context Ribbon)**: Günlük yazarken o gün tamamlanan rutinleri ve günün harcamalarını otomatik fısıldayan mini-şerit.
+* **Ruh Hali & Kelime İstatistikleri**: Günün ruh hali seçimi (`calm`, `clear`, `reflective`, `high_energy`, `stormy`), yazma serisi (streak) ve kelime sayacı.
+* **Testler**: `tests/journal-engine.test.ts` (5 test) eksiksiz doğrulandı.
 
-### B. `/debts` Sayfası Excel Görünümü (`src/app/debts/page.tsx`)
-1. Kullanıcının Excel tablosu birebir klonlandı (Koyu camgöbeği `#1d707c` başlık, nane yeşili `Yeni Hareketlerden` sütunu, kalın yeşil `Kalan` sütunu).
-2. Kronolojik sıralama zorunlu kılındı (`sortDebtsChronological`).
-3. Her satıra **"Düş"** butonu entegre edildi:
-   * Kullanıcı ister elle tutar girerek satırdan düşebilir (kasa/hesaba gelir işlenir).
-   * İster banka hareketleri listesinden ilgili transferi seçerek tek tıkla düşebilir.
-4. Kalan 0 TL olduğunda satır otomatik `Kapandı` durumuna geçer.
+### 2. 🛡️ Veri ve Yedekleme (Kişisel Kasa - `/vault`)
+* **15 Veritabanı Tablosunun Eksiksiz Yedeklenmesi**: Nakit hesaplar, kartlar, ekstreler, hareketler, borçlar, abonelikler, yatırımlar, projeler, görevler, fikirler, hedefler, rutinler, rutin kayıtları ve günlükler.
+* **Askeri Düzey Şifreleme (AES-GCM & PBKDF2)**: Web Crypto API ile tarayıcı üzerinde istemci tarafı parola korumalı `.pusula.vault` veya şifresiz `.json` dışa/içe aktarma.
+* **Testler**: `tests/vault-engine.test.ts` (4 test) eksiksiz doğrulandı.
+
+### 3. 🎨 Anti-AI-Slop Tasarım, Marka & Yüzey Derinliği Dönüşümü
+* **Taksonomi & Dil Olgunlaşması**:
+  - `Komuta Merkezi / Kokpit` ➔ **Genel Bakış**
+  - `Finans & Likidite` ➔ **Finans**
+  - `Yaşam & Zihin (Life OS)` ➔ **Kişisel**
+  - `Stüdyo & Üretim` ➔ **Çalışma**
+  - `Sistem & Kasa` ➔ **Sistem**
+  - `Seyir Defteri` ➔ **Günlük**
+  - `Kişisel Kasa` ➔ **Veri ve Yedekleme**
+  - `Hayallerim` ➔ **Hedefler & Vizyon**
+* **Sıfır-Emoji İlkesi**: Menü, sekme, buton ve başlıklardaki çocuksu emojiler kaldırıldı; 16px monokrom Lucide ikonlarına geçildi.
+* **Obsidian & Nordic Slate Yüzey Mimarisi**:
+  - Tuval: `#0c0c0e`
+  - Paneller: `#131316` + `inset 0 1px 0 0 rgba(255,255,255,0.05)` üst kenar mikro-ışığı.
+  - Modallar: `#16161b` + `backdrop-blur-md` floating derinlik.
+* **Bespoke Form Bileşenleri**:
+  - `HeroCurrencyInput` (`src/components/ui/hero-currency-input.tsx`): 3xl tabular-nums, sabit soluk `₺`, `+50`, `+100`, `+500`, `+1000` hızlı artış çipleri.
+  - `SegmentedControl` (`src/components/ui/segmented-control.tsx`): Yerel hantal HTML `<select>` yerine Apple/Linear hap düğmeler.
+* **Card Soup & Başlık Didaktizminin Tasfiyesi**:
+  - Dashboard 6 aylık nakit tahmini ve projeler kutu yığınından tek parça segmented strip'e dönüştürüldü.
+  - `PageHeader` kompakt `text-xl sm:text-2xl` boyutuna çekildi, didaktik felsefe açıklamaları sadeleştirildi.
+  - Tablolarda font-bold enflasyonu temizlendi.
+
+### 4. 💳 Gelecek Ay Sabit Giderler Mantık İyileştirmesi
+* Kredi kartı taksitleri "Gelecek Ay Sabit Giderler" kartından çıkarıldı (kredi kartı borçlarında zaten var olduğu ve çift sayım yarattığı için).
+* Kart doğrudan `/subscriptions` sayfasına bağlandı; gerçek düzenli sabit yük (`₺0,00 / ay`) ve `Yıllık İzdüşüm` göstergesine kavuştu.
+
+### 5. 🧠 Modüller Arası İletişim & Sinaps Denetimi
+* `journal-engine.ts` içindeki `t.amount < 0` hatası giderildi (artık günün pozitif harcamalarını eksiksiz fısıldıyor).
+* Proje genelinde eksik kalan köprüler raporlandı (Hareketlerde "Projeye Bağla" eylemi, Yatırımlarda "Nakit Hesaptan Düş" köprüsü, Hedeflerde "Sanal Kumbara / Fonlama" köprüsü).
 
 ---
 
-## 2. Başka Bilgisayarda Bu Chatten Devam Etme Rehberi
+## 🏡 Evde Geliştirmeye Devam Etme Rehberi
 
-Bu repo başka bir bilgisayara çekildiğinde mevcut chat geçmişinden devam etmek için:
+Evdeki bilgisayarınızda mevcut tüm geçmiş ve bağlamla devam etmek için:
 
-### Adım 1: Depoyu Çekin
+### Adım 1: Değişiklikleri Çekin
 ```bash
-git clone https://github.com/keskinEvren/pusula.git
-cd pusula
+git pull origin master
 ```
 
 ### Adım 2: Chat Oturumunu Geri Yükleyin
+**Windows için (PowerShell):**
+```powershell
+.\docs\chat-history\restore-session.ps1
+```
+
+**macOS / Linux için (Bash):**
 ```bash
+chmod +x ./docs\chat-history\restore-session.sh
 ./docs/chat-history/restore-session.sh
 ```
 
-Bu script şunları yapar:
-* `docs/chat-history/session-4f656576-acae-42f2-8392-9de76f24d183.tar.gz` paketini açar.
-* SQLite veritabanını (`~/.gemini/antigravity/conversations/4f656576-acae-42f2-8392-9de76f24d183.db*`) ve Brain dizinini (`~/.gemini/antigravity/brain/4f656576-acae-42f2-8392-9de76f24d183/`) hedef dizine yerleştirir.
+### Adım 3: Antigravity IDE'yi Açın
+* Antigravity IDE veya `agy` CLI açıldığında, sol paneldeki geçmiş konuşmalarda **`a4db2f68-0ce6-413a-8015-b6c93a0f71ff`** ID'li oturum listelenecektir.
+* Doğrudan bu oturuma girerek sıfır bağlam kaybıyla kaldığımız yerden devam edebilirsiniz.
 
-### Adım 3: Antigravity ile Açın
-* Antigravity IDE veya `agy` CLI çalıştırıldığında sol paneldeki geçmiş konuşmalarda `4f656576-acae-42f2-8392-9de76f24d183` ID'li oturum listelenir.
-* Doğrudan bu chate girerek hiçbir bağlam kaybı olmadan sohbete devam edebilirsiniz.
+---
+
+## 🧪 Test & Doğrulama Durumu
+* **TypeScript Typecheck**: `npx tsc --noEmit` ➔ **0 Hata**
+* **Vitest Test Paketi**: `npm test` ➔ **11 test suite, 115 testin tamamı başarılı**
+* **Next.js Production Build**: `npm run build` ➔ **23 sayfa hatasız derlendi**
