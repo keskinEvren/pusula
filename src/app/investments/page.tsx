@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Investment } from '@/types/database'
 
 function getPriceFreshness(lastUpdated?: string | null): {
@@ -91,6 +92,7 @@ const COMMON_PRESETS = [
 
 function InvestmentsContent() {
   const searchParams = useSearchParams()
+  const { toast } = useToast()
   const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -384,7 +386,7 @@ function InvestmentsContent() {
     const purchasePrice = parseFloat(dcaUnitPrice.replace(',', '.'))
 
     if (isNaN(addedQty) || addedQty <= 0 || isNaN(purchasePrice) || purchasePrice <= 0) {
-      alert('Lütfen geçerli bir miktar ve alış fiyatı giriniz.')
+      toast.warning('Lütfen geçerli bir miktar ve alış fiyatı giriniz.')
       return
     }
 
@@ -428,9 +430,10 @@ function InvestmentsContent() {
         syncLocal(updated)
       }
 
+      toast.success(`${dcaItem.name} için kademeli alım kaydedildi.`)
       setDcaItem(null)
     } catch (err: any) {
-      alert(err.message || 'Kademeli alım kaydedilemedi.')
+      toast.error(err.message || 'Kademeli alım kaydedilemedi.')
     } finally {
       setDcaSubmitting(false)
     }
@@ -507,6 +510,7 @@ function InvestmentsContent() {
       syncLocal(updated)
     }
 
+    toast.success(editingItem ? 'Yatırım güncellendi.' : 'Yeni yatırım eklendi.')
     setIsModalOpen(false)
   }
 
@@ -519,6 +523,7 @@ function InvestmentsContent() {
     } else {
       syncLocal(investments.filter((i) => i.id !== id))
     }
+    toast.success('Yatırım kaydı silindi.')
   }
 
   const handleSaveQuickPrice = async (e: React.FormEvent) => {
@@ -551,6 +556,7 @@ function InvestmentsContent() {
       syncLocal(updated)
     }
 
+    toast.success('Fiyat güncellendi.')
     setQuickUpdateItem(null)
   }
 
@@ -934,6 +940,7 @@ function InvestmentsContent() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingItem ? 'Yatırımı Düzenle' : 'Yeni Yatırım / Varlık Ekle'}
+        size="lg"
       >
         <form onSubmit={handleSaveInvestment} className="space-y-4">
           {/* Quick Presets (Only for New Item) */}
@@ -969,7 +976,7 @@ function InvestmentsContent() {
                 <Input
                   value={formName}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="Örn: Türk Hava Yolları, Gram Altın, Koç..."
+                  placeholder="Örn: Türk Hava Yolları veya Gram Altın"
                   required
                 />
               </div>
@@ -978,15 +985,16 @@ function InvestmentsContent() {
                 <Input
                   value={formSymbol}
                   onChange={(e) => handleSymbolChange(e.target.value)}
-                  placeholder="THYAO, BTC"
+                  placeholder="Örn: THYAO"
+                  className="font-mono uppercase"
                 />
               </div>
             </div>
 
             {/* Catalog Autocomplete Suggestions Dropdown */}
             {showCatalogDropdown && catalogSuggestions.length > 0 && (
-              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-xl overflow-hidden max-h-56 overflow-y-auto">
-                <div className="p-1.5 text-[10px] uppercase font-semibold text-muted-foreground bg-muted/40 border-b border-border/40 flex items-center justify-between">
+              <div className="absolute top-[68px] left-0 right-0 z-50 rounded-lg border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+                <div className="px-3 py-1.5 bg-muted/50 border-b border-border text-[11px] font-medium text-muted-foreground flex justify-between">
                   <span>Önerilen Varlıklar (Katalog)</span>
                   <span>{catalogSuggestions.length} eşleşme</span>
                 </div>
@@ -1025,7 +1033,7 @@ function InvestmentsContent() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Kurum / Cüzdan / Banka</label>
+              <label className="text-xs font-semibold text-foreground">Saklama Kurumu / Borsa</label>
               <Input
                 value={formInstitution}
                 onChange={(e) => setFormInstitution(e.target.value)}
@@ -1048,19 +1056,20 @@ function InvestmentsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Alış Maliyeti (₺)</label>
+              <label className="text-xs font-semibold text-foreground">Alış Maliyeti</label>
               <Input
                 type="number"
                 step="any"
+                prefix="₺"
                 value={formUnitCost}
                 onChange={(e) => setFormUnitCost(e.target.value)}
-                placeholder="Birim alış"
+                placeholder="0.00"
                 required
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-foreground">Güncel Fiyat (₺)</label>
+                <label className="text-xs font-semibold text-foreground">Güncel Fiyat</label>
                 <button
                   type="button"
                   onClick={handleFetchLivePrice}
@@ -1073,9 +1082,10 @@ function InvestmentsContent() {
               <Input
                 type="number"
                 step="any"
+                prefix="₺"
                 value={formCurrentPrice}
                 onChange={(e) => setFormCurrentPrice(e.target.value)}
-                placeholder="Birim piyasa"
+                placeholder="0.00"
                 required
               />
             </div>
@@ -1176,6 +1186,7 @@ function InvestmentsContent() {
           isOpen={!!dcaItem}
           onClose={() => setDcaItem(null)}
           title={`Kademeli Alım (Ağırlıklı Maliyet Sihirbazı): ${dcaItem.name}`}
+          size="lg"
         >
           {(() => {
             const addedQtyNum = parseFloat(dcaAddedQty.replace(',', '.')) || 0
@@ -1233,7 +1244,7 @@ function InvestmentsContent() {
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-foreground">Alış Fiyatı (₺)</label>
+                      <label className="text-xs font-semibold text-foreground">Alış Fiyatı</label>
                       {dcaItem.current_price > 0 && (
                         <button
                           type="button"
@@ -1247,9 +1258,10 @@ function InvestmentsContent() {
                     <Input
                       type="number"
                       step="any"
+                      prefix="₺"
                       value={dcaUnitPrice}
                       onChange={(e) => setDcaUnitPrice(e.target.value)}
-                      placeholder="Birim alış fiyatı"
+                      placeholder="0.00"
                       required
                     />
                   </div>

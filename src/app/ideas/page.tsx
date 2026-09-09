@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Lightbulb,
   Plus,
@@ -18,9 +18,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Idea } from '@/types/database'
 
 const TABS = [
@@ -30,8 +32,10 @@ const TABS = [
   { key: 'promoted', label: '🚀 Projeye Dönüşenler' },
 ]
 
-export default function IdeasPage() {
+function IdeasContent() {
   const router = useRouter()
+  const { toast } = useToast()
+  const searchParams = useSearchParams()
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [activeTab, setActiveTab] = useState<string>('inbox')
   const [loading, setLoading] = useState(true)
@@ -54,6 +58,12 @@ export default function IdeasPage() {
   useEffect(() => {
     loadIdeas()
   }, [])
+
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      setIsModalOpen(true)
+    }
+  }, [searchParams])
 
   async function loadIdeas() {
     setLoading(true)
@@ -104,6 +114,7 @@ export default function IdeasPage() {
       if (data) {
         setIdeas([data, ...ideas])
         setIsModalOpen(false)
+        toast.success('Yeni fikir başarıyla kaydedildi!')
         setIdeaForm({
           title: '',
           description: '',
@@ -112,7 +123,7 @@ export default function IdeasPage() {
         })
       }
     } catch (err: any) {
-      alert(err.message || 'Fikir eklenemedi')
+      toast.error(err.message || 'Fikir eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -178,9 +189,10 @@ export default function IdeasPage() {
         .eq('id', promoteTarget.id)
 
       setPromoteTarget(null)
+      toast.success('Fikir başarıyla projeye dönüştürüldü!')
       router.push(`/projects/${slug}`)
     } catch (err: any) {
-      alert(err.message || 'Projeye dönüştürülemedi')
+      toast.error(err.message || 'Projeye dönüştürülemedi')
     } finally {
       setPromoting(false)
     }
@@ -192,8 +204,9 @@ export default function IdeasPage() {
       const { error } = await supabase.from('ideas').update({ status }).eq('id', ideaId)
       if (error) throw error
       setIdeas((prev) => prev.map((i) => (i.id === ideaId ? { ...i, status } : i)))
+      toast.success('Fikir durumu güncellendi!')
     } catch (err: any) {
-      alert(err.message || 'Durum güncellenemedi')
+      toast.error(err.message || 'Durum güncellenemedi')
     }
   }
 
@@ -204,8 +217,9 @@ export default function IdeasPage() {
       const { error } = await supabase.from('ideas').delete().eq('id', id)
       if (error) throw error
       setIdeas(ideas.filter((i) => i.id !== id))
+      toast.success('Fikir silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -359,11 +373,11 @@ export default function IdeasPage() {
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Açıklama & Notlar</label>
-            <Input
-              placeholder="Bu fikir neyi çözer, kimin için faydalı?"
+            <Textarea
+              placeholder="Bu fikir neyi çözer, kimin için faydalı? İlk düşünceler..."
               value={ideaForm.description}
               onChange={(e) => setIdeaForm({ ...ideaForm, description: e.target.value })}
-              className="text-xs"
+              className="text-xs min-h-[60px]"
             />
           </div>
 
@@ -423,14 +437,15 @@ export default function IdeasPage() {
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">
-                Proje Bütçe Limiti (₺)
+                Proje Bütçe Limiti (Opsiyonel)
               </label>
               <Input
                 type="number"
-                placeholder="10000"
+                placeholder="10000.00"
+                prefix="₺"
                 value={promoteBudget}
                 onChange={(e) => setPromoteBudget(e.target.value)}
-                className="text-xs"
+                className="text-xs font-mono"
               />
               <p className="text-[11px] text-muted-foreground">
                 Proje geliştirme sürecinde maliyet hedefini takip etmek için opsiyonel bütçe.
@@ -450,5 +465,19 @@ export default function IdeasPage() {
         )}
       </Modal>
     </div>
+  )
+}
+
+export default function IdeasPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          Fikir havuzu yükleniyor...
+        </div>
+      }
+    >
+      <IdeasContent />
+    </Suspense>
   )
 }

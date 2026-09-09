@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import {
   PusulaVaultData,
   VaultPayload,
@@ -45,6 +46,7 @@ import {
 } from '@/lib/vault-engine'
 
 function VaultPageContent() {
+  const { toast } = useToast()
   const [vaultData, setVaultData] = useState<PusulaVaultData>(EMPTY_VAULT_DATA)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'export' | 'restore' | 'diagnostics'>('export')
@@ -167,11 +169,11 @@ function VaultPageContent() {
   async function handleExportVault() {
     if (isEncrypted) {
       if (!exportPassword || exportPassword.length < 6) {
-        alert('Şifreli yedek için en az 6 karakterli bir parola belirlemelisiniz.')
+        toast.warning('Şifreli yedek için en az 6 karakterli bir parola belirlemelisiniz.')
         return
       }
       if (exportPassword !== exportPasswordConfirm) {
-        alert('Girdiğiniz parolalar birbiriyle eşleşmiyor.')
+        toast.warning('Girdiğiniz parolalar birbiriyle eşleşmiyor.')
         return
       }
     }
@@ -192,17 +194,21 @@ function VaultPageContent() {
           `pusula-vault-encrypted-${dateStr}.vault`,
           'application/octet-stream'
         )
-        setExportSuccessMsg('Kişisel Kasa yedeğiniz parola ile şifrelenerek (.vault) başarıyla indirildi.')
+        const msg = 'Kişisel Kasa yedeğiniz parola ile şifrelenerek (.vault) başarıyla indirildi.'
+        setExportSuccessMsg(msg)
+        toast.success(msg)
       } else {
         triggerDownload(
           jsonString,
           `pusula-vault-backup-${dateStr}.json`,
           'application/json'
         )
-        setExportSuccessMsg('Kişisel Kasa yedeğiniz (.json) başarıyla bilgisayarınıza indirildi.')
+        const msg = 'Kişisel Kasa yedeğiniz (.json) başarıyla bilgisayarınıza indirildi.'
+        setExportSuccessMsg(msg)
+        toast.success(msg)
       }
     } catch (err: any) {
-      alert(`Dışa aktarma hatası: ${err.message}`)
+      toast.error(`Dışa aktarma hatası: ${err.message}`)
     } finally {
       setIsExporting(false)
     }
@@ -314,13 +320,15 @@ function VaultPageContent() {
       }
 
       setVaultData(finalData)
-      setRestoreSuccessMsg(
-        `Başarılı! ${validationResult.payload.manifest.total_records} kayıt başarıyla geri yüklendi ve kasanız güncellendi.`
-      )
+      const successText = `Başarılı! ${validationResult.payload.manifest.total_records} kayıt başarıyla geri yüklendi ve kasanız güncellendi.`
+      setRestoreSuccessMsg(successText)
+      toast.success(successText)
       setUploadedFile(null)
       setValidationResult(null)
     } catch (err: any) {
-      setRestoreErrorMsg(`Geri yükleme sırasında hata oluştu: ${err.message}`)
+      const errText = `Geri yükleme sırasında hata oluştu: ${err.message}`
+      setRestoreErrorMsg(errText)
+      toast.error(errText)
     } finally {
       setIsRestoring(false)
       setRestoreProgress(null)

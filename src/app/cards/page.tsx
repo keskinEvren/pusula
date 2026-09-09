@@ -22,9 +22,11 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
+import { useToast } from '@/lib/toast-context'
 import type { CreditCard as CardType, CardStatement } from '@/types/database'
 
 export default function CardsPage() {
+  const { toast } = useToast()
   const [cards, setCards] = useState<CardType[]>([])
   const [statements, setStatements] = useState<CardStatement[]>([])
   const [loading, setLoading] = useState(true)
@@ -148,6 +150,7 @@ export default function CardsPage() {
       if (data) {
         setCards([data, ...cards])
         setIsCardModalOpen(false)
+        toast.success('Kredi kartı başarıyla eklendi!')
         setCardForm({
           bank: '',
           card_name: '',
@@ -162,7 +165,7 @@ export default function CardsPage() {
         })
       }
     } catch (err: any) {
-      alert(err.message || 'Kart eklenemedi')
+      toast.error(err.message || 'Kart eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -214,9 +217,10 @@ export default function CardsPage() {
         setCards(cards.map((c) => (c.id === data.id ? data : c)))
         setIsEditCardModalOpen(false)
         setEditingCard(null)
+        toast.success('Kart bilgileri güncellendi!')
       }
     } catch (err: any) {
-      alert(err.message || 'Kart güncellenemedi')
+      toast.error(err.message || 'Kart güncellenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -269,10 +273,11 @@ export default function CardsPage() {
 
         setStatements([data, ...statements])
         setIsStmtModalOpen(false)
+        toast.success('Yeni ekstre başarıyla kaydedildi!')
         loadCardsAndStatements()
       }
     } catch (err: any) {
-      alert(err.message || 'Ekstre kaydedilemedi')
+      toast.error(err.message || 'Ekstre kaydedilemedi')
     } finally {
       setSubmitting(false)
     }
@@ -285,8 +290,9 @@ export default function CardsPage() {
       const { error } = await supabase.from('credit_cards').delete().eq('id', id)
       if (error) throw error
       setCards(cards.filter((c) => c.id !== id))
+      toast.success('Kredi kartı ve geçmişi silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -523,26 +529,27 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
+          <div className="flex gap-3">
+            <div className="w-28 space-y-1 shrink-0">
               <label className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
               <Input
-                placeholder="Örn: 1697"
+                placeholder="1697"
                 maxLength={4}
                 value={cardForm.last_four}
                 onChange={(e) => setCardForm({ ...cardForm, last_four: e.target.value })}
-                className="text-xs font-mono"
+                className="text-xs font-mono text-center tracking-widest"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Güncel Toplam Borç (TL)</label>
+            <div className="flex-1 space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Güncel Toplam Borç</label>
               <Input
                 type="number"
                 step="0.01"
                 placeholder="0.00"
+                prefix="₺"
                 value={cardForm.current_debt}
                 onChange={(e) => setCardForm({ ...cardForm, current_debt: e.target.value })}
-                className="text-xs font-mono"
+                className="text-xs font-mono font-semibold"
               />
             </div>
           </div>
@@ -616,25 +623,27 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Dönem Borcu (TL)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Dönem Borcu</label>
               <Input
                 type="number"
                 step="0.01"
                 required
+                prefix="₺"
                 placeholder="26969.24"
                 value={stmtForm.period_debt}
                 onChange={(e) => setStmtForm({ ...stmtForm, period_debt: e.target.value })}
-                className="text-xs font-mono"
+                className="text-xs font-mono font-semibold"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme (TL)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 placeholder="0.00"
                 value={stmtForm.minimum}
                 onChange={(e) => setStmtForm({ ...stmtForm, minimum: e.target.value })}
@@ -642,10 +651,11 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Faiz/Masraf Yükü (TL)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Faiz / Masraf Yükü</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 placeholder="0.00"
                 value={stmtForm.interest_fees}
                 onChange={(e) => setStmtForm({ ...stmtForm, interest_fees: e.target.value })}
@@ -707,22 +717,23 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
+          <div className="flex gap-3">
+            <div className="w-28 space-y-1 shrink-0">
               <label className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
               <Input
                 maxLength={4}
                 value={editCardForm.last_four}
                 onChange={(e) => setEditCardForm({ ...editCardForm, last_four: e.target.value })}
-                className="text-xs font-mono"
+                className="text-xs font-mono text-center tracking-widest"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-primary">Güncel Toplam Borç (TL)</label>
+            <div className="flex-1 space-y-1">
+              <label className="text-xs font-semibold text-primary">Güncel Toplam Borç</label>
               <Input
                 type="number"
                 step="0.01"
                 required
+                prefix="₺"
                 value={editCardForm.current_debt}
                 onChange={(e) => setEditCardForm({ ...editCardForm, current_debt: e.target.value })}
                 className="text-xs font-mono font-bold border-primary/50"
@@ -732,20 +743,22 @@ export default function CardsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Son Dönem Borcu (TL)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Son Dönem Borcu</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 value={editCardForm.statement_debt}
                 onChange={(e) => setEditCardForm({ ...editCardForm, statement_debt: e.target.value })}
                 className="text-xs font-mono"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme (TL)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 value={editCardForm.minimum_payment}
                 onChange={(e) => setEditCardForm({ ...editCardForm, minimum_payment: e.target.value })}
                 className="text-xs font-mono"

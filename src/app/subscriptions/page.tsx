@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
+import { useToast } from '@/lib/toast-context'
 import type { Subscription, Project, Transaction } from '@/types/database'
 
 export type ExpenseCategory =
@@ -44,6 +45,7 @@ export type ExpenseCategory =
 export type StrategicDecision = 'Devam' | 'Kararsız' | 'İptal Et'
 
 export default function SubscriptionsPage() {
+  const { toast } = useToast()
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -193,8 +195,9 @@ export default function SubscriptionsPage() {
           setIsModalOpen(false)
         }
       }
+      toast.success(editingSub ? 'Düzenli gider güncellendi.' : 'Yeni düzenli gider eklendi.')
     } catch (err: any) {
-      alert(err.message || 'Kayıt başarısız oldu')
+      toast.error(err.message || 'Kayıt başarısız oldu')
     } finally {
       setSubmitting(false)
     }
@@ -220,8 +223,9 @@ export default function SubscriptionsPage() {
           s.id === sub.id ? { ...s, decision: decision as any, status: newStatus as any } : s
         )
       )
+      toast.success(`Karar güncellendi: ${decision}`)
     } catch (err: any) {
-      alert(err.message || 'Durum güncellenemedi')
+      toast.error(err.message || 'Durum güncellenemedi')
     }
   }
 
@@ -233,8 +237,9 @@ export default function SubscriptionsPage() {
       const { error } = await supabase.from('subscriptions').delete().eq('id', id)
       if (error) throw error
       setSubscriptions((prev) => prev.filter((s) => s.id !== id))
+      toast.success('Düzenli gider silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -778,6 +783,7 @@ export default function SubscriptionsPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingSub ? 'Düzenli Gideri Düzenle' : 'Yeni Düzenli Gider / Abonelik Ekle'}
+        size="lg"
       >
         <form onSubmit={handleSaveSubscription} className="space-y-4">
           <div className="space-y-1.5">
@@ -822,12 +828,13 @@ export default function SubscriptionsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar (₺)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 required
-                placeholder="Örn: 299.99"
+                placeholder="0.00"
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
               />
@@ -903,6 +910,7 @@ export default function SubscriptionsPage() {
         isOpen={isPickerOpen}
         onClose={() => setIsPickerOpen(false)}
         title="Hareketlerden Abonelik / Düzenli Gider Yakala"
+        size="lg"
       >
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">

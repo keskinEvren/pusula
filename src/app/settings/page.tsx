@@ -23,9 +23,11 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Account, MerchantMapping, Project } from '@/types/database'
 
 export default function SettingsPage() {
+  const { toast } = useToast()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [mappings, setMappings] = useState<MerchantMapping[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -102,9 +104,10 @@ export default function SettingsPage() {
         setAccounts([data, ...accounts])
         setIsAccountModalOpen(false)
         setAccountForm({ name: '', type: 'vadesiz', balance: '', note: '' })
+        toast.success('Hesap başarıyla eklendi.')
       }
     } catch (err: any) {
-      alert(err.message || 'Hesap eklenemedi')
+      toast.error(err.message || 'Hesap eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -121,8 +124,9 @@ export default function SettingsPage() {
       setAccounts((prev) =>
         prev.map((a) => (a.id === id ? { ...a, balance: newBalance } : a))
       )
+      toast.success('Hesap bakiyesi güncellendi.')
     } catch (err: any) {
-      alert(err.message || 'Bakiye güncellenemedi')
+      toast.error(err.message || 'Bakiye güncellenemedi')
     }
   }
 
@@ -133,8 +137,9 @@ export default function SettingsPage() {
       const { error } = await supabase.from('accounts').delete().eq('id', id)
       if (error) throw error
       setAccounts(accounts.filter((a) => a.id !== id))
+      toast.success('Hesap silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -170,9 +175,10 @@ export default function SettingsPage() {
           default_group: 'Kişisel',
           default_project_id: '',
         })
+        toast.success('Eşleştirme kuralı eklendi.')
       }
     } catch (err: any) {
-      alert(err.message || 'Kural eklenemedi')
+      toast.error(err.message || 'Kural eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -184,8 +190,9 @@ export default function SettingsPage() {
       const { error } = await supabase.from('merchant_mappings').delete().eq('id', id)
       if (error) throw error
       setMappings(mappings.filter((m) => m.id !== id))
+      toast.success('Kural silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -404,6 +411,7 @@ export default function SettingsPage() {
         onClose={() => setIsAccountModalOpen(false)}
         title="Yeni Hesap Ekle"
         description="Likit nakit veya vadesiz banka hesabınızı tanımlayın."
+        size="lg"
       >
         <form onSubmit={handleAddAccount} className="space-y-4">
           <div className="space-y-1">
@@ -432,10 +440,11 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Mevcut Bakiye (TL)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Mevcut Bakiye</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 required
                 placeholder="0.00"
                 value={accountForm.balance}
@@ -462,6 +471,7 @@ export default function SettingsPage() {
         onClose={() => setIsMappingModalOpen(false)}
         title="Yeni Eşleştirme Kuralı"
         description="Ekstrelerde geçen bir kelime kalıbını otomatik olarak normalize edin."
+        size="lg"
       >
         <form onSubmit={handleAddMapping} className="space-y-4">
           <div className="space-y-1">
