@@ -53,6 +53,66 @@ import {
 
 const INITIAL_SAMPLE_DREAMS: Dream[] = [
   {
+    id: 'dream-ironman',
+    user_id: 'local',
+    title: 'İRONMAN Olmak',
+    description: '3.8 km yüzme, 180 km bisiklet ve 42.2 km maraton koşusundan oluşan dayanıklılık triatlonunu aralıksız tamamlamak.',
+    identity_persona: 'Demir İradeli Dayanıklılık Sporcusu',
+    motivation_why: 'Kendi fiziksel ve zihinsel sınırlarımı aşarak disiplin, irade ve odaklanmanın zirvesini kendi bedenimde kanıtlamak.',
+    horizon: 'horizon_1_3y',
+    category: 'Kişisel Gelişim & Sağlık',
+    status: 'active',
+    next_focus_note: '6-12 aylık disiplinli antrenman planı çıkar, triatlon bisikleti ve ekipmanlarını temin et, hedef yarışı takvime ekle.',
+    cover_image_url: 'https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1600&q=80',
+    target_year: '2027',
+    achieved_at: null,
+    achieved_note: null,
+    achieved_image_url: null,
+    order_index: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'dream-skydiving',
+    user_id: 'local',
+    title: 'Paraşütle Atlamak',
+    description: 'Binlerce metre irtifadan serbest düşüş ve gökyüzünde süzülerek adrenalin ve mutlak özgürlüğü deneyimlemek.',
+    identity_persona: 'Korkusuz Macera Tutkunu',
+    motivation_why: 'Konfor alanını tamamen yıkarak hayata yüksekten bakmak ve anın içindeki saf cesareti tatmak.',
+    horizon: 'horizon_1y',
+    category: 'Deneyim & Seyahat',
+    status: 'active',
+    next_focus_note: 'Efes veya Fethiye tandem paraşüt atlayış takvimini incele ve uygun mevsimde ilk randevuyu planla.',
+    cover_image_url: 'https://images.unsplash.com/photo-1521673461164-de300ebcf4d7?auto=format&fit=crop&w=1600&q=80',
+    target_year: '2026',
+    achieved_at: null,
+    achieved_note: null,
+    achieved_image_url: null,
+    order_index: 1,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'dream-sailboat',
+    user_id: 'local',
+    title: 'Güzel Bir Yelkenli Sahibi Olmak',
+    description: 'Masmavi koylarda sadece rüzgarın gücüyle seyretmek, denizle baş başa bağımsız ve dingin bir yaşam kurmak.',
+    identity_persona: 'Denizci & Özgür Kaptan',
+    motivation_why: 'Denizin sağladığı mutlak bağımsızlık, doğayla uyum ve zihne kazandırdığı tarifsiz huzur.',
+    horizon: 'horizon_3_5y',
+    category: 'Maddi Hedef',
+    status: 'active',
+    next_focus_note: 'Amatör Denizci Belgesi (ADB) ve yelken eğitimini tamamla, tekne sınıfları ve marina işletim maliyetlerini araştır.',
+    cover_image_url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
+    target_year: '2029',
+    achieved_at: null,
+    achieved_note: null,
+    achieved_image_url: null,
+    order_index: 2,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
     id: 'sample-1',
     user_id: 'local',
     title: "Kyoto'da Taş Bahçeli Evde 1 Ay Çalışmak",
@@ -213,18 +273,39 @@ function DreamsContent() {
       const cached = localStorage.getItem('pusula_local_dreams')
       if (cached) {
         try {
-          setDreams(JSON.parse(cached))
+          const parsed: Dream[] = JSON.parse(cached)
+          const missing = INITIAL_SAMPLE_DREAMS.slice(0, 3).filter(
+            (d) =>
+              !parsed.some(
+                (p) =>
+                  p.id === d.id ||
+                  (p.title && p.title.toLowerCase() === d.title.toLowerCase())
+              )
+          )
+          const merged = missing.length > 0 ? [...missing, ...parsed] : parsed
+          setDreams(merged)
+          localStorage.setItem('pusula_local_dreams', JSON.stringify(merged))
         } catch {
           setDreams(INITIAL_SAMPLE_DREAMS)
+          localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
         }
       } else {
         setDreams(INITIAL_SAMPLE_DREAMS)
         localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
       }
     } else if (data && data.length > 0) {
-      setDreams(data)
+      const missing = INITIAL_SAMPLE_DREAMS.slice(0, 3).filter(
+        (d) =>
+          !data.some(
+            (p) =>
+              p.id === d.id ||
+              (p.title && p.title.toLowerCase() === d.title.toLowerCase())
+          )
+      )
+      const merged = missing.length > 0 ? [...missing, ...data] : data
+      setDreams(merged)
       setIsDbFallback(false)
-      localStorage.setItem('pusula_local_dreams', JSON.stringify(data))
+      localStorage.setItem('pusula_local_dreams', JSON.stringify(merged))
     } else {
       // Empty remote table: seed with sample inspirations if completely empty
       setDreams(INITIAL_SAMPLE_DREAMS)

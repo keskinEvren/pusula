@@ -114,6 +114,13 @@ export const CURATED_VISION_WALLPAPERS: VisionWallpaper[] = [
     url: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1600&q=80',
     thumbnailUrl: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=400&q=80',
   },
+  {
+    id: 'skydiving-drop',
+    title: 'Serbest Düşüş & Paraşüt',
+    category: 'Deneyim & Seyahat',
+    url: 'https://images.unsplash.com/photo-1521673461164-de300ebcf4d7?auto=format&fit=crop&w=1600&q=80',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1521673461164-de300ebcf4d7?auto=format&fit=crop&w=400&q=80',
+  },
 ]
 
 /**
