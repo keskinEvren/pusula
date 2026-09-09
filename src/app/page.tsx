@@ -34,7 +34,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import type { Account, CreditCard as CardType, Debt, Transaction, Subscription, Project } from '@/types/database'
+import type { Account, CreditCard as CardType, Debt, Transaction, Subscription, Project, Investment } from '@/types/database'
 
 export default function DashboardPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function DashboardPage() {
           { data: txs },
           { data: subs },
           { data: prjs },
+          invsRes,
         ] = await Promise.all([
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
@@ -63,6 +65,7 @@ export default function DashboardPage() {
           supabase.from('transactions').select('*').order('date', { ascending: false }),
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
+          supabase.from('investments').select('*'),
         ])
 
         if (accs) setAccounts(accs)
@@ -71,6 +74,17 @@ export default function DashboardPage() {
         if (txs) setTransactions(txs)
         if (subs) setSubscriptions(subs)
         if (prjs) setProjects(prjs)
+
+        let finalInvs: Investment[] = []
+        if (invsRes?.data) {
+          finalInvs = invsRes.data
+        } else {
+          try {
+            const cached = localStorage.getItem('pusula_local_investments')
+            if (cached) finalInvs = JSON.parse(cached)
+          } catch {}
+        }
+        setInvestments(finalInvs)
       } catch (err) {
         console.error('Error loading dashboard:', err)
       } finally {
@@ -82,8 +96,8 @@ export default function DashboardPage() {
   }, [])
 
   // 1. Calculations via Pure Financial Engine
-  const { totalCash, totalReceivables, totalCardDebt, totalOtherDebt, totalDebt, netWorth } =
-    calculateNetWorth(accounts, debts, cards)
+  const { totalCash, totalReceivables, totalInvestments, totalCardDebt, totalOtherDebt, totalDebt, netWorth } =
+    calculateNetWorth(accounts, debts, cards, investments)
 
   // 2. Active Month Determination & Spending Isolation
   const latestTxDate = transactions[0]?.date || new Date().toISOString().split('T')[0]
@@ -187,7 +201,7 @@ export default function DashboardPage() {
       )}
 
       {/* Primary KPI Row (Net Worth & Balances) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Net Worth */}
         <Card className="border-border bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -205,7 +219,7 @@ export default function DashboardPage() {
               {formatCurrency(netWorth)}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              (Nakit + Alacak) − Toplam Borç
+              (Nakit + Alacak + Portföy) − Borç
             </p>
           </CardContent>
         </Card>
@@ -226,6 +240,27 @@ export default function DashboardPage() {
               <p className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
                 <span>{accounts.length} hesap ve kasa</span>
                 <span className="text-primary text-[11px] font-semibold">Kasaları Gör →</span>
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Investments & Portfolio */}
+        <Link href="/investments">
+          <Card className="border-border bg-card shadow-sm hover:border-purple-500/50 transition-all cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Portföy & Yatırımlar
+              </CardTitle>
+              <TrendingUp className="h-4 w-4 text-purple-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold font-mono text-foreground">
+                {formatCurrency(totalInvestments)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
+                <span>{investments.length} varlık kalemi</span>
+                <span className="text-purple-400 text-[11px] font-semibold">Portföyü Gör →</span>
               </p>
             </CardContent>
           </Card>

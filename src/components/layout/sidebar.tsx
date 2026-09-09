@@ -11,6 +11,7 @@ import {
   Building2,
   HandCoins,
   CalendarClock,
+  TrendingUp,
   FolderKanban,
   Lightbulb,
   Settings,
@@ -47,6 +48,7 @@ const navGroups: NavGroup[] = [
       { name: 'Kredi Kartları', href: '/cards', icon: CreditCard },
       { name: 'Borç & Alacak', href: '/debts', icon: HandCoins },
       { name: 'Tasarruf & Abonelik', href: '/subscriptions', icon: CalendarClock },
+      { name: 'Yatırımlar & Portföy', href: '/investments', icon: TrendingUp },
     ],
   },
   {

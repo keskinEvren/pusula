@@ -531,6 +531,56 @@ export interface Database {
         }
         Relationships: []
       }
+      investments: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          symbol: string | null
+          category: string
+          institution: string | null
+          quantity: number
+          unit_cost: number
+          current_price: number
+          currency: string
+          last_price_updated_at: string | null
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          symbol?: string | null
+          category: string
+          institution?: string | null
+          quantity?: number
+          unit_cost?: number
+          current_price?: number
+          currency?: string
+          last_price_updated_at?: string | null
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          symbol?: string | null
+          category?: string
+          institution?: string | null
+          quantity?: number
+          unit_cost?: number
+          current_price?: number
+          currency?: string
+          last_price_updated_at?: string | null
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -560,3 +610,5 @@ export type Transaction = Database['public']['Tables']['transactions']['Row']
 export type ProjectTask = Database['public']['Tables']['project_tasks']['Row']
 export type Idea = Database['public']['Tables']['ideas']['Row']
 export type MerchantMapping = Database['public']['Tables']['merchant_mappings']['Row']
+export type Investment = Database['public']['Tables']['investments']['Row']
+
