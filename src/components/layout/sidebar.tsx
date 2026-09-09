@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Settings,
   Compass,
+  Sparkles,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,7 @@ const navGroups: NavGroup[] = [
     title: 'Genel',
     items: [
       { name: 'Komuta Merkezi', href: '/', icon: LayoutDashboard },
+      { name: 'Hayallerim & Vizyon', href: '/dreams', icon: Sparkles },
     ],
   },
   {
