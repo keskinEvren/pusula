@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ArrowRight,
   FolderKanban,
+  ShieldCheck,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
@@ -203,6 +204,34 @@ export default function SettingsPage() {
           </Link>
         }
       />
+
+      {/* Kişisel Kasa & Veri Bağımsızlığı Köprüsü */}
+      <Card className="border-emerald-500/30 bg-emerald-500/5 shadow-sm">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span>Kişisel Kasa & Veri Bağımsızlığı (Offline Vault)</span>
+                <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 text-[10px]">
+                  Güvenli Yedek
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Tüm finansal hareketlerinizi, yatırımlarınızı, hayallerinizi ve seyir defterinizi tek tıkla JSON veya AES-256 şifreli olarak yedekleyin veya geri yükleyin.
+              </p>
+            </div>
+          </div>
+          <Link href="/vault" className="shrink-0">
+            <Button size="sm" className="gap-1.5 text-xs font-semibold">
+              <ShieldCheck className="h-4 w-4" />
+              <span>Kasaya Git →</span>
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Accounts Overview */}
       <Card className="border-border bg-card shadow-sm">

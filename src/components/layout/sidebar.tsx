@@ -19,6 +19,7 @@ import {
   Sparkles,
   Orbit,
   BookOpen,
+  ShieldCheck,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -67,6 +68,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'Sistem',
     items: [
+      { name: 'Kişisel Kasa', href: '/vault', icon: ShieldCheck },
       { name: 'Ayarlar & Kurallar', href: '/settings', icon: Settings },
     ],
   },
