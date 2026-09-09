@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#0b0f19"/>
+  <circle cx="256" cy="256" r="180" stroke="#1f293d" stroke-width="8" fill="#111726"/>
+  <circle cx="256" cy="256" r="140" stroke="#1a2336" stroke-width="4" stroke-dasharray="8 8" fill="none"/>
+  <!-- Compass dial markings -->
+  <line x1="256" y1="96" x2="256" y2="120" stroke="#60a5fa" stroke-width="6" stroke-linecap="round"/>
+  <line x1="256" y1="392" x2="256" y2="416" stroke="#475569" stroke-width="6" stroke-linecap="round"/>
+  <line x1="96" y1="256" x2="120" y2="256" stroke="#475569" stroke-width="6" stroke-linecap="round"/>
+  <line x1="392" y1="256" x2="416" y2="256" stroke="#475569" stroke-width="6" stroke-linecap="round"/>
+  <!-- North Needle (Steel Blue Vibrant) -->
+  <polygon points="256,128 284,256 256,236" fill="#3b82f6"/>
+  <polygon points="256,128 228,256 256,236" fill="#60a5fa"/>
+  <!-- South Needle (Subtle Slate) -->
+  <polygon points="256,384 284,256 256,276" fill="#334155"/>
+  <polygon points="256,384 228,256 256,276" fill="#475569"/>
+  <!-- Center Pin -->
+  <circle cx="256" cy="256" r="16" fill="#0b0f19" stroke="#93c5fd" stroke-width="6"/>
+</svg>
