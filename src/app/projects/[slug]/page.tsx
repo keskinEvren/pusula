@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
-import type { Project, ProjectTask, Transaction, Subscription } from '@/types/database'
+import type { Project, ProjectTask, Transaction, Subscription, Account } from '@/types/database'
 
 export default function ProjectDetailPage({
   params,
@@ -40,6 +40,7 @@ export default function ProjectDetailPage({
   const [tasks, setTasks] = useState<ProjectTask[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
 
   // Task Modal State
@@ -104,7 +105,7 @@ export default function ProjectDetailPage({
 
       if (pData) {
         setProject(pData)
-        const [{ data: tks }, { data: txs }, { data: subs }] = await Promise.all([
+        const [{ data: tks }, { data: txs }, { data: subs }, { data: accs }] = await Promise.all([
           supabase
             .from('project_tasks')
             .select('*')
@@ -119,11 +120,16 @@ export default function ProjectDetailPage({
             .from('subscriptions')
             .select('*')
             .eq('project_id', pData.id),
+          supabase
+            .from('accounts')
+            .select('*')
+            .order('name', { ascending: true }),
         ])
 
         if (tks) setTasks(tks)
         if (txs) setTransactions(txs)
         if (subs) setSubscriptions(subs)
+        if (accs) setAccounts(accs)
       }
     } catch (err) {
       console.error('Error loading project details:', err)
@@ -451,9 +457,19 @@ export default function ProjectDetailPage({
 
       {/* Tied Transactions List */}
       <Card className="border-border bg-card shadow-sm overflow-hidden">
-        <CardHeader>
-          <CardTitle className="text-base">Bu Projeye Ait Harcamalar ({transactions.length})</CardTitle>
-          <CardDescription>Ekstrelerden veya manuel defterden bu projeye bağlanan giderler</CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">Bu Projeye Ait Harcamalar ({transactions.length})</CardTitle>
+            <CardDescription>Ekstrelerden veya manuel defterden bu projeye bağlanan giderler</CardDescription>
+          </div>
+          {transactions.length > 0 && project && (
+            <Link href={`/transactions?project_id=${project.id}`}>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
+                <Receipt className="h-3 w-3" />
+                İşlem Defterinde Aç
+              </Button>
+            </Link>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -575,13 +591,19 @@ export default function ProjectDetailPage({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Kasa/Hesap (Opsiyonel)</label>
-            <Input
-              placeholder="Hangi hesaptan ödendi?"
+            <label className="text-xs font-semibold text-muted-foreground">Kasa / Hesap (Opsiyonel)</label>
+            <Select
               value={expenseForm.accountId}
               onChange={(e) => setExpenseForm({ ...expenseForm, accountId: e.target.value })}
               className="text-xs"
-            />
+            >
+              <option value="">(Hesap Seçilmedi - Bakiyeden Düşülmez)</option>
+              {accounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} ({formatCurrency(acc.balance)})
+                </option>
+              ))}
+            </Select>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-border">

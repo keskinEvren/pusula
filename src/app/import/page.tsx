@@ -19,6 +19,8 @@ import {
   Plus,
   Loader2,
   Layers,
+  Receipt,
+  HandCoins,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { parseStatementFile, parseBankAccountFile } from '@/lib/parser'
@@ -34,6 +36,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { PageHeader } from '@/components/layout/page-header'
 import type { ExtractedTransaction, ParseResult, ReconciliationActionType } from '@/lib/parser/types'
 import type { Project, MerchantMapping, CreditCard, Debt, Account } from '@/types/database'
 
@@ -501,26 +504,29 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            İkili Ekstre & Toplu Uzlaştırma Merkezi
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Tek veya birden fazla ekstre dosyasını topluca yükleyin; kronolojik sırayla sisteme aktarın.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link href="/imports">
-            <Button variant="outline" className="shadow-sm text-xs">
-              <History className="h-4 w-4 mr-2 text-primary" />
-              Ekstre Geçmişi & Geri Alma ({importHistoryCount})
-            </Button>
-          </Link>
-        </div>
-      </div>
+      {/* Standart PageHeader */}
+      <PageHeader
+        title="Ekstre Merkezi"
+        description="Kredi kartı ve banka hesap dökümlerini yükleyin, akıllı kurallarla uzlaştırın ve sisteme aktarın."
+        actions={
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/60 border border-border">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-background text-foreground shadow-sm"
+            >
+              <UploadCloud className="h-3.5 w-3.5 text-primary" />
+              <span>Yeni Ekstre Yükle</span>
+            </button>
+            <Link
+              href="/imports"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <History className="h-3.5 w-3.5 text-muted-foreground" />
+              <span>Yükleme Geçmişi ({importHistoryCount})</span>
+            </Link>
+          </div>
+        }
+      />
 
       {/* Mode Selector Tabs */}
       <div className="flex gap-3 border-b border-border pb-3">
@@ -581,39 +587,71 @@ export default function ImportPage() {
         </div>
       )}
 
-      {/* Success Notification Card */}
+      {/* Success Notification Card & Next Steps */}
       {successSummary && (
-        <Card className="border-success/40 bg-success/10 text-success">
-          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-6 w-6 flex-shrink-0 text-success" />
-              <div>
-                <div className="font-bold text-base text-foreground">
-                  Toplu Aktarım Başarıyla Tamamlandı!
+        <Card className="border-success/40 bg-success/10 text-success shadow-sm">
+          <CardContent className="p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 flex-shrink-0 text-success" />
+                <div>
+                  <div className="font-bold text-base text-foreground">
+                    Toplu Aktarım Başarıyla Tamamlandı!
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Toplam <strong>{successSummary.filesCount}</strong> ekstre paketi ve{' '}
+                    <strong>{successSummary.txCount}</strong> hareket sisteme başarıyla işlendi.
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  Toplam <strong>{successSummary.filesCount}</strong> ekstre paketi ve{' '}
-                  <strong>{successSummary.txCount}</strong> hareket sisteme işlendi.
-                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="text-xs font-semibold h-8"
+                  onClick={() => {
+                    setQueuedFiles([])
+                    setSuccessSummary(null)
+                  }}
+                >
+                  Yeni Ekstre Yükle
+                </Button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <Link href="/imports">
-                <Button variant="outline" size="sm" className="text-xs">
-                  Ekstre Geçmişine Git
+            {/* Smart Next Action Deep Links */}
+            <div className="pt-3 border-t border-success/20 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground font-semibold text-[11px] mr-1">Sonraki Adımlar:</span>
+              <Link href="/transactions">
+                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-success/30 hover:bg-success/20 text-foreground">
+                  <Receipt className="h-3 w-3 text-primary" />
+                  İşlem Defterinde İncele
                 </Button>
               </Link>
-              <Button
-                size="sm"
-                className="text-xs"
-                onClick={() => {
-                  setQueuedFiles([])
-                  setSuccessSummary(null)
-                }}
-              >
-                Yeni Ekstre Yükle
-              </Button>
+              <Link href="/cards">
+                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-success/30 hover:bg-success/20 text-foreground">
+                  <CardIcon className="h-3 w-3 text-purple-400" />
+                  Kart Borçlarını Gör
+                </Button>
+              </Link>
+              <Link href="/accounts">
+                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-success/30 hover:bg-success/20 text-foreground">
+                  <Building2 className="h-3 w-3 text-emerald-400" />
+                  Kasa Bakiyelerini Kontrol Et
+                </Button>
+              </Link>
+              <Link href="/debts">
+                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-success/30 hover:bg-success/20 text-foreground">
+                  <HandCoins className="h-3 w-3 text-amber-400" />
+                  Borç & Alacak Durumu
+                </Button>
+              </Link>
+              <Link href="/imports">
+                <Button variant="ghost" size="sm" className="h-7 text-[11px] gap-1.5 text-muted-foreground hover:text-foreground">
+                  <History className="h-3 w-3" />
+                  Yükleme Geçmişi
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -1106,25 +1144,73 @@ export default function ImportPage() {
 
                                 {activeMode === 'bank_account' && (
                                   <td className="p-2.5">
-                                    <Select
-                                      value={tx.action || 'DIRECT_EXPENSE'}
-                                      onChange={(e) =>
-                                        handleActionChange(
-                                          item.id,
-                                          tx.id,
-                                          e.target.value as ReconciliationActionType
-                                        )
-                                      }
-                                      className="h-7 text-xs font-semibold"
-                                    >
-                                      <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
-                                      <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
-                                      <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
-                                      <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
-                                      <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
-                                      <option value="FREE_INCOME">💵 Serbest Gelir</option>
-                                      <option value="INTERNAL_TRANSFER">🔄 Transfer</option>
-                                    </Select>
+                                    <div className="space-y-1.5 min-w-[190px]">
+                                      <Select
+                                        value={tx.action || 'DIRECT_EXPENSE'}
+                                        onChange={(e) =>
+                                          handleActionChange(
+                                            item.id,
+                                            tx.id,
+                                            e.target.value as ReconciliationActionType
+                                          )
+                                        }
+                                        className="h-7 text-xs font-semibold"
+                                      >
+                                        <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
+                                        <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
+                                        <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
+                                        <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
+                                        <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
+                                        <option value="FREE_INCOME">💵 Serbest Gelir</option>
+                                        <option value="INTERNAL_TRANSFER">🔄 Transfer</option>
+                                      </Select>
+
+                                      {(tx.action === 'COLLECT_RECEIVABLE' || tx.action === 'PAY_DEBT') && (
+                                        <Select
+                                          value={tx.target_debt_id || ''}
+                                          onChange={(e) =>
+                                            handleRowFieldChange(
+                                              item.id,
+                                              tx.id,
+                                              'target_debt_id',
+                                              e.target.value
+                                            )
+                                          }
+                                          className="h-7 text-[11px] border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-medium"
+                                        >
+                                          <option value="">🎯 (Borç/Alacak Seçin)</option>
+                                          {debts
+                                            .filter((d) => (tx.action === 'COLLECT_RECEIVABLE' ? d.type === 'Alacak' : d.type === 'Borç'))
+                                            .map((d) => (
+                                              <option key={d.id} value={d.id}>
+                                                {d.person_or_entity} ({formatCurrency(d.remaining)})
+                                              </option>
+                                            ))}
+                                        </Select>
+                                      )}
+
+                                      {(tx.action === 'CARD_PAYMENT' || tx.action === 'CASH_ADVANCE') && (
+                                        <Select
+                                          value={tx.target_card_id || ''}
+                                          onChange={(e) =>
+                                            handleRowFieldChange(
+                                              item.id,
+                                              tx.id,
+                                              'target_card_id',
+                                              e.target.value
+                                            )
+                                          }
+                                          className="h-7 text-[11px] border-primary/50 bg-primary/10 text-primary font-medium"
+                                        >
+                                          <option value="">💳 (Kart Seçin)</option>
+                                          {cards.map((c) => (
+                                            <option key={c.id} value={c.id}>
+                                              {c.bank} {c.card_name}
+                                            </option>
+                                          ))}
+                                        </Select>
+                                      )}
+                                    </div>
                                   </td>
                                 )}
 

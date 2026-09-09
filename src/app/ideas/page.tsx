@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Lightbulb,
   Plus,
   ArrowRight,
+  ArrowUpRight,
   FolderPlus,
   Trash2,
   Tag,
@@ -18,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
 import type { Idea } from '@/types/database'
 
 const TABS = [
@@ -43,6 +46,11 @@ export default function IdeasPage() {
     tags: '',
   })
 
+  // Promote Modal State
+  const [promoteTarget, setPromoteTarget] = useState<Idea | null>(null)
+  const [promoteBudget, setPromoteBudget] = useState('10000')
+  const [promoting, setPromoting] = useState(false)
+
   useEffect(() => {
     loadIdeas()
   }, [])
@@ -51,10 +59,12 @@ export default function IdeasPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('ideas')
         .select('*')
         .order('created_at', { ascending: false })
+
+      if (error) throw error
       if (data) setIdeas(data)
     } catch (err) {
       console.error('Error loading ideas:', err)
@@ -73,18 +83,19 @@ export default function IdeasPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
-      const tagArray = ideaForm.tags
-        ? ideaForm.tags.split(',').map((t) => t.trim()).filter(Boolean)
-        : null
+      const tagsArray = ideaForm.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
 
       const { data, error } = await supabase
         .from('ideas')
         .insert({
           user_id: user.id,
           title: ideaForm.title,
-          description: ideaForm.description || null,
+          description: ideaForm.description,
           status: ideaForm.status,
-          tags: tagArray,
+          tags: tagsArray,
         })
         .select()
         .single()
@@ -93,7 +104,12 @@ export default function IdeasPage() {
       if (data) {
         setIdeas([data, ...ideas])
         setIsModalOpen(false)
-        setIdeaForm({ title: '', description: '', status: 'inbox', tags: '' })
+        setIdeaForm({
+          title: '',
+          description: '',
+          status: 'inbox',
+          tags: '',
+        })
       }
     } catch (err: any) {
       alert(err.message || 'Fikir eklenemedi')
@@ -102,9 +118,26 @@ export default function IdeasPage() {
     }
   }
 
-  const handlePromoteToProject = async (idea: Idea) => {
-    if (!confirm(`"${idea.title}" fikrini yeni bir projeye dönüştürmek istiyor musunuz?`)) return
+  const handleOpenPromoteModal = async (idea: Idea) => {
+    const supabase = createClient()
+    const { data: activeProjects } = await supabase
+      .from('projects')
+      .select('id, status')
+      .not('status', 'in', '("Arşiv", "Canlı")')
+    
+    if (activeProjects && activeProjects.length >= 2) {
+      if (!confirm("Odak kapasiteniz dolu! (Maksimum 2 aktif proje önerilir). Yine de devam etmek istiyor musunuz?")) return
+    }
 
+    setPromoteTarget(idea)
+    setPromoteBudget('10000')
+  }
+
+  const handleExecutePromote = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!promoteTarget) return
+
+    setPromoting(true)
     try {
       const supabase = createClient()
       const {
@@ -112,20 +145,9 @@ export default function IdeasPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
-      // Check active projects count
-      const { data: activeProjects } = await supabase
-        .from('projects')
-        .select('id, status')
-        .not('status', 'in', '("Arşiv", "Canlı")')
-      
-      if (activeProjects && activeProjects.length >= 2) {
-        if (!confirm("Odak kapasiteniz dolu! (Maksimum 2 aktif proje önerilir). Yine de devam etmek istiyor musunuz?")) return
-      }
+      const budgetNum = promoteBudget ? parseFloat(promoteBudget) : null
 
-      const budgetStr = prompt('Proje bütçe limiti (₺) belirleyin (opsiyonel):', '10000')
-      const budgetNum = budgetStr ? parseFloat(budgetStr) : null
-
-      const slug = idea.title
+      const slug = promoteTarget.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '')
@@ -135,9 +157,9 @@ export default function IdeasPage() {
         .from('projects')
         .insert({
           user_id: user.id,
-          name: idea.title,
+          name: promoteTarget.title,
           slug,
-          description: idea.description,
+          description: promoteTarget.description,
           status: 'Planlama',
           budget_limit: budgetNum || null,
         })
@@ -153,11 +175,14 @@ export default function IdeasPage() {
           status: 'promoted',
           promoted_project_id: newProject.id,
         })
-        .eq('id', idea.id)
+        .eq('id', promoteTarget.id)
 
+      setPromoteTarget(null)
       router.push(`/projects/${slug}`)
     } catch (err: any) {
       alert(err.message || 'Projeye dönüştürülemedi')
+    } finally {
+      setPromoting(false)
     }
   }
 
@@ -187,22 +212,18 @@ export default function IdeasPage() {
   const filteredIdeas = ideas.filter((i) => i.status === activeTab)
 
   return (
-    <div className="space-y-8">
-      {/* Top Bar */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Fikir Kuluçkası (Ideas)
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Aklınıza gelen fikirleri not edin, değerlendirin ve olgunlaşınca tek tıkla projeye dönüştürün
-          </p>
-        </div>
-        <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-md">
-          <Plus className="h-4 w-4" />
-          Yeni Fikir Not Et
-        </Button>
-      </div>
+    <div className="space-y-6">
+      {/* Top PageHeader */}
+      <PageHeader
+        title="Fikir Kuluçkası (Ideas)"
+        description="Aklınıza gelen fikirleri not edin, değerlendirin ve olgunlaşınca tek tıkla projeye dönüştürün."
+        actions={
+          <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm text-xs h-9 font-semibold">
+            <Plus className="h-4 w-4" />
+            Yeni Fikir Not Et
+          </Button>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto">
@@ -284,15 +305,26 @@ export default function IdeasPage() {
                   <option value="promoted">🚀 Promoted</option>
                 </Select>
 
-                {idea.status !== 'promoted' && (
+                {idea.status !== 'promoted' ? (
                   <Button
                     size="sm"
-                    onClick={() => handlePromoteToProject(idea)}
+                    onClick={() => handleOpenPromoteModal(idea)}
                     className="h-7 text-xs gap-1.5 shadow-sm"
                   >
                     <FolderPlus className="h-3.5 w-3.5" />
                     Projeye Dönüştür
                   </Button>
+                ) : (
+                  <Link href="/projects">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                    >
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                      Projelerde Gör
+                    </Button>
+                  </Link>
                 )}
               </div>
             </CardContent>
@@ -370,6 +402,52 @@ export default function IdeasPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Promote to Project Modal */}
+      <Modal
+        isOpen={!!promoteTarget}
+        onClose={() => setPromoteTarget(null)}
+        title="Fikri Projeye Dönüştür"
+        description="Bu fikir için yeni bir proje alanı açılacak ve geliştirme sürecine başlanacak."
+      >
+        {promoteTarget && (
+          <form onSubmit={handleExecutePromote} className="space-y-4">
+            <div className="rounded-lg bg-muted/40 p-3 border border-border/50 text-xs space-y-1">
+              <span className="text-muted-foreground block">Dönüştürülecek Fikir:</span>
+              <strong className="text-foreground text-sm font-semibold block">{promoteTarget.title}</strong>
+              {promoteTarget.description && (
+                <p className="text-muted-foreground text-[11px] line-clamp-2">{promoteTarget.description}</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Proje Bütçe Limiti (₺)
+              </label>
+              <Input
+                type="number"
+                placeholder="10000"
+                value={promoteBudget}
+                onChange={(e) => setPromoteBudget(e.target.value)}
+                className="text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Proje geliştirme sürecinde maliyet hedefini takip etmek için opsiyonel bütçe.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setPromoteTarget(null)}>
+                Vazgeç
+              </Button>
+              <Button type="submit" disabled={promoting} className="gap-1.5">
+                <FolderPlus className="h-4 w-4" />
+                {promoting ? 'Proje Başlatılıyor...' : 'Projeyi Başlat'}
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   )

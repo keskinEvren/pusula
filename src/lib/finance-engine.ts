@@ -219,26 +219,44 @@ export function evaluateProjectBudget(
  * Gelecek 6 ayın her ayı için: (Aktif Abonelikler) + (Devam Eden Taksit Tutarları)
  */
 export function projectSixMonthCashLoad(
-  subscriptions: Array<{ status?: string | null; period?: string | null; amount: number | null | undefined }>,
+  subscriptions: Array<{
+    status?: string | null
+    period?: string | null
+    amount: number | null | undefined
+    end_date?: string | null
+  }>,
   installments: InstallmentScheduleItem[] = [],
   monthCount = 6
 ): number[] {
-  // Monthly recurring subscription load
-  const activeMonthlySubs = round2(
-    subscriptions
-      .filter((s) => s.status !== 'İptal' && (s.period === 'Aylık' || s.period === 'Tekrarlayan' || !s.period))
-      .reduce((sum, s) => sum + Number(s.amount || 0), 0)
-  )
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() // 0-indexed
 
   const projection: number[] = []
 
   for (let month = 1; month <= monthCount; month++) {
+    // Target date for this projection month
+    const targetDate = new Date(currentYear, currentMonth + month, 1)
+
+    // Sum active subscriptions for this month
+    const monthSubs = subscriptions
+      .filter((s) => {
+        if (s.status === 'İptal') return false
+        if (s.period && s.period !== 'Aylık' && s.period !== 'Tekrarlayan') return false
+        if (s.end_date) {
+          const endDate = new Date(s.end_date)
+          if (targetDate > endDate) return false
+        }
+        return true
+      })
+      .reduce((sum, s) => sum + Number(s.amount || 0), 0)
+
     // Sum installments that are active in this month (remainingMonths >= month)
     const monthInstallments = installments
       .filter((inst) => inst.remainingMonths >= month)
       .reduce((sum, inst) => sum + Number(inst.amountPerMonth || 0), 0)
 
-    projection.push(round2(activeMonthlySubs + monthInstallments))
+    projection.push(round2(monthSubs + monthInstallments))
   }
 
   return projection

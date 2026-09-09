@@ -21,6 +21,8 @@ import {
   ArrowDownLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { PageHeader } from '@/components/layout/page-header'
+
 import {
   calculateNetWorth,
   calculateSpendingBreakdown,
@@ -140,32 +142,28 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Top Welcome & Quick Actions */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Komuta Merkezi
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Kişisel finansınız, kasalarınız ve aktif projelerinizin anlık durumu
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/import">
-            <Button className="gap-2 shadow-md">
-              <Receipt className="h-4 w-4" />
-              📄 Ekstre Yükle
-            </Button>
-          </Link>
-          <Link href="/transactions">
-            <Button variant="outline" className="gap-2">
-              <Plus className="h-4 w-4" />
-              Hareket Ekle
-            </Button>
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Komuta Merkezi"
+        description="Kişisel finansınız, kasalarınız ve aktif projelerinizin anlık durumu"
+        actions={
+          <>
+            <Link href="/import">
+              <Button className="gap-2 shadow-sm h-9 text-xs font-semibold">
+                <Receipt className="h-4 w-4" />
+                Ekstre Yükle
+              </Button>
+            </Link>
+            <Link href="/transactions?new=true">
+              <Button variant="outline" className="gap-2 h-9 text-xs">
+                <Plus className="h-4 w-4" />
+                Hareket Ekle
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* Focus Gate Capacity Warning */}
       {isCapacityFull && (
@@ -279,37 +277,59 @@ export default function DashboardPage() {
       {/* Secondary Strategic KPI Row (Active Month Spending vs Next Month Committed Load) */}
       <div className="grid gap-4 md:grid-cols-3">
         {/* 1. Aktif Ay Tüketimi */}
-        <Card className="border-border bg-card shadow-sm">
+        <Card className="border-border bg-card shadow-sm hover:border-primary/40 transition-all">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-bold text-foreground">
-                🛒 Aktif Ay Tüketimi ({activeMonthName})
-              </CardTitle>
-              <Badge variant="outline" className="text-[10px]">
-                {activeMonthTxs.length} Hareket
-              </Badge>
+              <Link
+                href={`/transactions?month=${activeMonthPrefix}`}
+                className="text-sm font-bold text-foreground hover:text-primary transition-colors flex items-center gap-1.5"
+                title="İşlem defterinde filtrele"
+              >
+                <span>🛒 Aktif Ay Tüketimi ({activeMonthName})</span>
+                <span className="text-[10px] text-primary">→</span>
+              </Link>
+              <Link href={`/transactions?month=${activeMonthPrefix}`}>
+                <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-muted">
+                  {activeMonthTxs.length} Hareket
+                </Badge>
+              </Link>
             </div>
             <CardDescription className="text-xs">
               Bu döneme ait gerçek kişisel ve finansman harcamaları
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="text-2xl font-bold font-mono text-foreground">
+            <Link
+              href={`/transactions?month=${activeMonthPrefix}`}
+              className="text-2xl font-bold font-mono text-foreground hover:text-primary transition-colors block"
+            >
               {formatCurrency(totalConsumption)}
-            </div>
+            </Link>
             <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-2 text-[11px]">
-              <div>
-                <span className="text-muted-foreground block">Kişisel</span>
+              <Link
+                href={`/transactions?month=${activeMonthPrefix}&group=Kişisel`}
+                className="rounded p-1 -m-1 hover:bg-muted/60 transition-colors block"
+                title="Kişisel harcamaları filtrele"
+              >
+                <span className="text-muted-foreground block text-[10px]">Kişisel →</span>
                 <span className="font-mono font-semibold text-foreground">{formatCurrency(personalSpent)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block">İş & SaaS</span>
+              </Link>
+              <Link
+                href={`/transactions?month=${activeMonthPrefix}&group=İş`}
+                className="rounded p-1 -m-1 hover:bg-muted/60 transition-colors block"
+                title="İş & SaaS harcamalarını filtrele"
+              >
+                <span className="text-muted-foreground block text-[10px]">İş & SaaS →</span>
                 <span className="font-mono font-semibold text-purple-400">{formatCurrency(businessSpent)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block">Faiz/Masraf</span>
+              </Link>
+              <Link
+                href={`/transactions?month=${activeMonthPrefix}&group=Finansman`}
+                className="rounded p-1 -m-1 hover:bg-muted/60 transition-colors block"
+                title="Faiz ve masrafları filtrele"
+              >
+                <span className="text-muted-foreground block text-[10px]">Faiz/Masraf →</span>
                 <span className="font-mono font-semibold text-destructive">{formatCurrency(financeCost)}</span>
-              </div>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -328,7 +348,7 @@ export default function DashboardPage() {
                 </Badge>
               </div>
               <CardDescription className="text-xs">
-                Aktif abonelikler ve sarkan taksitlerin aylık yükü
+                Abonelikler, faturalar ve taksitlerin gelecek ayki toplam yükü
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2">
@@ -337,7 +357,7 @@ export default function DashboardPage() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2 text-[11px]">
                 <div>
-                  <span className="text-muted-foreground block">Aktif SaaS ({activeSubs.length})</span>
+                  <span className="text-muted-foreground block">Sabit Yükler ({activeSubs.length})</span>
                   <span className="font-mono font-semibold text-foreground">{formatCurrency(monthlyActiveSaaS)}</span>
                 </div>
                 <div>

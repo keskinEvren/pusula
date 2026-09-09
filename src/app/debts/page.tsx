@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
 import type { Debt, Account, Transaction } from '@/types/database'
 
 function sortDebtsChronological(items: Debt[]): Debt[] {
@@ -47,6 +48,11 @@ export default function DebtsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'Alacak' | 'Borç'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('ALL')
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -334,25 +340,34 @@ export default function DebtsPage() {
 
   const netBalance = totalReceivables - totalDebts
 
+  // Filtered debts
+  const filteredDebts = debts.filter((d) => {
+    if (typeFilter !== 'ALL' && d.type !== typeFilter) return false
+    if (statusFilter === 'OPEN' && d.remaining <= 0) return false
+    if (statusFilter === 'CLOSED' && d.remaining > 0) return false
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      const matchPerson = d.person_or_entity?.toLowerCase().includes(q)
+      const matchDesc = d.description?.toLowerCase().includes(q)
+      const matchCat = d.category?.toLowerCase().includes(q)
+      if (!matchPerson && !matchDesc && !matchCat) return false
+    }
+    return true
+  })
+
   return (
     <div className="space-y-6">
-      {/* Top Header & Actions */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <span>📋 Borç & Alacak Takip Tablosu</span>
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Maaş hakedişleri ve şahsi borçların dönem dönem takibi. Ödeme aldıkça satırdan doğrudan düşün.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={handleOpenAdd} className="gap-2 shadow-sm text-xs h-9">
+      {/* Top PageHeader & Actions */}
+      <PageHeader
+        title="Borç & Alacak Takip Tablosu"
+        description="Maaş hakedişleri ve şahsi borçların dönem dönem takibi. Ödeme aldıkça satırdan doğrudan düşün."
+        actions={
+          <Button onClick={handleOpenAdd} className="gap-2 shadow-sm text-xs h-9 font-semibold">
             <Plus className="h-4 w-4" />
             Yeni Satır Ekle
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Banner */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -399,36 +414,95 @@ export default function DebtsPage() {
         </div>
       </div>
 
-      {/* Exact Excel Spreadsheet Table */}
+      {/* Quick Filter Toolbar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-xl bg-card border border-border">
+        {/* Type Segment Tabs */}
+        <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border/50 text-xs">
+          <button
+            type="button"
+            onClick={() => setTypeFilter('ALL')}
+            className={`px-3 py-1 rounded-md font-medium transition-all ${
+              typeFilter === 'ALL' ? 'bg-background text-foreground shadow-sm font-semibold' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Tümü ({debts.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTypeFilter('Alacak')}
+            className={`px-3 py-1 rounded-md font-medium transition-all ${
+              typeFilter === 'Alacak' ? 'bg-emerald-500/15 text-emerald-400 font-semibold shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Alacaklar ({debts.filter((d) => d.type === 'Alacak').length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTypeFilter('Borç')}
+            className={`px-3 py-1 rounded-md font-medium transition-all ${
+              typeFilter === 'Borç' ? 'bg-rose-500/15 text-rose-400 font-semibold shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Borçlar ({debts.filter((d) => d.type === 'Borç').length})
+          </button>
+        </div>
+
+        {/* Search Input & Status Select */}
+        <div className="flex items-center gap-2 flex-1 sm:justify-end">
+          <div className="relative w-full sm:w-60">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Kişi veya açıklamada ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 text-xs w-full bg-background"
+            />
+          </div>
+
+          <Select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            className="h-8 text-xs w-28 bg-background"
+          >
+            <option value="ALL">Tüm Durumlar</option>
+            <option value="OPEN">Açıklar</option>
+            <option value="CLOSED">Kapatılanlar</option>
+          </Select>
+        </div>
+      </div>
+
+      {/* Spreadsheet Table */}
       <Card className="border border-border shadow-md overflow-hidden rounded-xl bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
-            {/* Dark Teal Header matching Excel screenshot */}
             <thead>
-              <tr className="bg-[#1d707c] text-white font-semibold uppercase text-[11px] tracking-wide border-b border-[#165a64]">
+              <tr className="bg-muted/75 text-muted-foreground font-semibold uppercase text-[11px] tracking-wider border-b border-border">
                 <th className="py-3 px-3 w-10 text-center">No</th>
                 <th className="py-3 px-3 w-24">Tür</th>
                 <th className="py-3 px-3 w-28">Kategori</th>
                 <th className="py-3 px-4 w-40">Kişi / Kurum</th>
                 <th className="py-3 px-4">Açıklama</th>
                 <th className="py-3 px-3 text-right w-28">Ana Tutar</th>
-                <th className="py-3 px-3 text-right w-32">Geçmiş Ödeme/Tahsil</th>
-                <th className="py-3 px-3 text-right w-32 bg-[#175b65] text-emerald-200">
+                <th className="py-3 px-3 text-right w-32">Geçmiş Ödeme</th>
+                <th className="py-3 px-3 text-right w-32 text-emerald-400 bg-emerald-500/5">
                   Yeni Hareketlerden
                 </th>
-                <th className="py-3 px-3 text-right w-28 text-emerald-200">Kalan</th>
-                <th className="py-3 px-3 text-center w-28">İşlem</th>
+                <th className="py-3 px-3 text-right w-28 text-emerald-400 font-bold">Kalan</th>
+                <th className="py-3 px-3 text-center w-28 sticky right-0 bg-card/95 backdrop-blur-sm shadow-[-4px_0_8px_rgba(0,0,0,0.2)] border-l border-border z-20">
+                  İşlem
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60 font-sans">
-              {debts.length === 0 ? (
+              {filteredDebts.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="p-8 text-center text-muted-foreground">
-                    Tabloda kayıtlı borç veya alacak bulunmuyor.
+                    Filtreye uygun kayıt bulunamadı.
                   </td>
                 </tr>
               ) : (
-                debts.map((item, idx) => {
+                filteredDebts.map((item, idx) => {
                   const principal = Number(item.principal || 0)
                   const pastPayments = Number(item.past_payments || 0)
                   const remaining = Number(item.remaining || 0)
@@ -493,8 +567,8 @@ export default function DebtsPage() {
                         {remaining > 0 ? formatCurrency(remaining) : '-'}
                       </td>
 
-                      {/* İşlem */}
-                      <td className="py-2.5 px-3 text-center">
+                      {/* İşlem (Sticky Right) */}
+                      <td className="py-2.5 px-3 text-center sticky right-0 bg-card/95 backdrop-blur-sm shadow-[-4px_0_8px_rgba(0,0,0,0.2)] border-l border-border z-10">
                         <div className="flex items-center justify-center gap-1">
                           {!isClosed ? (
                             <Button

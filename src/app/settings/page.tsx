@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   Settings,
   Plus,
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
 import type { Account, MerchantMapping, Project } from '@/types/database'
 
 export default function SettingsPage() {
@@ -187,18 +189,22 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Top Bar */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          Ayarlar & Kurallar
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Banka/Nakit hesaplarınız ve otomatik ekstre işyeri eşleştirme kurallarınız
-        </p>
-      </div>
+    <div className="space-y-6">
+      {/* Top PageHeader */}
+      <PageHeader
+        title="Ayarlar & Kurallar"
+        description="Banka/nakit hesap özetiniz ve otomatik ekstre işyeri eşleştirme kurallarınız."
+        actions={
+          <Link href="/accounts">
+            <Button variant="outline" size="sm" className="gap-2 text-xs h-9">
+              <Building2 className="h-4 w-4 text-primary" />
+              Banka & Kasaları Yönet
+            </Button>
+          </Link>
+        }
+      />
 
-      {/* Accounts Manager */}
+      {/* Accounts Overview */}
       <Card className="border-border bg-card shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
@@ -206,12 +212,20 @@ export default function SettingsPage() {
               <Wallet className="h-5 w-5 text-primary" />
               Banka & Nakit Hesapları ({accounts.length})
             </CardTitle>
-            <CardDescription>Hazır para mevcudunuzu oluşturan hesaplarınız</CardDescription>
+            <CardDescription>
+              Hesaplarınızı yönetmek, bakiye güncellemek ve transfer yapmak için{' '}
+              <Link href="/accounts" className="text-primary hover:underline font-medium">
+                Banka & Kasalar
+              </Link>{' '}
+              sayfasını kullanın.
+            </CardDescription>
           </div>
-          <Button onClick={() => setIsAccountModalOpen(true)} size="sm" className="gap-2">
-            <Plus className="h-4 w-4" />
-            Hesap Ekle
-          </Button>
+          <Link href="/accounts">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+              <Building2 className="h-3.5 w-3.5 text-primary" />
+              Kasalar Sayfası →
+            </Button>
+          </Link>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-3">

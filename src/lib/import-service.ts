@@ -707,54 +707,11 @@ export async function commitStatementBatch(
       const { error: txInsertErr } = await supabase.from('transactions').insert(rowsToInsert)
       if (txInsertErr) throw txInsertErr
 
-      // Automatic Subscription Discovery
-      const { data: existingSubs } = await supabase.from('subscriptions').select('service')
-      const existingSet = new Set(existingSubs?.map((s) => s.service.toLowerCase()) || [])
-      const createdSubIds: string[] = []
-
-      for (const t of selectedTxs) {
-        if (
-          (t.recurrence === 'Düzenli' || t.analysis_group === 'İş') &&
-          t.type === 'Harcama' &&
-          !existingSet.has(t.merchant.toLowerCase())
-        ) {
-          const { data: newSub } = await supabase
-            .from('subscriptions')
-            .insert({
-              user_id: userId,
-              service: t.merchant,
-              group_type: t.analysis_group === 'İş' ? 'İş' : 'Kişisel',
-              model: 'Tekrarlayan',
-              amount: t.amount,
-              currency: 'TRY',
-              period: 'Aylık',
-              status: 'Aktif',
-              decision: 'Devam',
-              project_id: t.project_id || null,
-              payment_method: detectedCardTitle,
-            })
-            .select()
-            .single()
-
-          if (newSub) createdSubIds.push(newSub.id)
-          existingSet.add(t.merchant.toLowerCase())
-        }
-      }
-
-      if (createdSubIds.length > 0) {
-        snapshotData.created_subscription_ids = createdSubIds
-        batchMeta.snapshot_data = snapshotData
-        await supabase
-          .from('statement_imports')
-          .update({ raw_text: serializeBatchMeta(batchMeta) })
-          .eq('id', importRecord.id)
-      }
-
       return {
         success: true,
         importId: importRecord.id,
         insertedTransactionsCount: selectedTxs.length,
-        createdSubscriptionCount: createdSubIds.length,
+        createdSubscriptionCount: 0,
       }
     }
 
