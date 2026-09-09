@@ -11,6 +11,7 @@ import {
   calculateFounderRunway,
   collectReceivable,
   payDebt,
+  calculateMonthlyCashFlow,
   round2,
 } from '../src/lib/finance-engine'
 
@@ -321,6 +322,30 @@ describe('Pusula Saf Finans Motoru (Gateway 2 Test Süiti)', () => {
       expect(initialRes.totalCost).toBe(1500.0)
     })
   })
+
+  describe('9. Kasa & Nakit Akışı Modülü (Monthly Cash Flow)', () => {
+    it('9.1. Maaş girişi ve kart ödemeleri net kasa akışını kuruşu kuruşuna hesaplar', () => {
+      const septTxs = [
+        { type: 'Gelir', amount: 43299, description: 'Ağustos 2026 Maaş Ödemesi', merchant: 'İşveren' },
+        { type: 'Kart Ödemesi', amount: 24100, description: 'Kredi Kartı Ödeme', merchant: 'Kart Ödemesi (Akbank)' },
+        { type: 'Kart Ödemesi', amount: 10800.92, description: 'KK TAHSİLAT KART NO: 0887', merchant: 'Kart Ödemesi (Ziraat Bankası)' },
+        { type: 'Kart Ödemesi', amount: 8376.31, description: 'Enpara.com kredi kartı ödemesi', merchant: 'Kart Ödemesi (Enpara)' },
+        { type: 'Finansman/Masraf', amount: 16.75, description: 'Ekpara kullanım faizi', analysis_group: 'Finansman' },
+        { type: 'Finansman/Masraf', amount: 2.51, description: 'BSMV', analysis_group: 'Finansman' },
+        { type: 'Finansman/Masraf', amount: 2.51, description: 'KKDF', analysis_group: 'Finansman' },
+        // İç transfer (kendi hesapları arasında FAST)
+        { type: 'Gelir', amount: 24100, description: 'Evren Keskin - Vakıf Katılım Ban', merchant: 'Evren Keskin - Vakıf Katılım Ban' },
+      ]
+
+      const res = calculateMonthlyCashFlow(septTxs)
+
+      expect(res.totalInflow).toBe(43299)
+      expect(res.cardPayments).toBe(43277.23)
+      expect(res.financingFees).toBe(21.77)
+      expect(res.netCashFlow).toBe(0)
+    })
+  })
 })
+
 
 
