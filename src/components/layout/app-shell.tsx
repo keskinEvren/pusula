@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { BottomNav } from '@/components/layout/bottom-nav'
@@ -8,8 +9,21 @@ import { QuickCaptureSheet } from '@/components/modals/quick-capture-sheet'
 import { ToastProvider } from '@/lib/toast-context'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false)
+
+  const isAuthPage = pathname === '/login' || pathname === '/signup'
+
+  if (isAuthPage) {
+    return (
+      <ToastProvider>
+        <div className="min-h-screen w-full bg-background text-foreground">
+          {children}
+        </div>
+      </ToastProvider>
+    )
+  }
 
   return (
     <ToastProvider>
