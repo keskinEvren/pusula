@@ -285,6 +285,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </Link>
+      </div>
+
       {/* 3 Stratejik Panel: Nakit Akışı, Kart Ödeme Takvimi, Son Kapanan Ay Tüketimi */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* 1. Kasa & Nakit Akışı */}
