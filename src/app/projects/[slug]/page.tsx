@@ -15,6 +15,7 @@ import {
   Globe,
   DollarSign,
   AlertTriangle,
+  FileText,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -26,6 +27,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { MarkdownEditor } from '@/components/markdown'
 import { useToast } from '@/lib/toast-context'
 import type { Project, ProjectTask, Transaction, Subscription, Account } from '@/types/database'
 
@@ -39,6 +41,8 @@ export default function ProjectDetailPage({
   const slug = resolvedParams.slug
 
   const [project, setProject] = useState<Project | null>(null)
+  const [markdownDoc, setMarkdownDoc] = useState<string>('')
+  const [savingDoc, setSavingDoc] = useState(false)
   const [tasks, setTasks] = useState<ProjectTask[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -110,6 +114,9 @@ export default function ProjectDetailPage({
 
       if (pData) {
         setProject(pData)
+        const savedDraft = typeof window !== 'undefined' ? localStorage.getItem(`pusula_project_doc_${slug}`) : null
+        setMarkdownDoc(savedDraft !== null ? savedDraft : (pData.description || ''))
+
         const [{ data: tks }, { data: txs }, { data: subs }, { data: accs }] = await Promise.all([
           supabase
             .from('project_tasks')
@@ -140,6 +147,36 @@ export default function ProjectDetailPage({
       console.error('Error loading project details:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleMarkdownChange = (val: string) => {
+    setMarkdownDoc(val)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`pusula_project_doc_${slug}`, val)
+    }
+  }
+
+  const handleSaveProjectDoc = async () => {
+    if (!project) return
+    setSavingDoc(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('projects')
+        .update({ description: markdownDoc })
+        .eq('id', project.id)
+
+      if (error) throw error
+      setProject({ ...project, description: markdownDoc })
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(`pusula_project_doc_${slug}`)
+      }
+      toast.success('Proje dokümantasyonu kaydedildi!')
+    } catch (err: any) {
+      toast.error(err.message || 'Doküman kaydedilemedi')
+    } finally {
+      setSavingDoc(false)
     }
   }
 
@@ -276,7 +313,7 @@ export default function ProjectDetailPage({
             </Badge>
           </div>
           {project.description && (
-            <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
+            <p className="mt-1 text-sm text-muted-foreground max-w-2xl line-clamp-2">
               {project.description}
             </p>
           )}
@@ -394,6 +431,36 @@ export default function ProjectDetailPage({
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Project Markdown Spec & Documentation Workspace */}
+      <Card className="border-border bg-card shadow-sm overflow-hidden">
+        <CardHeader className="pb-3 border-b border-border/60">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                Dokümantasyon & Teknik Şartname (Spec)
+              </CardTitle>
+              <CardDescription>
+                Bu projenin mimarisi, gereksinimleri, API notları ve geliştirme şartnamesi
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <MarkdownEditor
+            value={markdownDoc}
+            onChange={handleMarkdownChange}
+            onSave={handleSaveProjectDoc}
+            docName={`${slug}-sartname`}
+            title={`${project.name} Şartname & Dokümantasyon`}
+            placeholder="Proje mimarisi, veritabanı şeması, yapılacaklar listesi veya API gereksinimlerini buraya yazın ya da .md dosyası sürükleyip bırakın..."
+            minHeight="380px"
+            defaultMode="split"
+            className="border-0 rounded-none shadow-none"
+          />
         </CardContent>
       </Card>
 
