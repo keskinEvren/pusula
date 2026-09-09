@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   calculateNetWorth,
   calculatePortfolioMetrics,
+  calculateDcaAverageCost,
   calculateStatementChange,
   calculateSpendingBreakdown,
   calculateProjectTotalCost,
@@ -297,6 +298,29 @@ describe('Pusula Saf Finans Motoru (Gateway 2 Test Süiti)', () => {
       expect(metrics.categoryAllocations[2].category).toBe('Kripto Para')
       expect(metrics.categoryAllocations[2].value).toBe(4000.0)
     })
+
+    it('8.3. Kademeli Alım (DCA): Ağırlıklı ortalama maliyet kuruşu kuruşuna hesaplanır', () => {
+      // 100 lot @ 200 TL = 20.000 TL
+      // + 50 lot @ 290 TL = 14.500 TL
+      // Toplam: 150 lot, 34.500 TL -> 34.500 / 150 = 230,00 TL
+      const res = calculateDcaAverageCost(100, 200.0, 50, 290.0)
+      expect(res.newQuantity).toBe(150)
+      expect(res.totalCost).toBe(34500.0)
+      expect(res.newUnitCost).toBe(230.0)
+
+      // Ondalıklı miktar (Gram altın / Kripto): 1.5 gram @ 3.000 TL + 0.5 gram @ 3.400 TL = 2 gram @ 3.100 TL
+      const goldRes = calculateDcaAverageCost(1.5, 3000.0, 0.5, 3400.0)
+      expect(goldRes.newQuantity).toBe(2.0)
+      expect(goldRes.totalCost).toBe(6200.0) // 4500 + 1700
+      expect(goldRes.newUnitCost).toBe(3100.0)
+
+      // Sıfırdan ilk alım durumu
+      const initialRes = calculateDcaAverageCost(0, 0, 10, 150.0)
+      expect(initialRes.newQuantity).toBe(10)
+      expect(initialRes.newUnitCost).toBe(150.0)
+      expect(initialRes.totalCost).toBe(1500.0)
+    })
   })
 })
+
 

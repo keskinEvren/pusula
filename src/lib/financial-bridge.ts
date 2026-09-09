@@ -709,6 +709,117 @@ export class FinancialBridge {
       return { success: false, error: err.message || 'Bağlantı çözülemedi.' }
     }
   }
+
+  /**
+   * 10. Banka / Kart Hareketini Yatırıma (Portföye) Aktar / Eşle
+   * - Hareketi 'Hariç' (Tüketim Dışı Transfer) yapar, bütçeyi bozmaz.
+   * - İsteğe bağlı olarak ilgili varlığın adet ve ortalama maliyetini günceller.
+   */
+  async linkTransactionToInvestment(params: {
+    userId: string
+    transactionId: string
+    investmentId: string
+    addedQty?: number
+    unitPrice?: number
+  }): Promise<FinancialEventResult> {
+    try {
+      const supabase = createClient()
+
+      // 1. Get Transaction
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', params.transactionId)
+        .eq('user_id', params.userId)
+        .single()
+
+      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
+
+      // 2. Get Investment (if DB available)
+      const { data: inv } = await supabase
+        .from('investments')
+        .select('*')
+        .eq('id', params.investmentId)
+        .eq('user_id', params.userId)
+        .single()
+
+      if (inv && params.addedQty && params.addedQty > 0 && params.unitPrice && params.unitPrice > 0) {
+        const currentQty = Number(inv.quantity || 0)
+        const currentCost = Number(inv.unit_cost || 0)
+        const newQty = currentQty + params.addedQty
+        const totalSpent = (currentQty * currentCost) + (params.addedQty * params.unitPrice)
+        const newUnitCost = newQty > 0 ? Math.round((totalSpent / newQty) * 100) / 100 : 0
+
+        await supabase
+          .from('investments')
+          .update({
+            quantity: newQty,
+            unit_cost: newUnitCost,
+            current_price: params.unitPrice,
+            last_price_updated_at: new Date().toISOString(),
+          })
+          .eq('id', inv.id)
+      }
+
+      // 3. Update Transaction: mark as Excluded from consumption & tag with [INV:id]
+      const invTag = `[INV:${params.investmentId}]`
+      const baseDesc = (tx.description || '').replace(/\s*\[INV:[^\]]+\]/gi, '').trim()
+      const updatedDesc = `${baseDesc} ${invTag}`.trim()
+
+      const { error: updErr } = await supabase
+        .from('transactions')
+        .update({
+          type: 'Transfer',
+          analysis_group: 'Hariç',
+          description: updatedDesc,
+        })
+        .eq('id', tx.id)
+
+      if (updErr) throw updErr
+
+      return { success: true, transactionId: tx.id }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Yatırıma aktarılamadı.' }
+    }
+  }
+
+  /**
+   * 11. Hareketin Yatırım Bağlantısını Geri Al (Tüketime İade Et)
+   */
+  async unlinkTransactionFromInvestment(params: {
+    userId: string
+    transactionId: string
+  }): Promise<FinancialEventResult> {
+    try {
+      const supabase = createClient()
+
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', params.transactionId)
+        .eq('user_id', params.userId)
+        .single()
+
+      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
+
+      const cleanDesc = (tx.description || '').replace(/\s*\[INV:[^\]]+\]/gi, '').trim()
+
+      const { error: updErr } = await supabase
+        .from('transactions')
+        .update({
+          type: 'Harcama',
+          analysis_group: 'Kişisel',
+          description: cleanDesc,
+        })
+        .eq('id', tx.id)
+
+      if (updErr) throw updErr
+
+      return { success: true, transactionId: tx.id }
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Bağlantı geri alınamadı.' }
+    }
+  }
 }
 
 /**
@@ -720,6 +831,15 @@ export function getLinkedDebtId(tx: { related_debt_id?: string | null; descripti
   return match ? match[1] : null
 }
 
+/**
+ * Harekete bağlı yatırım kimliğini döndürür
+ */
+export function getLinkedInvestmentId(tx: { description?: string | null }): string | null {
+  const match = tx.description?.match(/\[INV:([^\]]+)\]/i)
+  return match ? match[1] : null
+}
+
 // Singleton export
 export const financialBridge = new FinancialBridge()
+
 

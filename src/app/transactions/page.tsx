@@ -14,12 +14,14 @@ import {
   CreditCard as CardIcon,
   Building2,
   Layers,
+  TrendingUp,
   ArrowUpRight,
   ArrowDownLeft,
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { round2 } from '@/lib/finance-engine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -27,8 +29,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
-import { financialBridge, getLinkedDebtId } from '@/lib/financial-bridge'
-import type { Transaction, Project, CreditCard, Account, Debt } from '@/types/database'
+import { financialBridge, getLinkedDebtId, getLinkedInvestmentId } from '@/lib/financial-bridge'
+import type { Transaction, Project, CreditCard, Account, Debt, Investment } from '@/types/database'
 
 function TransactionsContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -36,6 +38,7 @@ function TransactionsContent() {
   const [cards, setCards] = useState<CreditCard[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
+  const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
 
   // Segment Tab: 'all' | 'cards' | 'accounts'
@@ -88,6 +91,15 @@ function TransactionsContent() {
   const [selectedTxForLink, setSelectedTxForLink] = useState<Transaction | null>(null)
   const [targetDebtId, setTargetDebtId] = useState<string>('')
   const [linking, setLinking] = useState(false)
+
+  // Link to Investment Modal State
+  const [isInvLinkModalOpen, setIsInvLinkModalOpen] = useState(false)
+  const [selectedTxForInvLink, setSelectedTxForInvLink] = useState<Transaction | null>(null)
+  const [targetInvestmentId, setTargetInvestmentId] = useState<string>('')
+  const [invLinkWithDca, setInvLinkWithDca] = useState(false)
+  const [invLinkUnitPrice, setInvLinkUnitPrice] = useState('')
+  const [invLinkAddedQty, setInvLinkAddedQty] = useState('')
+  const [invLinking, setInvLinking] = useState(false)
 
   // Convert to Recurring (Subscription/Bill/Installment) Modal State
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false)
@@ -190,6 +202,21 @@ function TransactionsContent() {
       if (crds) setCards(crds)
       if (accs) setAccounts(accs)
       if (dbts) setDebts(dbts)
+
+      // Load investments for financial bridge
+      const { data: invs, error: invErr } = await supabase.from('investments').select('*')
+      if (invs && !invErr) {
+        setInvestments(invs)
+      } else {
+        const cached = localStorage.getItem('pusula_local_investments')
+        if (cached) {
+          try {
+            setInvestments(JSON.parse(cached))
+          } catch {
+            setInvestments([])
+          }
+        }
+      }
     } catch (err) {
       console.error('Error loading transactions:', err)
     } finally {
@@ -246,6 +273,119 @@ function TransactionsContent() {
 
       const res = await financialBridge.unlinkTransactionFromDebt({
         userId: user.id,
+        transactionId: tx.id,
+      })
+
+      if (!res.success) throw new Error(res.error)
+      await loadTransactions()
+    } catch (err: any) {
+      alert(err.message || 'Bağlantı kaldırılamadı')
+    }
+  }
+
+  const handleOpenInvestmentLinkModal = (tx: Transaction) => {
+    setSelectedTxForInvLink(tx)
+    const initialInv = investments[0]
+    setTargetInvestmentId(initialInv?.id || '')
+    setInvLinkWithDca(false)
+    if (initialInv) {
+      const price = initialInv.current_price > 0 ? initialInv.current_price : initialInv.unit_cost
+      setInvLinkUnitPrice(price > 0 ? price.toString() : '')
+      const calculatedQty = price > 0 ? round2(tx.amount / price) : 0
+      setInvLinkAddedQty(calculatedQty > 0 ? calculatedQty.toString() : '')
+    } else {
+      setInvLinkUnitPrice('')
+      setInvLinkAddedQty('')
+    }
+    setIsInvLinkModalOpen(true)
+  }
+
+  const handleTargetInvChange = (id: string) => {
+    setTargetInvestmentId(id)
+    const inv = investments.find((i) => i.id === id)
+    if (inv && selectedTxForInvLink) {
+      const price = inv.current_price > 0 ? inv.current_price : inv.unit_cost
+      setInvLinkUnitPrice(price > 0 ? price.toString() : '')
+      const calculatedQty = price > 0 ? round2(selectedTxForInvLink.amount / price) : 0
+      setInvLinkAddedQty(calculatedQty > 0 ? calculatedQty.toString() : '')
+    }
+  }
+
+  const handleConfirmInvestmentLink = async () => {
+    if (!selectedTxForInvLink || !targetInvestmentId) return
+    setInvLinking(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const userId = user?.id || 'local'
+
+      const addedQtyNum = invLinkWithDca ? parseFloat(invLinkAddedQty.replace(',', '.')) : undefined
+      const unitPriceNum = invLinkWithDca ? parseFloat(invLinkUnitPrice.replace(',', '.')) : undefined
+
+      const res = await financialBridge.linkTransactionToInvestment({
+        userId,
+        transactionId: selectedTxForInvLink.id,
+        investmentId: targetInvestmentId,
+        addedQty: addedQtyNum && addedQtyNum > 0 ? addedQtyNum : undefined,
+        unitPrice: unitPriceNum && unitPriceNum > 0 ? unitPriceNum : undefined,
+      })
+
+      if (!res.success) throw new Error(res.error)
+
+      // Update local storage cache if fallback is in use
+      if (invLinkWithDca && addedQtyNum && addedQtyNum > 0 && unitPriceNum && unitPriceNum > 0) {
+        const cached = localStorage.getItem('pusula_local_investments')
+        if (cached) {
+          try {
+            const list: Investment[] = JSON.parse(cached)
+            const updated = list.map((inv) => {
+              if (inv.id === targetInvestmentId) {
+                const currentQty = Number(inv.quantity || 0)
+                const currentCost = Number(inv.unit_cost || 0)
+                const newQty = currentQty + addedQtyNum
+                const totalSpent = currentQty * currentCost + addedQtyNum * unitPriceNum
+                const newUnitCost = newQty > 0 ? Math.round((totalSpent / newQty) * 100) / 100 : 0
+                return {
+                  ...inv,
+                  quantity: newQty,
+                  unit_cost: newUnitCost,
+                  current_price: unitPriceNum,
+                  last_price_updated_at: new Date().toISOString(),
+                }
+              }
+              return inv
+            })
+            localStorage.setItem('pusula_local_investments', JSON.stringify(updated))
+            setInvestments(updated)
+          } catch {}
+        }
+      }
+
+      setIsInvLinkModalOpen(false)
+      setSelectedTxForInvLink(null)
+      await loadTransactions()
+    } catch (err: any) {
+      alert(err.message || 'Yatırıma bağlama başarısız oldu')
+    } finally {
+      setInvLinking(false)
+    }
+  }
+
+  const handleUnlinkFromInvestment = async (tx: Transaction) => {
+    if (!confirm('Bu hareketin yatırım bağlantısını kaldırmak ve tekrar standart harcama grubuna almak istiyor musunuz?')) {
+      return
+    }
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const userId = user?.id || 'local'
+
+      const res = await financialBridge.unlinkTransactionFromInvestment({
+        userId,
         transactionId: tx.id,
       })
 
@@ -646,11 +786,14 @@ function TransactionsContent() {
                       )}
                       {tx.description && tx.description !== tx.merchant && (
                         <div className="text-muted-foreground text-[11px] truncate">
-                          {tx.description.replace(/\s*\[DEBT:[a-f0-9-]+\]/gi, '').trim()}
+                          {tx.description
+                            .replace(/\s*\[DEBT:[^\]]+\]/gi, '')
+                            .replace(/\s*\[INV:[^\]]+\]/gi, '')
+                            .trim()}
                         </div>
                       )}
 
-                      {/* Debt Link Status & Quick Actions */}
+                      {/* Debt & Investment Link Status & Quick Actions */}
                       {(() => {
                         const debtId = getLinkedDebtId(tx)
                         const linkedDebt = debts.find((d) => d.id === debtId)
@@ -663,8 +806,28 @@ function TransactionsContent() {
                               <button
                                 type="button"
                                 onClick={() => handleUnlinkFromDebt(tx)}
-                                className="text-[10px] text-muted-foreground hover:text-destructive underline transition-colors"
-                                title="Eşleştirmeyi kaldır ve tutarı alacak bakiyesine iade et"
+                                className="text-[10px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
+                                title="Eşleştirmeyi kaldır ve tutarı borç/alacak bakiyesine iade et"
+                              >
+                                Çöz
+                              </button>
+                            </div>
+                          )
+                        }
+
+                        const investmentId = getLinkedInvestmentId(tx)
+                        const linkedInv = investments.find((i) => i.id === investmentId)
+                        if (linkedInv || investmentId) {
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">
+                                📈 Portföy: {linkedInv ? linkedInv.name : 'Yatırım'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUnlinkFromInvestment(tx)}
+                                className="text-[10px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
+                                title="Yatırım bağlantısını kaldır ve hareketi normal harcamaya geri al"
                               >
                                 Çöz
                               </button>
@@ -687,10 +850,10 @@ function TransactionsContent() {
                           )
                         }
 
-                        if (tx.type === 'Harcama') {
+                        if (tx.type === 'Harcama' || tx.type === 'Transfer') {
                           return (
-                            <div className="flex items-center gap-2 mt-1">
-                              {tx.account_id && (
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {tx.account_id && tx.type === 'Harcama' && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenLinkModal(tx)}
@@ -702,12 +865,22 @@ function TransactionsContent() {
                               )}
                               <button
                                 type="button"
-                                onClick={() => handleOpenRecurringModal(tx)}
-                                className="inline-flex items-center gap-1 text-[10px] text-primary/80 hover:text-primary font-medium hover:underline transition-colors"
-                                title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
+                                onClick={() => handleOpenInvestmentLinkModal(tx)}
+                                className="inline-flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold hover:underline transition-colors"
+                                title="Bu transferi/harcamayı portföydeki bir yatırıma bağla ve tüketim harcamasından muaf tut"
                               >
-                                ⚡ Düzenli Gider Yap
+                                📈 Yatırıma Aktar
                               </button>
+                              {tx.type === 'Harcama' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRecurringModal(tx)}
+                                  className="inline-flex items-center gap-1 text-[10px] text-primary/80 hover:text-primary font-medium hover:underline transition-colors"
+                                  title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
+                                >
+                                  ⚡ Düzenli Gider Yap
+                                </button>
+                              )}
                             </div>
                           )
                         }
@@ -1101,6 +1274,156 @@ function TransactionsContent() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Link Transaction to Investment Modal (Financial Bridge) */}
+      <Modal
+        isOpen={isInvLinkModalOpen}
+        onClose={() => setIsInvLinkModalOpen(false)}
+        title="📈 Hareketi Yatırıma Aktar & Portföye Eşle"
+        description="Bu işlem hareketi tüketim harcamaları havuzundan çıkarıp 'Hariç' grubuna alır; bütçenizi bozmadan portföy sermaye aktarımı olarak bağlar."
+      >
+        {selectedTxForInvLink && (
+          <div className="space-y-4">
+            {/* Tx Summary */}
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-sans">Tarih:</span>
+                <span className="text-foreground font-semibold">{formatDate(selectedTxForInvLink.date)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-sans">Hesap:</span>
+                <span className="text-foreground">{selectedTxForInvLink.account_or_card || 'Banka Hesabı'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-sans">Açıklama / İşyeri:</span>
+                <span className="text-foreground truncate max-w-[240px]">
+                  {selectedTxForInvLink.merchant || selectedTxForInvLink.description}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-border/60">
+                <span className="font-semibold text-muted-foreground font-sans">Aktarılan Tutar:</span>
+                <span className="font-bold text-cyan-400 text-base font-mono">
+                  {formatCurrency(selectedTxForInvLink.amount)}
+                </span>
+              </div>
+            </div>
+
+            {/* Target Investment */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Hedef Yatırım / Varlık</label>
+              {investments.length === 0 ? (
+                <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-md">
+                  Portföyünüzde henüz tanımlı bir yatırım bulunmuyor. Lütfen önce <strong>Yatırımlar & Portföy</strong> sayfasından varlık ekleyin.
+                </p>
+              ) : (
+                <Select
+                  value={targetInvestmentId}
+                  onChange={(e) => handleTargetInvChange(e.target.value)}
+                  className="text-xs"
+                >
+                  {investments.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.name} ({inv.symbol || inv.category}) • Mevcut: {inv.quantity} adet @ {formatCurrency(inv.unit_cost)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </div>
+
+            {/* DCA Option Checkbox */}
+            {investments.length > 0 && (
+              <div className="space-y-3 pt-1 border-t border-border/50">
+                <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={invLinkWithDca}
+                    onChange={(e) => setInvLinkWithDca(e.target.checked)}
+                    className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <span>Varlığın adet ve maliyetini bu tutarla güncelle (Kademeli Alım)</span>
+                </label>
+
+                {invLinkWithDca && (() => {
+                  const targetInv = investments.find((i) => i.id === targetInvestmentId)
+                  const unitPrice = parseFloat(invLinkUnitPrice.replace(',', '.')) || 0
+                  const addedQty = parseFloat(invLinkAddedQty.replace(',', '.')) || 0
+                  const dcaPreview =
+                    targetInv && unitPrice > 0 && addedQty > 0
+                      ? {
+                          newQty: round2(targetInv.quantity + addedQty),
+                          newCost: round2(
+                            (targetInv.quantity * targetInv.unit_cost + addedQty * unitPrice) /
+                              (targetInv.quantity + addedQty)
+                          ),
+                        }
+                      : null
+
+                  return (
+                    <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-border/70 text-xs">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-muted-foreground">
+                            Birim Alış Fiyatı (₺)
+                          </label>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={invLinkUnitPrice}
+                            onChange={(e) => {
+                              const p = e.target.value
+                              setInvLinkUnitPrice(p)
+                              const pNum = parseFloat(p.replace(',', '.'))
+                              if (pNum > 0 && selectedTxForInvLink) {
+                                setInvLinkAddedQty(round2(selectedTxForInvLink.amount / pNum).toString())
+                              }
+                            }}
+                            placeholder="Alış birim fiyatı"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-muted-foreground">
+                            Alınan Adet / Miktar
+                          </label>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={invLinkAddedQty}
+                            onChange={(e) => setInvLinkAddedQty(e.target.value)}
+                            placeholder="Adet miktarı"
+                          />
+                        </div>
+                      </div>
+
+                      {dcaPreview && (
+                        <div className="rounded bg-cyan-500/10 border border-cyan-500/20 p-2 text-[11px] flex justify-between items-center font-mono">
+                          <span className="text-muted-foreground font-sans">Yeni Durum:</span>
+                          <span className="text-cyan-400 font-bold">
+                            {dcaPreview.newQty.toLocaleString('tr-TR')} Adet @ {formatCurrency(dcaPreview.newCost)} Ortalama
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setIsInvLinkModalOpen(false)}>
+                İptal
+              </Button>
+              <Button
+                type="button"
+                disabled={invLinking || !targetInvestmentId || investments.length === 0}
+                onClick={handleConfirmInvestmentLink}
+                className="font-semibold bg-cyan-600 hover:bg-cyan-500 text-white"
+              >
+                {invLinking ? 'Aktarılıyor...' : 'Yatırıma Aktar & Bütçeden Muaf Tut'}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
