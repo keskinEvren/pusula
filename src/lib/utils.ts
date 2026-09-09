@@ -46,3 +46,29 @@ export function formatMonthYear(monthStr: string | null | undefined): string {
   }
 }
 
+export function slugify(text: string): string {
+  if (!text) return ''
+  const turkishMap: Record<string, string> = {
+    ç: 'c', Ç: 'c',
+    ğ: 'g', Ğ: 'g',
+    ı: 'i', I: 'i', İ: 'i',
+    ö: 'o', Ö: 'o',
+    ş: 's', Ş: 's',
+    ü: 'u', Ü: 'u',
+  }
+
+  let str = text
+  for (const [key, val] of Object.entries(turkishMap)) {
+    str = str.replaceAll(key, val)
+  }
+
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+
