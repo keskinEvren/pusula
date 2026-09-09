@@ -741,7 +741,102 @@ function TransactionsContent() {
           </div>
         </CardHeader>
 
-        <div className="overflow-x-auto">
+        {/* Mobile Compact Card View (< md) */}
+        <div className="md:hidden divide-y divide-border/40 font-sans">
+          {filteredTransactions.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-xs">
+              Filtrelere uygun hareket bulunamadı.
+            </div>
+          ) : (
+            filteredTransactions.map((tx) => (
+              <div key={tx.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-muted/20 transition-colors">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs text-foreground truncate block max-w-[200px]">
+                      {tx.merchant || tx.description}
+                    </span>
+                    <Badge
+                      variant={
+                        tx.analysis_group === 'İş'
+                          ? 'purple'
+                          : tx.analysis_group === 'Finansman'
+                          ? 'destructive'
+                          : (tx.analysis_group as string) === 'Gelir'
+                          ? 'success'
+                          : 'outline'
+                      }
+                      className="text-[9px] px-1.5 py-0"
+                    >
+                      {tx.analysis_group}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>{formatDate(tx.date)}</span>
+                    <span>•</span>
+                    <span className="truncate">
+                      {cards.find((c) => c.id === tx.card_id)?.card_name ||
+                        accounts.find((a) => a.id === tx.account_id)?.name ||
+                        'Nakit'}
+                    </span>
+                  </div>
+
+                  {/* Inline quick links */}
+                  {(tx.type === 'Harcama' || tx.type === 'Transfer') && (
+                    <div className="flex items-center gap-3 pt-0.5 text-[10px]">
+                      {tx.account_id && tx.type === 'Harcama' && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLinkModal(tx)}
+                          className="text-amber-400 hover:underline font-medium"
+                        >
+                          Borca Bağla
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenInvestmentLinkModal(tx)}
+                        className="text-cyan-400 hover:underline font-medium"
+                      >
+                        Yatırıma Aktar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right font-mono font-bold text-xs">
+                    <span
+                      className={
+                        tx.type === 'Gelir' || tx.type === 'Tahsilat'
+                          ? 'text-success'
+                          : tx.type === 'İade'
+                          ? 'text-purple-400'
+                          : tx.analysis_group === 'Hariç'
+                          ? 'text-muted-foreground'
+                          : 'text-foreground'
+                      }
+                    >
+                      {tx.type === 'Gelir' || tx.type === 'Tahsilat' ? '+' : '−'}{' '}
+                      {formatCurrency(tx.amount)}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(tx.id)}
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Wide Table (md+) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
               <tr>

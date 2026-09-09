@@ -107,3 +107,14 @@
   border: 2px solid transparent;
   background-clip: content-box;
 }
+
+/* Mobile Safe Area Insets (iPhone Home Bar & Dynamic Island) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.bottom-safe {
+  bottom: env(safe-area-inset-bottom, 0px);
+}
