@@ -1,8 +1,8 @@
-# Restore script for Antigravity Session a4db2f68-0ce6-413a-8015-b6c93a0f71ff on Windows
+# Restore script for Antigravity Session 3ceb9622-b493-4d7b-907e-ced36f58edb2 on Windows
 # Run this on Windows where you want to restore the exact chat session.
 
 param (
-    [string]$SessionId = "a4db2f68-0ce6-413a-8015-b6c93a0f71ff"
+    [string]$SessionId = "3ceb9622-b493-4d7b-907e-ced36f58edb2"
 )
 
 $ErrorActionPreference = "Stop"

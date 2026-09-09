@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-# Restore script for Antigravity Session a4db2f68-0ce6-413a-8015-b6c93a0f71ff
+# Restore script for Antigravity Session 3ceb9622-b493-4d7b-907e-ced36f58edb2
 # Run this on another computer (Linux/macOS) where you want to continue this exact chat.
 
-SESSION_ID="${1:-a4db2f68-0ce6-413a-8015-b6c93a0f71ff}"
+SESSION_ID="${1:-3ceb9622-b493-4d7b-907e-ced36f58edb2}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TAR_FILE="${SCRIPT_DIR}/session-${SESSION_ID}.tar.gz"

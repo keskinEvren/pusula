@@ -1,67 +1,45 @@
 # Pusula Geliştirme & Chat Oturumu Özeti
 
-* **Aktif Oturum ID**: `a4db2f68-0ce6-413a-8015-b6c93a0f71ff`
-* **Önceki Oturum ID**: `4f656576-acae-42f2-8392-9de76f24d183`
+* **Aktif Oturum ID**: `3ceb9622-b493-4d7b-907e-ced36f58edb2`
+* **Önceki Oturum ID'leri**: `a4db2f68-0ce6-413a-8015-b6c93a0f71ff`, `4f656576-acae-42f2-8392-9de76f24d183`
 * **Proje**: Pusula (`keskinEvren/pusula`)
-* **Tarih**: 9 Eylül 2026
-* **Durum**: Production derlemesi (`next build`) ve tüm 11 test paketi (`vitest`) %100 yeşil.
+* **Tarih**: 10 Eylül 2026
+* **Canlı URL**: `https://pusula-plum.vercel.app`
+* **Durum**: Production derlemesi (`next build`) ve tüm testler yeşil.
 
 ---
 
 ## 🚀 Bu Oturumda Tamamlanan Başlıca Geliştirmeler
 
-### 1. 📖 Günlük Modülü (Pusula Günlük / Journal - `/journal`)
-* **Odak & Zen Editör**: Markdown destekli, daktilo hissi veren, minimalist ve estetik yazı alanı.
-* **Stoik & Rehberli Şablonlar**:
-  - Serbest Akış
-  - Stoik Akşam Muhasebesi (Marcus Aurelius: Neyi iyi yaptım, neyi sakin karşılayabilirdim?)
-  - Şükran & Günün Zaferi
-  - Haftalık Kapanış & Rota Tayini (MIT)
-* **Günün Otomatik Bağlamı (Smart Day Context Ribbon)**: Günlük yazarken o gün tamamlanan rutinleri ve günün harcamalarını otomatik fısıldayan mini-şerit.
-* **Ruh Hali & Kelime İstatistikleri**: Günün ruh hali seçimi (`calm`, `clear`, `reflective`, `high_energy`, `stormy`), yazma serisi (streak) ve kelime sayacı.
-* **Testler**: `tests/journal-engine.test.ts` (5 test) eksiksiz doğrulandı.
+### 1. 📱 Mobil Deneyim & PWA Altyapısı
+* **PWA Manifest**: `manifest.webmanifest` entegrasyonu, standalone ekran modu desteği.
+* **Başparmak Dostu Alt Gezinme Çubuğu**: Mobil cihazlarda ekranın altına sabitlenen hızlı menü barı.
+* **3 Saniyelik Hızlı Harcama Yakalama (Quick Capture Sheet)**: Masaüstünde `N` tuşuyla, mobilde alt bardaki `+` butonuyla açılan minimal harcama giriş formu.
+* **Duyarlı Hareket Kartları**: Mobilde taşan tablolar yerine temiz dikey hareket kartları.
 
-### 2. 🛡️ Veri ve Yedekleme (Kişisel Kasa - `/vault`)
-* **15 Veritabanı Tablosunun Eksiksiz Yedeklenmesi**: Nakit hesaplar, kartlar, ekstreler, hareketler, borçlar, abonelikler, yatırımlar, projeler, görevler, fikirler, hedefler, rutinler, rutin kayıtları ve günlükler.
-* **Askeri Düzey Şifreleme (AES-GCM & PBKDF2)**: Web Crypto API ile tarayıcı üzerinde istemci tarafı parola korumalı `.pusula.vault` veya şifresiz `.json` dışa/içe aktarma.
-* **Testler**: `tests/vault-engine.test.ts` (4 test) eksiksiz doğrulandı.
+### 2. 📊 Gösterge Paneli (Dashboard) & Nakit Akışı Netliği
+* **Harcama & Nakit Akışı Arındırma**: Yanıltıcı harcama kartı yerine gerçek nakit akışı (`Gelen Tutar` ve `Giden Tutar`), kart ekstresi ödeme takvimi ve geçen ayın net tüketim göstergesi.
+* **İç Transfer İzolasyonu**: Hesaplar arası virmanların (örneğin vadesizden nakit avansa veya yatırım hesabına) harcama olarak çift sayılması engellendi.
+* **Pist Süresi Koruması**: Yatırım transferleri harcamadan muaf tutuldu.
 
-### 3. 🎨 Anti-AI-Slop Tasarım, Marka & Yüzey Derinliği Dönüşümü
-* **Taksonomi & Dil Olgunlaşması**:
-  - `Komuta Merkezi / Kokpit` ➔ **Genel Bakış**
-  - `Finans & Likidite` ➔ **Finans**
-  - `Yaşam & Zihin (Life OS)` ➔ **Kişisel**
-  - `Stüdyo & Üretim` ➔ **Çalışma**
-  - `Sistem & Kasa` ➔ **Sistem**
-  - `Seyir Defteri` ➔ **Günlük**
-  - `Kişisel Kasa` ➔ **Veri ve Yedekleme**
-  - `Hayallerim` ➔ **Hedefler & Vizyon**
-* **Sıfır-Emoji İlkesi**: Menü, sekme, buton ve başlıklardaki çocuksu emojiler kaldırıldı; 16px monokrom Lucide ikonlarına geçildi.
-* **Obsidian & Nordic Slate Yüzey Mimarisi**:
-  - Tuval: `#0c0c0e`
-  - Paneller: `#131316` + `inset 0 1px 0 0 rgba(255,255,255,0.05)` üst kenar mikro-ışığı.
-  - Modallar: `#16161b` + `backdrop-blur-md` floating derinlik.
-* **Bespoke Form Bileşenleri**:
-  - `HeroCurrencyInput` (`src/components/ui/hero-currency-input.tsx`): 3xl tabular-nums, sabit soluk `₺`, `+50`, `+100`, `+500`, `+1000` hızlı artış çipleri.
-  - `SegmentedControl` (`src/components/ui/segmented-control.tsx`): Yerel hantal HTML `<select>` yerine Apple/Linear hap düğmeler.
-* **Card Soup & Başlık Didaktizminin Tasfiyesi**:
-  - Dashboard 6 aylık nakit tahmini ve projeler kutu yığınından tek parça segmented strip'e dönüştürüldü.
-  - `PageHeader` kompakt `text-xl sm:text-2xl` boyutuna çekildi, didaktik felsefe açıklamaları sadeleştirildi.
-  - Tablolarda font-bold enflasyonu temizlendi.
+### 3. 📝 Projeler & Fikirler: Canlı Markdown Çalışma Alanı
+* **Şartname & Not Editörü**: Proje ve fikir detaylarında doğrudan Markdown yazma, düzenleme ve anlık önizleme (live preview) paneli.
+* **Görev ve Proje Yönetimi**: Görev düzenleme, slug belirleme ve proje ayarları modalı (`ProjectSettingsModal`).
+* **Supabase İçe Aktarım Betikleri**:
+  - `scripts/import-projects-planner.ts`: `projects-planner` reposundaki planların aktarımı.
+  - `scripts/import-additional-repos.ts`: GitHub üzerindeki 4 aktif projenin (Atom Purchase Watch, Hızır Saha, CareerAttack, Sarıoğlu Emlak) görev ve şartnameleriyle Supabase'e aktarılması (toplam 9 proje, 55 görev).
 
-### 4. 💳 Gelecek Ay Sabit Giderler Mantık İyileştirmesi
-* Kredi kartı taksitleri "Gelecek Ay Sabit Giderler" kartından çıkarıldı (kredi kartı borçlarında zaten var olduğu ve çift sayım yarattığı için).
-* Kart doğrudan `/subscriptions` sayfasına bağlandı; gerçek düzenli sabit yük (`₺0,00 / ay`) ve `Yıllık İzdüşüm` göstergesine kavuştu.
+### 4. 🎯 Hedefler & Vizyon (Hayallerim)
+* Kullanıcı vizyon hedefleri eklendi: Ironman triatlonu, tandem paraşüt atlayışı ve yelkenli tekne hayali sisteme kaydedildi.
 
-### 5. 🧠 Modüller Arası İletişim & Sinaps Denetimi
-* `journal-engine.ts` içindeki `t.amount < 0` hatası giderildi (artık günün pozitif harcamalarını eksiksiz fısıldıyor).
-* Proje genelinde eksik kalan köprüler raporlandı (Hareketlerde "Projeye Bağla" eylemi, Yatırımlarda "Nakit Hesaptan Düş" köprüsü, Hedeflerde "Sanal Kumbara / Fonlama" köprüsü).
+### 5. 🌐 Canlı Vercel Dağıtımı
+* Proje Vercel üzerinde `https://pusula-plum.vercel.app` adresinde yayına alındı.
 
 ---
 
-## 🏡 Evde Geliştirmeye Devam Etme Rehberi
+## 🏡 Başka Bilgisayarda Geliştirmeye Devam Etme Rehberi
 
-Evdeki bilgisayarınızda mevcut tüm geçmiş ve bağlamla devam etmek için:
+Evdeki veya diğer bilgisayarınızda mevcut tüm geçmiş ve bağlamla devam etmek için:
 
 ### Adım 1: Değişiklikleri Çekin
 ```bash
@@ -76,17 +54,16 @@ git pull origin master
 
 **macOS / Linux için (Bash):**
 ```bash
-chmod +x ./docs\chat-history\restore-session.sh
+chmod +x ./docs/chat-history/restore-session.sh
 ./docs/chat-history/restore-session.sh
 ```
 
 ### Adım 3: Antigravity IDE'yi Açın
-* Antigravity IDE veya `agy` CLI açıldığında, sol paneldeki geçmiş konuşmalarda **`a4db2f68-0ce6-413a-8015-b6c93a0f71ff`** ID'li oturum listelenecektir.
-* Doğrudan bu oturuma girerek sıfır bağlam kaybıyla kaldığımız yerden devam edebilirsiniz.
+* Antigravity IDE veya `agy` CLI açıldığında, sol paneldeki geçmiş oturumlarda **`3ceb9622-b493-4d7b-907e-ced36f58edb2`** ID'li oturum listelenecektir.
+* Doğrudan bu oturuma girerek sıfır bağlam kaybıyla çalışmaya devam edebilirsiniz.
 
 ---
 
 ## 🧪 Test & Doğrulama Durumu
-* **TypeScript Typecheck**: `npx tsc --noEmit` ➔ **0 Hata**
-* **Vitest Test Paketi**: `npm test` ➔ **11 test suite, 115 testin tamamı başarılı**
-* **Next.js Production Build**: `npm run build` ➔ **23 sayfa hatasız derlendi**
+* **TypeScript Typecheck**: `npx tsc --noEmit` -> 0 Hata
+* **Next.js Production Build**: `npm run build` -> Hatasız derlendi
