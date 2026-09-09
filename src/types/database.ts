@@ -643,6 +643,92 @@ export interface Database {
         }
         Relationships: []
       }
+      routines: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          icon: string
+          time_block: 'morning' | 'afternoon' | 'evening' | 'night'
+          frequency: 'daily' | 'weekdays' | 'weekends' | 'custom'
+          target_days: number[] | null
+          target_duration_minutes: number | null
+          minimum_effective_dose: string | null
+          dream_id: string | null
+          identity_persona: string | null
+          is_active: boolean
+          order_index: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          icon?: string
+          time_block?: 'morning' | 'afternoon' | 'evening' | 'night'
+          frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom'
+          target_days?: number[] | null
+          target_duration_minutes?: number | null
+          minimum_effective_dose?: string | null
+          dream_id?: string | null
+          identity_persona?: string | null
+          is_active?: boolean
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          icon?: string
+          time_block?: 'morning' | 'afternoon' | 'evening' | 'night'
+          frequency?: 'daily' | 'weekdays' | 'weekends' | 'custom'
+          target_days?: number[] | null
+          target_duration_minutes?: number | null
+          minimum_effective_dose?: string | null
+          dream_id?: string | null
+          identity_persona?: string | null
+          is_active?: boolean
+          order_index?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      routine_logs: {
+        Row: {
+          id: string
+          user_id: string
+          routine_id: string
+          log_date: string
+          status: 'completed' | 'micro_dose' | 'kintsugi_repaired' | 'skipped' | 'frozen'
+          note: string | null
+          duration_minutes: number
+          completed_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          routine_id: string
+          log_date?: string
+          status?: 'completed' | 'micro_dose' | 'kintsugi_repaired' | 'skipped' | 'frozen'
+          note?: string | null
+          duration_minutes?: number
+          completed_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          routine_id?: string
+          log_date?: string
+          status?: 'completed' | 'micro_dose' | 'kintsugi_repaired' | 'skipped' | 'frozen'
+          note?: string | null
+          duration_minutes?: number
+          completed_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -674,4 +760,7 @@ export type Idea = Database['public']['Tables']['ideas']['Row']
 export type MerchantMapping = Database['public']['Tables']['merchant_mappings']['Row']
 export type Investment = Database['public']['Tables']['investments']['Row']
 export type Dream = Database['public']['Tables']['dreams']['Row']
+export type Routine = Database['public']['Tables']['routines']['Row']
+export type RoutineLog = Database['public']['Tables']['routine_logs']['Row']
+
 

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/layout/page-header'
+import { DashboardRoutineStrip } from '@/components/routines/dashboard-routine-strip'
 
 import {
   calculateNetWorth,
@@ -178,6 +179,9 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      {/* 3-Saniyelik Günlük Rutin Şeridi */}
+      <DashboardRoutineStrip />
 
       {/* Focus Gate Capacity Warning */}
       {isCapacityFull && (

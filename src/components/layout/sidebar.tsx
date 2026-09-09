@@ -17,6 +17,7 @@ import {
   Settings,
   Compass,
   Sparkles,
+  Orbit,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,7 @@ const navGroups: NavGroup[] = [
     items: [
       { name: 'Komuta Merkezi', href: '/', icon: LayoutDashboard },
       { name: 'Hayallerim & Vizyon', href: '/dreams', icon: Sparkles },
+      { name: 'Günlük Rutinler & Gökyüzü', href: '/routines', icon: Orbit },
     ],
   },
   {
