@@ -37,6 +37,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { ExtractedTransaction, ParseResult, ReconciliationActionType } from '@/lib/parser/types'
 import type { Project, MerchantMapping, CreditCard, Debt, Account } from '@/types/database'
 
@@ -56,6 +57,7 @@ export interface QueuedStatementFile {
 
 export default function ImportPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addMoreInputRef = useRef<HTMLInputElement>(null)
 
@@ -390,7 +392,7 @@ export default function ImportPage() {
     )
 
     if (committableFiles.length === 0) {
-      alert('Aktarılacak hazır veya seçili hareketi olan dosya bulunamadı.')
+      toast.warning('Aktarılacak hazır veya seçili hareketi olan dosya bulunamadı.')
       return
     }
 
@@ -471,6 +473,7 @@ export default function ImportPage() {
         filesCount: committedFilesCount,
         txCount: committedTxCount,
       })
+      toast.success(`${committedFilesCount} ekstre dosyası (${committedTxCount} hareket) başarıyla aktarıldı.`)
     }
   }
 

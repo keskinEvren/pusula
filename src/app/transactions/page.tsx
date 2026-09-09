@@ -29,10 +29,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import { financialBridge, getLinkedDebtId, getLinkedInvestmentId } from '@/lib/financial-bridge'
 import type { Transaction, Project, CreditCard, Account, Debt, Investment } from '@/types/database'
 
 function TransactionsContent() {
+  const { toast } = useToast()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
@@ -173,9 +175,9 @@ function TransactionsContent() {
 
       if (error) throw error
       setIsRecurringModalOpen(false)
-      alert(`"${recurringForm.service}" başarıyla Sabit Yükler & Düzenli Giderler listenize eklendi!`)
+      toast.success(`"${recurringForm.service}" başarıyla Sabit Yükler & Düzenli Giderler listenize eklendi!`)
     } catch (err: any) {
-      alert(err.message || 'Sabit yüke eklenemedi')
+      toast.error(err.message || 'Sabit yüke eklenemedi')
     } finally {
       setRecurringSaving(false)
     }
@@ -253,8 +255,9 @@ function TransactionsContent() {
       setIsLinkModalOpen(false)
       setSelectedTxForLink(null)
       await loadTransactions()
+      toast.success('Hareket başarıyla borç/alacak ile eşlendi.')
     } catch (err: any) {
-      alert(err.message || 'Eşleme başarısız oldu')
+      toast.error(err.message || 'Eşleme başarısız oldu')
     } finally {
       setLinking(false)
     }
@@ -278,8 +281,9 @@ function TransactionsContent() {
 
       if (!res.success) throw new Error(res.error)
       await loadTransactions()
+      toast.success('Borç/alacak eşlemesi kaldırıldı.')
     } catch (err: any) {
-      alert(err.message || 'Bağlantı kaldırılamadı')
+      toast.error(err.message || 'Bağlantı kaldırılamadı')
     }
   }
 
@@ -366,8 +370,9 @@ function TransactionsContent() {
       setIsInvLinkModalOpen(false)
       setSelectedTxForInvLink(null)
       await loadTransactions()
+      toast.success('Hareket başarıyla yatırıma aktarıldı.')
     } catch (err: any) {
-      alert(err.message || 'Yatırıma bağlama başarısız oldu')
+      toast.error(err.message || 'Yatırıma bağlama başarısız oldu')
     } finally {
       setInvLinking(false)
     }
@@ -391,8 +396,9 @@ function TransactionsContent() {
 
       if (!res.success) throw new Error(res.error)
       await loadTransactions()
+      toast.success('Yatırım bağlantısı kaldırıldı.')
     } catch (err: any) {
-      alert(err.message || 'Bağlantı kaldırılamadı')
+      toast.error(err.message || 'Bağlantı kaldırılamadı')
     }
   }
 
@@ -488,8 +494,9 @@ function TransactionsContent() {
         project_id: '',
       })
       loadTransactions()
+      toast.success('Yeni hareket başarıyla eklendi.')
     } catch (err: any) {
-      alert(err.message || 'Hareket eklenemedi')
+      toast.error(err.message || 'Hareket eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -500,8 +507,9 @@ function TransactionsContent() {
     const res = await financialBridge.deleteTransaction(id)
     if (res.success) {
       setTransactions((prev) => prev.filter((t) => t.id !== id))
+      toast.success('Hareket silindi.')
     } else {
-      alert(res.error || 'Silinemedi')
+      toast.error(res.error || 'Silinemedi')
     }
   }
 
@@ -946,6 +954,7 @@ function TransactionsContent() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         title="Manuel Hareket Ekle"
+        size="lg"
       >
         <form onSubmit={handleAddTransaction} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -993,10 +1002,11 @@ function TransactionsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Tutar (₺)</label>
+              <label className="text-xs font-semibold text-foreground">Tutar</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 value={newTx.amount}
                 onChange={(e) => setNewTx({ ...newTx, amount: e.target.value })}
                 placeholder="0.00"
@@ -1072,6 +1082,7 @@ function TransactionsContent() {
             : '🎯 Hareketi Borca Ödeme Olarak Eşle'
         }
         description="Seçilen banka hareketi doğrudan ilgili borç/alacaktan düşülecek ve kalan bakiye otomatik güncellenecektir."
+        size="lg"
       >
         {selectedTxForLink && (
           <div className="space-y-4">
@@ -1178,6 +1189,7 @@ function TransactionsContent() {
         isOpen={isRecurringModalOpen}
         onClose={() => setIsRecurringModalOpen(false)}
         title="Düzenli Gider / Abonelik / Fatura Olarak Ekle"
+        size="lg"
       >
         <form onSubmit={handleSaveRecurring} className="space-y-4">
           <div className="space-y-1.5">
@@ -1219,10 +1231,11 @@ function TransactionsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar (₺)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 required
                 value={recurringForm.amount}
                 onChange={(e) => setRecurringForm({ ...recurringForm, amount: e.target.value })}
@@ -1282,6 +1295,7 @@ function TransactionsContent() {
         onClose={() => setIsInvLinkModalOpen(false)}
         title="📈 Hareketi Yatırıma Aktar & Portföye Eşle"
         description="Bu işlem hareketi tüketim harcamaları havuzundan çıkarıp 'Hariç' grubuna alır; bütçenizi bozmadan portföy sermaye aktarımı olarak bağlar."
+        size="lg"
       >
         {selectedTxForInvLink && (
           <div className="space-y-4">
@@ -1364,11 +1378,12 @@ function TransactionsContent() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <label className="text-[11px] font-semibold text-muted-foreground">
-                            Birim Alış Fiyatı (₺)
+                            Birim Alış Fiyatı
                           </label>
                           <Input
                             type="number"
                             step="any"
+                            prefix="₺"
                             value={invLinkUnitPrice}
                             onChange={(e) => {
                               const p = e.target.value
@@ -1378,7 +1393,7 @@ function TransactionsContent() {
                                 setInvLinkAddedQty(round2(selectedTxForInvLink.amount / pNum).toString())
                               }
                             }}
-                            placeholder="Alış birim fiyatı"
+                            placeholder="0.00"
                           />
                         </div>
                         <div className="space-y-1">

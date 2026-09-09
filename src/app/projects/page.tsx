@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   FolderKanban,
@@ -19,8 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { useToast } from '@/lib/toast-context'
 import type { Project, Transaction, Subscription } from '@/types/database'
 
 const COLUMNS: Array<{ status: Project['status']; title: string; color: string }> = [
@@ -31,7 +34,9 @@ const COLUMNS: Array<{ status: Project['status']; title: string; color: string }
   { status: 'Arşiv', title: '⏸️ Arşiv', color: 'border-muted' },
 ]
 
-export default function ProjectsPage() {
+function ProjectsContent() {
+  const { toast } = useToast()
+  const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
@@ -53,6 +58,12 @@ export default function ProjectsPage() {
   useEffect(() => {
     loadProjectsAndCosts()
   }, [])
+
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      setIsModalOpen(true)
+    }
+  }, [searchParams])
 
   async function loadProjectsAndCosts() {
     setLoading(true)
@@ -107,6 +118,7 @@ export default function ProjectsPage() {
       if (data) {
         setProjects([data, ...projects])
         setIsModalOpen(false)
+        toast.success('Yeni proje başarıyla açıldı!')
         setProjectForm({
           name: '',
           slug: '',
@@ -118,7 +130,7 @@ export default function ProjectsPage() {
         })
       }
     } catch (err: any) {
-      alert(err.message || 'Proje eklenemedi')
+      toast.error(err.message || 'Proje eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -136,8 +148,9 @@ export default function ProjectsPage() {
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, status: newStatus } : p))
       )
+      toast.success('Proje durumu güncellendi!')
     } catch (err: any) {
-      alert(err.message || 'Durum güncellenemedi')
+      toast.error(err.message || 'Durum güncellenemedi')
     }
   }
 
@@ -327,7 +340,8 @@ export default function ProjectsPage() {
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">URL Slug</label>
               <Input
-                placeholder="Örn: watchpath"
+                placeholder="watchpath"
+                prefix="/"
                 value={projectForm.slug}
                 onChange={(e) => setProjectForm({ ...projectForm, slug: e.target.value })}
                 className="text-xs font-mono"
@@ -355,12 +369,13 @@ export default function ProjectsPage() {
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">
-              Bütçe Tavanı (Opsiyonel TL)
+              Bütçe Tavanı (Opsiyonel)
             </label>
             <Input
               type="number"
               step="0.01"
               placeholder="20000.00"
+              prefix="₺"
               value={projectForm.budget_limit}
               onChange={(e) => setProjectForm({ ...projectForm, budget_limit: e.target.value })}
               className="text-xs font-mono"
@@ -369,11 +384,11 @@ export default function ProjectsPage() {
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Açıklama</label>
-            <Input
-              placeholder="Projenin temel amacı ve değeri..."
+            <Textarea
+              placeholder="Projenin temel amacı, hedef kitlesi ve değeri..."
               value={projectForm.description}
               onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
-              className="text-xs"
+              className="text-xs min-h-[70px]"
             />
           </div>
 
@@ -388,5 +403,19 @@ export default function ProjectsPage() {
         </form>
       </Modal>
     </div>
+  )
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          Projeler yükleniyor...
+        </div>
+      }
+    >
+      <ProjectsContent />
+    </Suspense>
   )
 }

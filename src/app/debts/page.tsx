@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Plus,
   ArrowUpRight,
@@ -23,6 +24,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Debt, Account, Transaction } from '@/types/database'
 
 function sortDebtsChronological(items: Debt[]): Debt[] {
@@ -43,7 +45,9 @@ function sortDebtsChronological(items: Debt[]): Debt[] {
   return [...items].sort((a, b) => getWeight(a) - getWeight(b))
 }
 
-export default function DebtsPage() {
+function DebtsContent() {
+  const { toast } = useToast()
+  const searchParams = useSearchParams()
   const [debts, setDebts] = useState<Debt[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -81,6 +85,12 @@ export default function DebtsPage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      handleOpenAdd()
+    }
+  }, [searchParams])
 
   async function loadData() {
     setLoading(true)
@@ -172,9 +182,10 @@ export default function DebtsPage() {
 
       setIsDeductModalOpen(false)
       setSelectedDebt(null)
+      toast.success('Ödeme başarıyla işlendi ve düşüldü!')
       await loadData()
     } catch (err: any) {
-      alert(err.message || 'Ödeme işlenemedi')
+      toast.error(err.message || 'Ödeme işlenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -202,9 +213,10 @@ export default function DebtsPage() {
 
       setIsDeductModalOpen(false)
       setSelectedDebt(null)
+      toast.success('Banka hareketi borca bağlandı!')
       await loadData()
     } catch (err: any) {
-      alert(err.message || 'Banka hareketi eşlenemedi')
+      toast.error(err.message || 'Banka hareketi eşlenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -253,9 +265,10 @@ export default function DebtsPage() {
 
       if (error) throw error
       setIsAddModalOpen(false)
+      toast.success('Yeni borç / alacak satırı eklendi!')
       await loadData()
     } catch (err: any) {
-      alert(err.message || 'Satır eklenemedi')
+      toast.error(err.message || 'Satır eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -308,9 +321,10 @@ export default function DebtsPage() {
 
       if (error) throw error
       setIsEditModalOpen(false)
+      toast.success('Kayıt güncellendi!')
       await loadData()
     } catch (err: any) {
-      alert(err.message || 'Güncellenemedi')
+      toast.error(err.message || 'Güncellenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -324,8 +338,9 @@ export default function DebtsPage() {
       const { error } = await supabase.from('debts').delete().eq('id', id)
       if (error) throw error
       setDebts(debts.filter((d) => d.id !== id))
+      toast.success('Kayıt silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -677,12 +692,13 @@ export default function DebtsPage() {
               <form onSubmit={handleProcessDeduction} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
-                    Düşülecek Tutar (TL)
+                    Düşülecek Tutar
                   </label>
                   <Input
                     type="number"
                     step="0.01"
                     required
+                    prefix="₺"
                     value={deductAmount}
                     onChange={(e) => setDeductAmount(e.target.value)}
                     className="text-base font-bold font-mono text-emerald-500"
@@ -882,22 +898,24 @@ export default function DebtsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Ana Tutar (TL)</label>
+              <label className="text-xs font-semibold text-foreground">Ana Tutar</label>
               <Input
                 type="number"
                 step="0.01"
                 required
+                prefix="₺"
                 value={rowForm.principal}
                 onChange={(e) => setRowForm({ ...rowForm, principal: e.target.value })}
                 placeholder="63300.00"
-                className="text-xs font-mono"
+                className="text-xs font-mono font-semibold"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme (TL)</label>
+              <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 value={rowForm.past_payments}
                 onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
                 placeholder="0.00"
@@ -971,21 +989,23 @@ export default function DebtsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Ana Tutar (TL)</label>
+              <label className="text-xs font-semibold text-foreground">Ana Tutar</label>
               <Input
                 type="number"
                 step="0.01"
                 required
+                prefix="₺"
                 value={rowForm.principal}
                 onChange={(e) => setRowForm({ ...rowForm, principal: e.target.value })}
-                className="text-xs font-mono"
+                className="text-xs font-mono font-semibold"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme (TL)</label>
+              <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme</label>
               <Input
                 type="number"
                 step="0.01"
+                prefix="₺"
                 value={rowForm.past_payments}
                 onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
                 className="text-xs font-mono"
@@ -1004,5 +1024,19 @@ export default function DebtsPage() {
         </form>
       </Modal>
     </div>
+  )
+}
+
+export default function DebtsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          Borç & Alacak yükleniyor...
+        </div>
+      }
+    >
+      <DebtsContent />
+    </Suspense>
   )
 }

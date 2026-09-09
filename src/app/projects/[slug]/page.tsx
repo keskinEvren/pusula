@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { useToast } from '@/lib/toast-context'
 import type { Project, ProjectTask, Transaction, Subscription, Account } from '@/types/database'
 
 export default function ProjectDetailPage({
@@ -33,6 +34,7 @@ export default function ProjectDetailPage({
 }: {
   params: Promise<{ slug: string }>
 }) {
+  const { toast } = useToast()
   const resolvedParams = use(params)
   const slug = resolvedParams.slug
 
@@ -43,16 +45,17 @@ export default function ProjectDetailPage({
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Task Modal State
+  // Modals
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Forms
   const [newTask, setNewTask] = useState({
     title: '',
     category: 'Görev' as ProjectTask['category'],
   })
 
-  // Quick Expense Modal State
-  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
     amount: '',
     description: '',
@@ -61,7 +64,7 @@ export default function ProjectDetailPage({
 
   const handleQuickExpense = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!project) return
+    if (!project || !expenseForm.amount) return
     setSubmitting(true)
 
     try {
@@ -69,21 +72,23 @@ export default function ProjectDetailPage({
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
-      await financialBridge.recordExpense({ 
-        userId: user.id, 
-        amount: parseFloat(expenseForm.amount), 
-        description: expenseForm.description, 
-        date: new Date().toISOString().split('T')[0], 
-        accountId: expenseForm.accountId || undefined, 
-        projectId: project.id, 
-        analysisGroup: 'İş' 
+      await financialBridge.recordExpense({
+        userId: user.id,
+        amount: parseFloat(expenseForm.amount),
+        merchant: project.name + ' Proje Gideri',
+        description: expenseForm.description,
+        date: new Date().toISOString().split('T')[0],
+        accountId: expenseForm.accountId || undefined,
+        projectId: project.id,
+        analysisGroup: 'İş'
       })
-      
+
       setIsExpenseModalOpen(false)
       setExpenseForm({ amount: '', description: '', accountId: '' })
+      toast.success('Harcama projeye başarıyla kaydedildi!')
       loadProjectData()
     } catch (err: any) {
-      alert(err.message || 'Harcama eklenemedi')
+      toast.error(err.message || 'Harcama eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -151,8 +156,9 @@ export default function ProjectDetailPage({
       setTasks((prev) =>
         prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t))
       )
+      toast.success('Görev durumu güncellendi!')
     } catch (err: any) {
-      alert(err.message || 'Görev güncellenemedi')
+      toast.error(err.message || 'Görev güncellenemedi')
     }
   }
 
@@ -186,9 +192,10 @@ export default function ProjectDetailPage({
         setTasks([...tasks, data])
         setIsTaskModalOpen(false)
         setNewTask({ title: '', category: 'Görev' })
+        toast.success('Yeni görev eklendi!')
       }
     } catch (err: any) {
-      alert(err.message || 'Görev eklenemedi')
+      toast.error(err.message || 'Görev eklenemedi')
     } finally {
       setSubmitting(false)
     }
@@ -200,8 +207,9 @@ export default function ProjectDetailPage({
       const { error } = await supabase.from('project_tasks').delete().eq('id', id)
       if (error) throw error
       setTasks(tasks.filter((t) => t.id !== id))
+      toast.success('Görev silindi.')
     } catch (err: any) {
-      alert(err.message || 'Silinemedi')
+      toast.error(err.message || 'Silinemedi')
     }
   }
 
@@ -567,15 +575,16 @@ export default function ProjectDetailPage({
       >
         <form onSubmit={handleQuickExpense} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Tutar (₺)</label>
+            <label className="text-xs font-semibold text-muted-foreground">Tutar</label>
             <Input
               required
               type="number"
               step="0.01"
-              placeholder="Örn: 1500"
+              prefix="₺"
+              placeholder="1500.00"
               value={expenseForm.amount}
               onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-              className="text-xs"
+              className="text-xs font-mono font-semibold"
             />
           </div>
 

@@ -31,9 +31,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Dream } from '@/types/database'
 import {
   DREAM_HORIZONS,
@@ -153,6 +155,7 @@ const INITIAL_SAMPLE_DREAMS: Dream[] = [
 ]
 
 function DreamsContent() {
+  const { toast } = useToast()
   const searchParams = useSearchParams()
   const [dreams, setDreams] = useState<Dream[]>([])
   const [loading, setLoading] = useState(true)
@@ -326,6 +329,7 @@ function DreamsContent() {
       syncLocal(updated)
     }
 
+    toast.success(editingDream ? 'Hedef güncellendi!' : 'Yeni hedef vizyon panona eklendi!')
     setIsModalOpen(false)
   }
 
@@ -339,6 +343,7 @@ function DreamsContent() {
     } else {
       syncLocal(dreams.filter((d) => d.id !== id))
     }
+    toast.success('Hedef silindi.')
   }
 
   // Open Celebration Modal (Mark as Achieved)
@@ -371,6 +376,7 @@ function DreamsContent() {
       syncLocal(updated)
     }
 
+    toast.success('Tebrikler! Kişisel zafer Zafer Müzesi\'ne kaydedildi 🏆')
     setIsCelebrationOpen(false)
     setActiveTab('achieved')
   }
@@ -385,6 +391,7 @@ function DreamsContent() {
     } else {
       syncLocal(dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d)))
     }
+    toast.success('Hedef aktif vizyona taşındı!')
   }
 
   // Move from Active to Incubating
@@ -412,7 +419,7 @@ function DreamsContent() {
   // Open Zen Mode
   const handleOpenZenMode = () => {
     if (activeDreams.length === 0) {
-      alert('Vizyon modunu başlatmak için en az 1 aktif hedefiniz olmalıdır.')
+      toast.warning('Vizyon modunu başlatmak için en az 1 aktif hedefiniz olmalıdır.')
       return
     }
     setZenIndex(0)
@@ -938,6 +945,7 @@ function DreamsContent() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingDream ? 'Hedefi Düzenle' : 'Yeni Hedef & Vizyon Ekle'}
+        size="xl"
       >
         <form onSubmit={handleSaveDream} className="space-y-4">
           {/* Title */}
@@ -1006,10 +1014,12 @@ function DreamsContent() {
             <label className="text-xs font-semibold text-foreground">
               Neden İstiyorum? <span className="text-muted-foreground font-normal">(İçsel motivasyonun)</span>
             </label>
-            <Input
+            <Textarea
               value={formMotivationWhy}
               onChange={(e) => setFormMotivationWhy(e.target.value)}
               placeholder="Örn: Dünyayı deneyimlemek ve zihnimi bağımsız üretmeye açmak için..."
+              rows={2}
+              className="text-xs min-h-[60px]"
             />
           </div>
 
@@ -1028,12 +1038,12 @@ function DreamsContent() {
           {/* Detailed Description */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">Detaylı Açıklama (İsteğe Bağlı)</label>
-            <textarea
+            <Textarea
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               placeholder="Hayalinle ilgili aklındaki özel detaylar, hisler..."
               rows={2}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="text-xs min-h-[60px]"
             />
           </div>
 

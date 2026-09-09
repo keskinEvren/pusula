@@ -37,6 +37,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Routine, RoutineLog, Dream } from '@/types/database'
 import {
   TimeBlock,
@@ -58,6 +59,7 @@ const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
 const STORAGE_KEY_LOGS = 'pusula_local_routine_logs'
 
 function RoutinesPageContent() {
+  const { toast } = useToast()
   const searchParams = useSearchParams()
   const todayStr = formatDateToYmd(new Date())
 
@@ -401,6 +403,7 @@ function RoutinesPageContent() {
       } catch {}
     }
 
+    toast.success(editingRoutine ? 'Rutin başarıyla güncellendi!' : 'Yeni rutin başarıyla eklendi!')
     setIsFormOpen(false)
     setEditingRoutine(null)
   }
@@ -414,6 +417,7 @@ function RoutinesPageContent() {
     try {
       await supabase.from('routines').delete().eq('id', routineId)
     } catch {}
+    toast.success('Rutin silindi.')
   }
 
   // -------------------------------------------------------------------------
@@ -1039,20 +1043,20 @@ function RoutinesPageContent() {
         title={editingRoutine ? 'Rutini Düzenle' : 'Yeni Rutin / Ritüel Ekle'}
       >
         <form onSubmit={handleSaveRoutine} className="space-y-4">
-          <div className="grid grid-cols-4 gap-3">
-            <div className="col-span-1">
-              <label className="text-xs font-semibold block mb-1">İkon</label>
+          <div className="flex gap-3">
+            <div className="w-14 shrink-0">
+              <label className="text-xs font-semibold block mb-1 text-muted-foreground">İkon</label>
               <Input
                 value={formData.icon}
                 onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                className="text-center text-lg"
+                className="text-center text-xl p-0 h-9"
                 placeholder="☀️"
                 maxLength={4}
                 required
               />
             </div>
-            <div className="col-span-3">
-              <label className="text-xs font-semibold block mb-1">Rutin Başlığı</label>
+            <div className="flex-1">
+              <label className="text-xs font-semibold block mb-1 text-muted-foreground">Rutin Başlığı</label>
               <Input
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -1064,7 +1068,7 @@ function RoutinesPageContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold block mb-1">Zaman Dilimi</label>
+              <label className="text-xs font-semibold block mb-1 text-muted-foreground">Zaman Dilimi</label>
               <Select
                 value={formData.time_block}
                 onChange={(e) =>
@@ -1079,11 +1083,12 @@ function RoutinesPageContent() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold block mb-1">Hedef Süre (Dakika)</label>
+              <label className="text-xs font-semibold block mb-1 text-muted-foreground">Hedef Süre</label>
               <Input
                 type="number"
                 min="1"
                 max="240"
+                suffix="dk"
                 value={formData.target_duration_minutes}
                 onChange={(e) =>
                   setFormData({

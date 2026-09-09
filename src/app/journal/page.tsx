@@ -31,6 +31,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
 import {
   JournalMood,
@@ -49,6 +50,7 @@ const STORAGE_KEY_JOURNAL = 'pusula_local_journal_entries'
 
 function JournalPageContent() {
   const searchParams = useSearchParams()
+  const { toast } = useToast()
   const todayStr = new Date().toISOString().split('T')[0]
 
   const [entries, setEntries] = useState<JournalEntry[]>([])
@@ -295,6 +297,7 @@ function JournalPageContent() {
     }
 
     setSaveStatus('saved')
+    toast.success(isEditingNew || !selectedEntryId ? 'Yeni seyir notu kaydedildi.' : 'Seyir notu güncellendi.')
     setTimeout(() => setSaveStatus('idle'), 2000)
   }
 
@@ -316,6 +319,7 @@ function JournalPageContent() {
     try {
       await supabase.from('journal_entries').delete().eq('id', id)
     } catch {}
+    toast.success('Seyir notu silindi.')
   }
 
   function handleAddTag() {

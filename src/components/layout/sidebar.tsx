@@ -38,35 +38,39 @@ interface NavGroup {
 
 const navGroups: NavGroup[] = [
   {
-    title: 'Genel',
+    title: 'Kokpit',
     items: [
       { name: 'Komuta Merkezi', href: '/', icon: LayoutDashboard },
-      { name: 'Seyir Defteri', href: '/journal', icon: BookOpen },
-      { name: 'Hayallerim & Vizyon', href: '/dreams', icon: Sparkles },
-      { name: 'Günlük Rutinler & Gökyüzü', href: '/routines', icon: Orbit },
     ],
   },
   {
     title: 'Finans & Likidite',
     items: [
-      { name: 'Hareketler', href: '/transactions', icon: ReceiptText },
-      { name: 'Ekstre Merkezi', href: '/import', icon: UploadCloud },
+      { name: 'Hareketler & Ekstre', href: '/transactions', icon: ReceiptText },
       { name: 'Banka & Kasalar', href: '/accounts', icon: Building2 },
       { name: 'Kredi Kartları', href: '/cards', icon: CreditCard },
+      { name: 'Yatırımlar & Portföy', href: '/investments', icon: TrendingUp },
       { name: 'Borç & Alacak', href: '/debts', icon: HandCoins },
       { name: 'Tasarruf & Abonelik', href: '/subscriptions', icon: CalendarClock },
-      { name: 'Yatırımlar & Portföy', href: '/investments', icon: TrendingUp },
     ],
   },
   {
-    title: 'Stüdyo & Projeler',
+    title: 'Yaşam & Zihin (Life OS)',
+    items: [
+      { name: 'Hayallerim & Vizyon', href: '/dreams', icon: Sparkles },
+      { name: 'Günlük Rutinler & Gökyüzü', href: '/routines', icon: Orbit },
+      { name: 'Seyir Defteri', href: '/journal', icon: BookOpen },
+    ],
+  },
+  {
+    title: 'Stüdyo & Üretim',
     items: [
       { name: 'Projeler', href: '/projects', icon: FolderKanban },
       { name: 'Fikir Havuzu', href: '/ideas', icon: Lightbulb },
     ],
   },
   {
-    title: 'Sistem',
+    title: 'Sistem & Kasa',
     items: [
       { name: 'Kişisel Kasa', href: '/vault', icon: ShieldCheck },
       { name: 'Ayarlar & Kurallar', href: '/settings', icon: Settings },
@@ -96,8 +100,14 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
     if (href === '/') {
       return pathname === '/'
     }
-    if (href === '/import') {
-      return pathname === '/import' || pathname.startsWith('/import/') || pathname.startsWith('/imports')
+    if (href === '/transactions') {
+      return (
+        pathname === '/transactions' ||
+        pathname.startsWith('/transactions/') ||
+        pathname === '/import' ||
+        pathname.startsWith('/import/') ||
+        pathname.startsWith('/imports')
+      )
     }
     return pathname === href || pathname.startsWith(href + '/')
   }
@@ -147,10 +157,10 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
         </div>
 
         {/* Gruplandırılmış Nav Bağlantıları */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-3.5">
           {navGroups.map((group) => (
-            <div key={group.title} className="space-y-1">
-              <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+            <div key={group.title} className="space-y-0.5">
+              <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
                 {group.title}
               </div>
               <nav className="space-y-0.5">
@@ -162,14 +172,14 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
                       key={item.name}
                       href={item.href}
                       className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all',
+                        'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all',
                         active
                           ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       )}
                     >
-                      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-primary-foreground' : 'text-muted-foreground')} />
-                      <span>{item.name}</span>
+                      <Icon className={cn('h-3.5 w-3.5 shrink-0', active ? 'text-primary-foreground' : 'text-muted-foreground')} />
+                      <span className="truncate">{item.name}</span>
                     </Link>
                   )
                 })}

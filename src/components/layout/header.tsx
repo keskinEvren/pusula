@@ -166,81 +166,99 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           </Button>
 
           {isQuickAddOpen && (
-            <div className="absolute right-0 mt-2 w-52 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-xl z-50 animate-in fade-in-50 zoom-in-95">
-              <Link
-                href="/transactions?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <ReceiptText className="h-3.5 w-3.5 text-primary" />
-                <span>Yeni Harcama / Gelir</span>
-              </Link>
-              <Link
-                href="/import"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <UploadCloud className="h-3.5 w-3.5 text-emerald-400" />
-                <span>Ekstre Yükle (PDF/HTML)</span>
-              </Link>
-              <Link
-                href="/debts?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <HandCoins className="h-3.5 w-3.5 text-amber-400" />
-                <span>Borç / Alacak Kaydet</span>
-              </Link>
-              <Link
-                href="/investments?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
-                <span>Yatırım / Varlık Ekle</span>
-              </Link>
-              <div className="my-1 border-t border-border/50" />
-              <Link
-                href="/projects?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <FolderKanban className="h-3.5 w-3.5 text-cyan-400" />
-                <span>Yeni Proje Başlat</span>
-              </Link>
-              <Link
-                href="/ideas?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <Lightbulb className="h-3.5 w-3.5 text-yellow-400" />
-                <span>Hızlı Fikir Not Et</span>
-              </Link>
-              <div className="my-1 border-t border-border/50" />
-              <Link
-                href="/dreams?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                <span>+ Hayal / Hedef Ekle</span>
-              </Link>
-              <Link
-                href="/routines?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <Orbit className="h-3.5 w-3.5 text-emerald-400" />
-                <span>+ Rutin Ekle</span>
-              </Link>
-              <Link
-                href="/journal?new=true"
-                onClick={() => setIsQuickAddOpen(false)}
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <BookOpen className="h-3.5 w-3.5 text-sky-400" />
-                <span>+ Seyir Defterine Yaz</span>
-              </Link>
+            <div className="absolute right-0 mt-2 w-60 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-2xl z-50 animate-in fade-in-50 zoom-in-95 space-y-2">
+              {/* Finans */}
+              <div className="space-y-0.5">
+                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  Finans & Likidite
+                </div>
+                <Link
+                  href="/transactions?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <ReceiptText className="h-3.5 w-3.5 text-primary" />
+                  <span>Yeni Harcama / Gelir</span>
+                </Link>
+                <Link
+                  href="/import"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <UploadCloud className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Ekstre Yükle (PDF/HTML)</span>
+                </Link>
+                <Link
+                  href="/debts?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <HandCoins className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Borç / Alacak Kaydet</span>
+                </Link>
+                <Link
+                  href="/investments?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
+                  <span>Yatırım / Varlık Ekle</span>
+                </Link>
+              </div>
+
+              {/* Stüdyo */}
+              <div className="pt-1.5 border-t border-border/50 space-y-0.5">
+                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  Stüdyo & Üretim
+                </div>
+                <Link
+                  href="/projects?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <FolderKanban className="h-3.5 w-3.5 text-cyan-400" />
+                  <span>Yeni Proje Başlat</span>
+                </Link>
+                <Link
+                  href="/ideas?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <Lightbulb className="h-3.5 w-3.5 text-yellow-400" />
+                  <span>Hızlı Fikir Not Et</span>
+                </Link>
+              </div>
+
+              {/* Yaşam */}
+              <div className="pt-1.5 border-t border-border/50 space-y-0.5">
+                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  Yaşam & Zihin
+                </div>
+                <Link
+                  href="/dreams?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Hayal / Hedef Ekle</span>
+                </Link>
+                <Link
+                  href="/routines?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <Orbit className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Günlük Rutin Ekle</span>
+                </Link>
+                <Link
+                  href="/journal?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                >
+                  <BookOpen className="h-3.5 w-3.5 text-sky-400" />
+                  <span>Seyir Defterine Yaz</span>
+                </Link>
+              </div>
             </div>
           )}
         </div>
