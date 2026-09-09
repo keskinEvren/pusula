@@ -207,6 +207,42 @@ describe('Pusula Akıllı Uzlaştırma & Vadesiz Hesap Motoru (Reconciler Tests)
       expect(res.type).toBe('Harcama')
       expect(res.analysis_group).toBe('Kişisel')
     })
+
+    it('2.5. Yatırım & Portföy Transferi: Midas, Binance ve Borsa alımları INVESTMENT_TRANSFER ve Hariç atanır', () => {
+      const midasRes = reconcileBankMovement(
+        'FAST GIDEN - MIDAS MENKUL DEGERLER',
+        25000.0,
+        'outflow',
+        mockDebts,
+        mockCards
+      )
+      expect(midasRes.action).toBe('INVESTMENT_TRANSFER')
+      expect(midasRes.type).toBe('Transfer')
+      expect(midasRes.analysis_group).toBe('Hariç')
+      expect(midasRes.merchant).toBe('Midas Yatırım')
+
+      const cryptoRes = reconcileBankMovement(
+        'EFT CIKIS - BN TEKNOLOJI BINANCE',
+        50000.0,
+        'outflow',
+        mockDebts,
+        mockCards
+      )
+      expect(cryptoRes.action).toBe('INVESTMENT_TRANSFER')
+      expect(cryptoRes.type).toBe('Transfer')
+      expect(cryptoRes.analysis_group).toBe('Hariç')
+
+      const goldRes = reconcileBankMovement(
+        'INTERNET BANKACILIGI ALTIN ALIS ISLEMI',
+        12000.0,
+        'outflow',
+        mockDebts,
+        mockCards
+      )
+      expect(goldRes.action).toBe('INVESTMENT_TRANSFER')
+      expect(goldRes.type).toBe('Transfer')
+      expect(goldRes.analysis_group).toBe('Hariç')
+    })
   })
 
   describe('3. Çoklu Satır Vadesiz Hesap Dökümü Ayrıştırma', () => {

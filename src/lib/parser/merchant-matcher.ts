@@ -12,6 +12,21 @@ const DEFAULT_PATTERNS: Array<{
   { pattern: /ÖDEME\s*-\s*ENPARA|ODEME\s*-\s*ENPARA/i, name: 'Kart Ödemesi (Enpara)', group: 'Hariç', type: 'Kart Ödemesi' },
   { pattern: /ÖDEME|ODEME/i, name: 'Kart / Borç Ödemesi', group: 'Hariç', type: 'Kart Ödemesi' },
 
+  // Investments / Brokerages / Precious Metals / Crypto (Hariç - Capital / Asset Transfer)
+  { pattern: /MİDAS\s*MENKUL|MIDAS\s*MENKUL|\bMİDAS\b|\bMIDAS\b/i, name: 'Midas Yatırım', group: 'Hariç', type: 'Transfer' },
+  { pattern: /ZİRAAT\s*YATIRIM|ZIRAAT\s*YATIRIM/i, name: 'Ziraat Yatırım', group: 'Hariç', type: 'Transfer' },
+  { pattern: /GARANTİ\s*YATIRIM|GARANTI\s*YATIRIM/i, name: 'Garanti Yatırım', group: 'Hariç', type: 'Transfer' },
+  { pattern: /İŞ\s*YATIRIM|IS\s*YATIRIM/i, name: 'İş Yatırım', group: 'Hariç', type: 'Transfer' },
+  { pattern: /YAPI\s*KREDİ\s*YATIRIM|YAPI\s*KREDI\s*YATIRIM/i, name: 'Yapı Kredi Yatırım', group: 'Hariç', type: 'Transfer' },
+  { pattern: /VAKIF\s*YATIRIM/i, name: 'Vakıf Yatırım', group: 'Hariç', type: 'Transfer' },
+  { pattern: /QNB\s*FİNANSINVEST|QNB\s*FINANSINVEST|FİNANS\s*YATIRIM|FINANS\s*YATIRIM/i, name: 'QNB Finansinvest', group: 'Hariç', type: 'Transfer' },
+  { pattern: /BİNANCE|BINANCE/i, name: 'Binance', group: 'Hariç', type: 'Transfer' },
+  { pattern: /BTCTURK|BTC\s*TÜRK|BTC\s*TURK/i, name: 'BtcTurk', group: 'Hariç', type: 'Transfer' },
+  { pattern: /PARİBU|PARIBU/i, name: 'Paribu', group: 'Hariç', type: 'Transfer' },
+  { pattern: /ALTIN\s*ALIŞ|ALTIN\s*ALIS|KIYMETLİ\s*MADEN|KIYMETLI\s*MADEN/i, name: 'Altın / Kıymetli Maden Alımı', group: 'Hariç', type: 'Transfer' },
+  { pattern: /FON\s*ALIŞ|FON\s*ALIS|TEFAS|YATIRIM\s*FONU/i, name: 'Yatırım Fonu Alımı', group: 'Hariç', type: 'Transfer' },
+  { pattern: /DÖVİZ\s*ALIŞ|DOVIZ\s*ALIS/i, name: 'Döviz Alımı', group: 'Hariç', type: 'Transfer' },
+
   // Supermarkets / Groceries
   { pattern: /BİM\b|BIM\b|\bB\s+M\b/i, name: 'BİM', group: 'Kişisel' },
   { pattern: /A101\b/i, name: 'A101', group: 'Kişisel' },
@@ -94,7 +109,7 @@ export function matchMerchant(
       return {
         merchant: m.merchant_name,
         analysis_group: m.default_group,
-        type: m.default_group === 'Hariç' ? 'Kart Ödemesi' : 'Harcama',
+        type: m.default_group === 'Hariç' ? 'Transfer' : 'Harcama',
         project_id: m.default_project_id || undefined,
       }
     }
@@ -109,7 +124,7 @@ export function matchMerchant(
       return {
         merchant: p.name,
         analysis_group: p.group,
-        type: p.type,
+        type: p.type || (p.group === 'Hariç' ? 'Transfer' : 'Harcama'),
         recurrence: p.recurrence,
       }
     }

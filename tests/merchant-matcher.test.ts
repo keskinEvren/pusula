@@ -93,4 +93,31 @@ describe('Pusula İşyeri Normalizasyon & Kural Motoru (Gateway 3 Matcher Testle
     expect(netflix.merchant).toBe('Netflix')
     expect(netflix.analysis_group).toBe('Kişisel')
   })
+
+  it('9. Yatırım & Portföy Kurumları: Midas, Binance, Ziraat Yatırım, Altın ve Fon Alımı Hariç ve Transfer atanır', () => {
+    const midas = matchMerchant('MIDAS MENKUL DEGERLER A.S.')
+    expect(midas.merchant).toBe('Midas Yatırım')
+    expect(midas.analysis_group).toBe('Hariç')
+    expect(midas.type).toBe('Transfer')
+
+    const binance = matchMerchant('BN TEKNOLOJI ANONIM SIRKETI BINANCE')
+    expect(binance.merchant).toBe('Binance')
+    expect(binance.analysis_group).toBe('Hariç')
+    expect(binance.type).toBe('Transfer')
+
+    const ziraatYatirim = matchMerchant('ZİRAAT YATIRIM MENKUL DEĞERLER')
+    expect(ziraatYatirim.merchant).toBe('Ziraat Yatırım')
+    expect(ziraatYatirim.analysis_group).toBe('Hariç')
+    expect(ziraatYatirim.type).toBe('Transfer')
+
+    const altin = matchMerchant('VADESİZ HESAPTAN ALTIN ALIŞ İŞLEMİ')
+    expect(altin.merchant).toBe('Altın / Kıymetli Maden Alımı')
+    expect(altin.analysis_group).toBe('Hariç')
+    expect(altin.type).toBe('Transfer')
+
+    const fon = matchMerchant('TEFAS YATIRIM FONU ALIŞ')
+    expect(fon.merchant).toBe('Yatırım Fonu Alımı')
+    expect(fon.analysis_group).toBe('Hariç')
+    expect(fon.type).toBe('Transfer')
+  })
 })

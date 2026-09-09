@@ -8,6 +8,7 @@ export type ReconciliationActionType =
   | 'FREE_INCOME'         // Serbest Gelir
   | 'INTERNAL_TRANSFER'   // Hesaplar Arası Transfer (Hariç)
   | 'CASH_ADVANCE'        // Kredi Kartından Nakit Avans Çekimi (Borç Artışı)
+  | 'INVESTMENT_TRANSFER' // Yatırım & Varlık Transferi (Hariç - Portföy / Sermaye)
 
 export interface ExtractedTransaction {
   id: string

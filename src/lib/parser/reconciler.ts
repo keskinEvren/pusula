@@ -224,13 +224,58 @@ export function reconcileBankMovement(
     }
   }
 
-  // 2.5. Doğrudan FAST / EFT ile Harcama (Kira, Noter, Alışveriş vb.)
+  // 2.5. Yatırım & Varlık Transferi Tespiti (Borsa, Aracı Kurum, Kripto, Altın/Fon)
+  if (
+    upper.includes('YATIRIM') ||
+    upper.includes('MIDAS') ||
+    upper.includes('MİDAS') ||
+    upper.includes('BINANCE') ||
+    upper.includes('BİNANCE') ||
+    upper.includes('BTCTURK') ||
+    upper.includes('PARIBU') ||
+    upper.includes('PARİBU') ||
+    upper.includes('ALTIN ALIŞ') ||
+    upper.includes('ALTIN ALIS') ||
+    upper.includes('KIYMETLİ MADEN') ||
+    upper.includes('KIYMETLI MADEN') ||
+    upper.includes('FON ALIŞ') ||
+    upper.includes('FON ALIS') ||
+    upper.includes('TEFAS') ||
+    upper.includes('BORSA') ||
+    upper.includes('HİSSE') ||
+    upper.includes('HISSE') ||
+    upper.includes('DÖVİZ ALIŞ') ||
+    upper.includes('DOVIZ ALIS')
+  ) {
+    const matched = matchMerchant(rawDescription, userMappings)
+    return {
+      action: 'INVESTMENT_TRANSFER',
+      type: 'Transfer',
+      analysis_group: 'Hariç',
+      merchant: matched.merchant || 'Yatırım / Varlık Transferi',
+      project_id: matched.project_id,
+      confidence: 'high',
+    }
+  }
+
+  // 2.6. Doğrudan FAST / EFT ile Harcama veya Eşleşen Diğer Transferler
   const { merchant, analysis_group, type: mappedType, project_id } = matchMerchant(rawDescription, userMappings)
+
+  if (analysis_group === 'Hariç') {
+    return {
+      action: mappedType === 'Transfer' ? 'INTERNAL_TRANSFER' : 'CARD_PAYMENT',
+      type: mappedType || 'Transfer',
+      analysis_group: 'Hariç',
+      merchant,
+      project_id,
+      confidence: 'high',
+    }
+  }
 
   return {
     action: 'DIRECT_EXPENSE',
     type: mappedType || 'Harcama',
-    analysis_group: (analysis_group === 'Hariç' ? 'Kişisel' : analysis_group) as any,
+    analysis_group,
     merchant,
     project_id,
     confidence: 'medium',
