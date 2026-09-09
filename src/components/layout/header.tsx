@@ -45,6 +45,7 @@ const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   projects: { category: 'Stüdyo', title: 'Projeler' },
   ideas: { category: 'Stüdyo', title: 'Fikir Havuzu' },
   settings: { category: 'Sistem', title: 'Ayarlar & Kurallar' },
+  vault: { category: 'Sistem', title: 'Kişisel Kasa & Veri Bağımsızlığı' },
 }
 
 export function Header({ onOpenMobileMenu }: HeaderProps) {
