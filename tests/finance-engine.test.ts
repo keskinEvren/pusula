@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   calculateNetWorth,
+  calculatePortfolioMetrics,
   calculateStatementChange,
   calculateSpendingBreakdown,
   calculateProjectTotalCost,
@@ -13,6 +14,7 @@ import {
 } from '../src/lib/finance-engine'
 
 describe('Pusula Saf Finans Motoru (Gateway 2 Test Süiti)', () => {
+
   describe('1. Net Varlık Modülü (Net Worth)', () => {
     it('1.1. Standart Pozitif Durum: Excel Ana Panel formülleriyle kuruşu kuruşuna eşleşir', () => {
       const accounts = [
@@ -253,4 +255,48 @@ describe('Pusula Saf Finans Motoru (Gateway 2 Test Süiti)', () => {
       expect(res.isClosed).toBe(true)
     })
   })
+
+  describe('8. Portföy ve Yatırım Analitiği', () => {
+    it('8.1. Net Varlığa Portföy Entegrasyonu: Varlıkların güncel değeri Net Varlık toplamına kuruşu kuruşuna eklenir', () => {
+      const accounts = [{ balance: 10000.0 }]
+      const debts = [{ type: 'Alacak', remaining: 5000.0, status: 'Açık' }]
+      const cards = [{ current_debt: 3000.0 }]
+      const investments = [
+        { quantity: 10, current_price: 300.0 }, // 3.000 TL
+        { quantity: 5.5, current_price: 2000.0 }, // 11.000 TL
+      ]
+
+      const res = calculateNetWorth(accounts, debts, cards, investments)
+      expect(res.totalCash).toBe(10000.0)
+      expect(res.totalReceivables).toBe(5000.0)
+      expect(res.totalInvestments).toBe(14000.0) // 3000 + 11000
+      expect(res.totalDebt).toBe(3000.0)
+      // Net Varlık = 10.000 + 5.000 + 14.000 - 3.000 = 26.000 TL
+      expect(res.netWorth).toBe(26000.0)
+    })
+
+    it('8.2. Portföy Kâr/Zarar ve Kategori Dağılımı: Maliyet, kâr yüzdesi ve kategori payları doğru hesaplanır', () => {
+      const items = [
+        { category: 'Hisse Senedi (BIST)', quantity: 100, unit_cost: 250.0, current_price: 300.0 }, // Maliyet: 25.000, Değer: 30.000 (+5.000)
+        { category: 'Emtia & Altın', quantity: 10, unit_cost: 2000.0, current_price: 2500.0 }, // Maliyet: 20.000, Değer: 25.000 (+5.000)
+        { category: 'Kripto Para', quantity: 0.1, unit_cost: 50000.0, current_price: 40000.0 }, // Maliyet: 5.000, Değer: 4.000 (-1.000)
+      ]
+
+      const metrics = calculatePortfolioMetrics(items)
+      expect(metrics.totalCost).toBe(50000.0) // 25k + 20k + 5k
+      expect(metrics.totalValue).toBe(59000.0) // 30k + 25k + 4k
+      expect(metrics.totalProfitLoss).toBe(9000.0) // 59k - 50k
+      expect(metrics.totalProfitLossPct).toBe(18.0) // 9000 / 50000 = %18
+      expect(metrics.assetCount).toBe(3)
+
+      // Kategori sıralaması: 1. Hisse (30k, %50.85), 2. Altın (25k, %42.37), 3. Kripto (4k, %6.78)
+      expect(metrics.categoryAllocations[0].category).toBe('Hisse Senedi (BIST)')
+      expect(metrics.categoryAllocations[0].value).toBe(30000.0)
+      expect(metrics.categoryAllocations[1].category).toBe('Emtia & Altın')
+      expect(metrics.categoryAllocations[1].value).toBe(25000.0)
+      expect(metrics.categoryAllocations[2].category).toBe('Kripto Para')
+      expect(metrics.categoryAllocations[2].value).toBe(4000.0)
+    })
+  })
 })
+

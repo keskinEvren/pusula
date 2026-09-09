@@ -6,10 +6,24 @@
 export interface NetWorthBreakdown {
   totalCash: number
   totalReceivables: number
+  totalInvestments: number
   totalCardDebt: number
   totalOtherDebt: number
   totalDebt: number
   netWorth: number
+}
+
+export interface PortfolioMetricsResult {
+  totalValue: number
+  totalCost: number
+  totalProfitLoss: number
+  totalProfitLossPct: number
+  assetCount: number
+  categoryAllocations: Array<{
+    category: string
+    value: number
+    pct: number
+  }>
 }
 
 export interface SpendingBreakdown {
@@ -54,12 +68,13 @@ export function round2(num: number): number {
 
 /**
  * 1. Net Varlık Hesabı
- * Net Varlık = (Hazır Para + Kesin Alacaklar) - (Kredi Kartı Borçları + Diğer Borçlar)
+ * Net Varlık = (Hazır Para + Kesin Alacaklar + Yatırımlar/Portföy) - (Kredi Kartı Borçları + Diğer Borçlar)
  */
 export function calculateNetWorth(
   accounts: Array<{ balance: number | null | undefined }>,
   debts: Array<{ type: string; remaining: number | null | undefined; status?: string | null }>,
-  cards: Array<{ current_debt: number | null | undefined }>
+  cards: Array<{ current_debt: number | null | undefined }>,
+  investments?: Array<{ quantity: number | null | undefined; current_price: number | null | undefined }>
 ): NetWorthBreakdown {
   const totalCash = round2(
     accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0)
@@ -73,6 +88,13 @@ export function calculateNetWorth(
       .reduce((sum, d) => sum + Number(d.remaining || 0), 0)
   )
 
+  const totalInvestments = round2(
+    (investments || []).reduce(
+      (sum, inv) => sum + Number(inv.quantity || 0) * Number(inv.current_price || 0),
+      0
+    )
+  )
+
   const totalCardDebt = round2(
     cards.reduce((sum, c) => sum + Number(c.current_debt || 0), 0)
   )
@@ -84,15 +106,67 @@ export function calculateNetWorth(
   )
 
   const totalDebt = round2(totalCardDebt + totalOtherDebt)
-  const netWorth = round2(totalCash + totalReceivables - totalDebt)
+  const netWorth = round2(totalCash + totalReceivables + totalInvestments - totalDebt)
 
   return {
     totalCash,
     totalReceivables,
+    totalInvestments,
     totalCardDebt,
     totalOtherDebt,
     totalDebt,
     netWorth,
+  }
+}
+
+/**
+ * Portföy Analitiği & Varlık Dağılımı
+ */
+export function calculatePortfolioMetrics(
+  investments: Array<{
+    category: string
+    quantity: number | null | undefined
+    unit_cost: number | null | undefined
+    current_price: number | null | undefined
+  }>
+): PortfolioMetricsResult {
+  let totalValue = 0
+  let totalCost = 0
+  const catMap: Record<string, number> = {}
+
+  for (const inv of investments) {
+    const qty = Number(inv.quantity || 0)
+    const cost = Number(inv.unit_cost || 0)
+    const price = Number(inv.current_price || 0)
+
+    const val = round2(qty * price)
+    const initial = round2(qty * cost)
+
+    totalValue = round2(totalValue + val)
+    totalCost = round2(totalCost + initial)
+
+    const cat = inv.category || 'Diğer'
+    catMap[cat] = round2((catMap[cat] || 0) + val)
+  }
+
+  const totalProfitLoss = round2(totalValue - totalCost)
+  const totalProfitLossPct = totalCost > 0 ? round2((totalProfitLoss / totalCost) * 100) : 0
+
+  const categoryAllocations = Object.entries(catMap)
+    .map(([category, value]) => ({
+      category,
+      value,
+      pct: totalValue > 0 ? round2((value / totalValue) * 100) : 0,
+    }))
+    .sort((a, b) => b.value - a.value)
+
+  return {
+    totalValue,
+    totalCost,
+    totalProfitLoss,
+    totalProfitLossPct,
+    assetCount: investments.length,
+    categoryAllocations,
   }
 }
 

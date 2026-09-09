@@ -19,6 +19,7 @@ import {
   FolderKanban,
   Lightbulb,
   ChevronDown,
+  TrendingUp,
 } from 'lucide-react'
 
 interface HeaderProps {
@@ -34,6 +35,7 @@ const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   cards: { category: 'Finans', title: 'Kredi Kartları' },
   debts: { category: 'Finans', title: 'Borç & Alacak' },
   subscriptions: { category: 'Finans', title: 'Tasarruf & Abonelik' },
+  investments: { category: 'Finans', title: 'Yatırımlar & Portföy' },
   projects: { category: 'Stüdyo', title: 'Projeler' },
   ideas: { category: 'Stüdyo', title: 'Fikir Havuzu' },
   settings: { category: 'Sistem', title: 'Ayarlar & Kurallar' },
@@ -181,6 +183,14 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               >
                 <HandCoins className="h-3.5 w-3.5 text-amber-400" />
                 <span>Borç / Alacak Kaydet</span>
+              </Link>
+              <Link
+                href="/investments?new=true"
+                onClick={() => setIsQuickAddOpen(false)}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
+              >
+                <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
+                <span>Yatırım / Varlık Ekle</span>
               </Link>
               <div className="my-1 border-t border-border/50" />
               <Link
