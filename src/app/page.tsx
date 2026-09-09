@@ -316,7 +316,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-400" />
-                  Gelen Tutar
+                  Hesaplara Giren Toplam Tutar
                 </span>
                 <span className="font-semibold text-emerald-400 tabular-nums">
                   +{formatCurrency(cashFlow.totalInflow)}
