@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Plus,
@@ -17,10 +17,14 @@ import {
   TrendingUp,
   ArrowUpRight,
   ArrowDownLeft,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw,
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatMonthYear } from '@/lib/utils'
 import { round2 } from '@/lib/finance-engine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,6 +63,55 @@ function TransactionsContent() {
   const [projectFilter, setProjectFilter] = useState<string>('ALL')
   const [monthFilter, setMonthFilter] = useState<string>('ALL')
   const [importFilter, setImportFilter] = useState<string>('ALL')
+
+  // Sorting state
+  const [sortField, setSortField] = useState<'date' | 'amount'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: 'date' | 'amount') => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortOrder('desc')
+    }
+  }
+
+  // Dynamic available months extracted from loaded transactions
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>()
+    transactions.forEach((t) => {
+      if (t.date && t.date.length >= 7) {
+        months.add(t.date.slice(0, 7))
+      }
+    })
+    if (monthFilter && monthFilter !== 'ALL') {
+      months.add(monthFilter)
+    }
+    return Array.from(months).sort().reverse()
+  }, [transactions, monthFilter])
+
+  const currentMonth = new Date().toISOString().slice(0, 7)
+
+  // Check if any filter is active
+  const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    selectedEntityId !== 'ALL' ||
+    monthFilter !== 'ALL' ||
+    groupFilter !== 'ALL' ||
+    typeFilter !== 'ALL' ||
+    projectFilter !== 'ALL' ||
+    importFilter !== 'ALL'
+
+  const handleClearFilters = () => {
+    setSearchTerm('')
+    setSelectedEntityId('ALL')
+    setMonthFilter('ALL')
+    setGroupFilter('ALL')
+    setTypeFilter('ALL')
+    setProjectFilter('ALL')
+    setImportFilter('ALL')
+  }
 
   // Sync with URL Search Params
   useEffect(() => {
@@ -563,6 +616,22 @@ function TransactionsContent() {
     return true
   })
 
+  // Sort pipeline
+  const sortedTransactions = useMemo(() => {
+    return [...filteredTransactions].sort((a, b) => {
+      if (sortField === 'date') {
+        const cmp = (a.date || '').localeCompare(b.date || '')
+        return sortOrder === 'asc' ? cmp : -cmp
+      }
+      if (sortField === 'amount') {
+        const aAmt = Number(a.amount || 0)
+        const bAmt = Number(b.amount || 0)
+        return sortOrder === 'asc' ? aAmt - bAmt : bAmt - aAmt
+      }
+      return 0
+    })
+  }, [filteredTransactions, sortField, sortOrder])
+
   // Quick stats for filtered list
   const totalVolume = filteredTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0)
   const totalSpent = filteredTransactions
@@ -613,7 +682,7 @@ function TransactionsContent() {
           }`}
         >
           <Layers className="h-3.5 w-3.5" />
-          <span>Konsolide Tüm Hareketler</span>
+          <span>Tüm Hareketler</span>
         </button>
 
         <button
@@ -686,16 +755,18 @@ function TransactionsContent() {
             </optgroup>
           </Select>
 
-          {/* Month Selector */}
+          {/* Month Selector - Dynamic */}
           <Select
             value={monthFilter}
             onChange={(e) => setMonthFilter(e.target.value)}
             className="text-xs"
           >
             <option value="ALL">Tüm Dönemler</option>
-            <option value="2026-08">Ağustos 2026 (Bu Ay)</option>
-            <option value="2026-04">Nisan 2026</option>
-            <option value="2026-03">Mart 2026</option>
+            {availableMonths.map((m) => (
+              <option key={m} value={m}>
+                {formatMonthYear(m)}{m === currentMonth ? ' (Bu Ay)' : ''}
+              </option>
+            ))}
           </Select>
 
           {/* Group Filter */}
@@ -726,13 +797,42 @@ function TransactionsContent() {
             ))}
           </Select>
         </div>
+
+        {/* Clear Filters Toolbar Banner */}
+        {hasActiveFilters && (
+          <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
+              <span>Filtreler aktif ({sortedTransactions.length} hareket listeleniyor)</span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Filtreleri Temizle
+            </Button>
+          </div>
+        )}
       </Card>
 
       {/* Transactions Table Card */}
       <Card className="border-border bg-card shadow-sm overflow-hidden">
         <CardHeader className="border-b border-border py-3 px-4 flex flex-row items-center justify-between bg-muted/20">
-          <div className="text-xs font-semibold text-muted-foreground">
-            Listelenen: <strong>{filteredTransactions.length}</strong> hareket
+          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <span>Listelenen: <strong className="text-foreground">{sortedTransactions.length}</strong> hareket</span>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="text-[11px] text-primary hover:underline font-normal"
+              >
+                (Filtreleri Temizle)
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-4 text-xs font-mono">
             <span>
@@ -743,12 +843,12 @@ function TransactionsContent() {
 
         {/* Mobile Compact Card View (< md) */}
         <div className="md:hidden divide-y divide-border/40 font-sans">
-          {filteredTransactions.length === 0 ? (
+          {sortedTransactions.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground text-xs">
               Filtrelere uygun hareket bulunamadı.
             </div>
           ) : (
-            filteredTransactions.map((tx) => (
+            sortedTransactions.map((tx) => (
               <div key={tx.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-muted/20 transition-colors">
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-center gap-2">
@@ -840,25 +940,57 @@ function TransactionsContent() {
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
               <tr>
-                <th className="p-3">Tarih</th>
+                <th
+                  className="p-3 cursor-pointer select-none hover:text-foreground transition-colors group"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Tarih</span>
+                    {sortField === 'date' ? (
+                      sortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                    )}
+                  </div>
+                </th>
                 <th className="p-3">Hesap / Kart</th>
                 <th className="p-3">Tür</th>
                 <th className="p-3">İşyeri / Açıklama</th>
                 <th className="p-3">Grup</th>
                 <th className="p-3">Proje</th>
-                <th className="p-3 text-right">Tutar</th>
+                <th
+                  className="p-3 text-right cursor-pointer select-none hover:text-foreground transition-colors group"
+                  onClick={() => handleSort('amount')}
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Tutar</span>
+                    {sortField === 'amount' ? (
+                      sortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                    )}
+                  </div>
+                </th>
                 <th className="p-3 text-center w-12"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40 font-mono">
-              {filteredTransactions.length === 0 ? (
+              {sortedTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-muted-foreground font-sans">
                     Filtrelere uygun hareket bulunamadı.
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map((tx) => (
+                sortedTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-3 text-muted-foreground whitespace-nowrap">
                       {formatDate(tx.date)}
