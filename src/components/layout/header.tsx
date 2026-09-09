@@ -30,22 +30,22 @@ interface HeaderProps {
 }
 
 const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
-  '': { category: 'Genel', title: 'Komuta Merkezi' },
-  journal: { category: 'Genel', title: 'Seyir Defteri' },
-  dreams: { category: 'Genel', title: 'Hayallerim & Vizyon' },
-  routines: { category: 'Genel', title: 'Günlük Rutinler & Gökyüzü' },
+  '': { category: 'Genel', title: 'Genel Bakış' },
+  journal: { category: 'Kişisel', title: 'Günlük' },
+  dreams: { category: 'Kişisel', title: 'Hedefler' },
+  routines: { category: 'Kişisel', title: 'Rutinler' },
   transactions: { category: 'Finans', title: 'Hareketler' },
-  import: { category: 'Finans', title: 'Ekstre Merkezi' },
+  import: { category: 'Finans', title: 'Ekstre İçe Aktar' },
   imports: { category: 'Finans', title: 'Ekstre Geçmişi' },
-  accounts: { category: 'Finans', title: 'Banka & Kasalar' },
+  accounts: { category: 'Finans', title: 'Hesaplar' },
   cards: { category: 'Finans', title: 'Kredi Kartları' },
   debts: { category: 'Finans', title: 'Borç & Alacak' },
-  subscriptions: { category: 'Finans', title: 'Tasarruf & Abonelik' },
-  investments: { category: 'Finans', title: 'Yatırımlar & Portföy' },
-  projects: { category: 'Stüdyo', title: 'Projeler' },
-  ideas: { category: 'Stüdyo', title: 'Fikir Havuzu' },
-  settings: { category: 'Sistem', title: 'Ayarlar & Kurallar' },
-  vault: { category: 'Sistem', title: 'Kişisel Kasa & Veri Bağımsızlığı' },
+  subscriptions: { category: 'Finans', title: 'Abonelikler' },
+  investments: { category: 'Finans', title: 'Yatırımlar' },
+  projects: { category: 'Çalışma', title: 'Projeler' },
+  ideas: { category: 'Çalışma', title: 'Fikirler' },
+  settings: { category: 'Sistem', title: 'Ayarlar' },
+  vault: { category: 'Sistem', title: 'Veri & Yedekleme' },
 }
 
 export function Header({ onOpenMobileMenu }: HeaderProps) {
@@ -169,94 +169,94 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             <div className="absolute right-0 mt-2 w-60 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-2xl z-50 animate-in fade-in-50 zoom-in-95 space-y-2">
               {/* Finans */}
               <div className="space-y-0.5">
-                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                  Finans & Likidite
+                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  Finans
                 </div>
                 <Link
                   href="/transactions?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <ReceiptText className="h-3.5 w-3.5 text-primary" />
+                  <ReceiptText className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
                   <span>Yeni Harcama / Gelir</span>
                 </Link>
                 <Link
                   href="/import"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <UploadCloud className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Ekstre Yükle (PDF/HTML)</span>
+                  <UploadCloud className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Ekstre İçe Aktar</span>
                 </Link>
                 <Link
                   href="/debts?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <HandCoins className="h-3.5 w-3.5 text-amber-400" />
-                  <span>Borç / Alacak Kaydet</span>
+                  <HandCoins className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Borç / Alacak</span>
                 </Link>
                 <Link
                   href="/investments?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
-                  <span>Yatırım / Varlık Ekle</span>
+                  <TrendingUp className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Yatırım</span>
                 </Link>
               </div>
 
-              {/* Stüdyo */}
+              {/* Çalışma */}
               <div className="pt-1.5 border-t border-border/50 space-y-0.5">
-                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                  Stüdyo & Üretim
+                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  Çalışma
                 </div>
                 <Link
                   href="/projects?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <FolderKanban className="h-3.5 w-3.5 text-cyan-400" />
-                  <span>Yeni Proje Başlat</span>
+                  <FolderKanban className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Proje</span>
                 </Link>
                 <Link
                   href="/ideas?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <Lightbulb className="h-3.5 w-3.5 text-yellow-400" />
-                  <span>Hızlı Fikir Not Et</span>
+                  <Lightbulb className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Fikir</span>
                 </Link>
               </div>
 
-              {/* Yaşam */}
+              {/* Kişisel */}
               <div className="pt-1.5 border-t border-border/50 space-y-0.5">
-                <div className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                  Yaşam & Zihin
+                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  Kişisel
                 </div>
                 <Link
                   href="/dreams?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                  <span>Hayal / Hedef Ekle</span>
+                  <Sparkles className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Hedef</span>
                 </Link>
                 <Link
                   href="/routines?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <Orbit className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Günlük Rutin Ekle</span>
+                  <Orbit className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Rutin</span>
                 </Link>
                 <Link
                   href="/journal?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
-                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
-                  <BookOpen className="h-3.5 w-3.5 text-sky-400" />
-                  <span>Seyir Defterine Yaz</span>
+                  <BookOpen className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Günlük Notu</span>
                 </Link>
               </div>
             </div>

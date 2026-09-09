@@ -474,8 +474,8 @@ export function generateConstellationGraph(
       nodes: [],
       edges: [],
       completionRate: 0,
-      formationName: 'Karanlık Gökyüzü',
-      formationDescription: 'Henüz aktif bir rutin tanımlanmadı.',
+      formationName: 'Aktif Rutin Yok',
+      formationDescription: 'Bugün için henüz planlanmış bir rutin bulunmuyor.',
     }
   }
 
@@ -553,19 +553,19 @@ export function generateConstellationGraph(
   const completedNodesCount = nodes.filter((n) => n.isCompleted).length
   const rate = Math.round((completedNodesCount / count) * 100)
 
-  // Takımyıldız Formasyon İsimleri
-  let formationName = 'Kıvılcım Başlangıcı'
-  let formationDescription = 'İlk rutin tamamlandığında takımyıldızınız parlamaya başlar.'
+  // Rutin Durum / Zincir İsimleri
+  let formationName = 'Başlangıç'
+  let formationDescription = 'İlk rutin tamamlandığında aktivite ağınız birbirine bağlanır.'
 
   if (rate === 100) {
-    formationName = '⭐ Kuzey Yıldızı Formasyonu (Tam Kilit)'
-    formationDescription = 'Muhteşem! Tüm yıldızlar kenetlendi, bugünün gökyüzü kusursuz parlıyor.'
+    formationName = 'Tam Zincir (%100)'
+    formationDescription = 'Günün tüm rutinleri eksiksiz tamamlandı.'
   } else if (rate >= 60) {
-    formationName = '🌌 Parlayan Nebula (Yüksek İvme)'
-    formationDescription = 'Işık hatları birbirine bağlandı, takımyıldızı şekilleniyor.'
+    formationName = 'İlerleme (%60+)'
+    formationDescription = 'Günün büyük bölümü tamamlandı, son adımlar kaldı.'
   } else if (rate > 0) {
-    formationName = '✨ Doğuş Evresi (Aktif Işık)'
-    formationDescription = 'İlk enerji hatları kuruldu. Sıradaki rutinle halkayı genişlet.'
+    formationName = 'Başlatıldı'
+    formationDescription = 'İlk rutinler tamamlandı. Sıradaki adımlarla seriyi sürdürün.'
   }
 
   return {

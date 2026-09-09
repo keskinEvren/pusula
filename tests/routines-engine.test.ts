@@ -241,7 +241,7 @@ describe('Pusula Rutinler & Gökyüzü Motoru Testleri', () => {
     expect(graph.nodes.length).toBe(2)
     expect(graph.nodes.every((n) => n.isCompleted)).toBe(true)
     expect(graph.completionRate).toBe(100)
-    expect(graph.formationName).toContain('Kuzey Yıldızı Formasyonu')
+    expect(graph.formationName).toContain('Tam Zincir')
     // Düğümler arasındaki kenar aktif olmalı
     expect(graph.edges.length).toBe(1)
     expect(graph.edges[0].isActive).toBe(true)

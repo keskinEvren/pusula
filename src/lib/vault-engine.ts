@@ -67,21 +67,21 @@ export const EMPTY_VAULT_DATA: PusulaVaultData = {
 }
 
 export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; icon: string; category: string }> = {
-  accounts: { label: 'Banka & Kasalar', icon: '🏦', category: 'Finans' },
-  credit_cards: { label: 'Kredi Kartları', icon: '💳', category: 'Finans' },
-  card_statements: { label: 'Kart Ekstreleri', icon: '📄', category: 'Finans' },
-  transactions: { label: 'Hesap Hareketleri', icon: '📝', category: 'Finans' },
-  debts: { label: 'Borç & Alacaklar', icon: '🤝', category: 'Finans' },
-  subscriptions: { label: 'Abonelikler & Sabit Yük', icon: '📅', category: 'Finans' },
-  investments: { label: 'Yatırımlar & Portföy', icon: '📈', category: 'Finans' },
-  merchant_mappings: { label: 'Eşleştirme Kuralları', icon: '⚙️', category: 'Finans' },
-  projects: { label: 'Projeler', icon: '🚀', category: 'Stüdyo' },
-  project_tasks: { label: 'Proje Görevleri', icon: '✅', category: 'Stüdyo' },
-  ideas: { label: 'Fikir Havuzu', icon: '💡', category: 'Stüdyo' },
-  dreams: { label: 'Hayaller & Yaşam Ufukları', icon: '🌟', category: 'Yaşam' },
-  routines: { label: 'Günlük Rutinler', icon: '🌌', category: 'Yaşam' },
-  routine_logs: { label: 'Zincir & Alışkanlık Logları', icon: '🔥', category: 'Yaşam' },
-  journal_entries: { label: 'Seyir Defteri Kayıtları', icon: '📖', category: 'Yaşam' },
+  accounts: { label: 'Banka & Kasalar', icon: '', category: 'Finans' },
+  credit_cards: { label: 'Kredi Kartları', icon: '', category: 'Finans' },
+  card_statements: { label: 'Kart Ekstreleri', icon: '', category: 'Finans' },
+  transactions: { label: 'Hesap Hareketleri', icon: '', category: 'Finans' },
+  debts: { label: 'Borç & Alacaklar', icon: '', category: 'Finans' },
+  subscriptions: { label: 'Abonelikler & Sabit Giderler', icon: '', category: 'Finans' },
+  investments: { label: 'Yatırımlar & Portföy', icon: '', category: 'Finans' },
+  merchant_mappings: { label: 'Eşleştirme Kuralları', icon: '', category: 'Finans' },
+  projects: { label: 'Projeler', icon: '', category: 'Çalışma' },
+  project_tasks: { label: 'Proje Görevleri', icon: '', category: 'Çalışma' },
+  ideas: { label: 'Fikirler', icon: '', category: 'Çalışma' },
+  dreams: { label: 'Hedefler & Vizyon', icon: '', category: 'Kişisel' },
+  routines: { label: 'Rutinler & Alışkanlıklar', icon: '', category: 'Kişisel' },
+  routine_logs: { label: 'Rutin Kayıtları', icon: '', category: 'Kişisel' },
+  journal_entries: { label: 'Günlük Kayıtları', icon: '', category: 'Kişisel' },
 }
 
 // ---------------------------------------------------------------------------

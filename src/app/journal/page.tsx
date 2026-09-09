@@ -297,12 +297,12 @@ function JournalPageContent() {
     }
 
     setSaveStatus('saved')
-    toast.success(isEditingNew || !selectedEntryId ? 'Yeni seyir notu kaydedildi.' : 'Seyir notu güncellendi.')
+    toast.success(isEditingNew || !selectedEntryId ? 'Yeni kayıt eklendi.' : 'Kayıt güncellendi.')
     setTimeout(() => setSaveStatus('idle'), 2000)
   }
 
   async function handleDeleteEntry(id: string) {
-    if (!confirm('Bu seyir notunu silmek istediğinize emin misiniz?')) return
+    if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return
     const updated = entries.filter((e) => e.id !== id)
     saveEntriesToLocal(updated)
 
@@ -319,7 +319,7 @@ function JournalPageContent() {
     try {
       await supabase.from('journal_entries').delete().eq('id', id)
     } catch {}
-    toast.success('Seyir notu silindi.')
+    toast.success('Kayıt silindi.')
   }
 
   function handleAddTag() {
@@ -349,11 +349,11 @@ function JournalPageContent() {
 
   return (
     <div className="space-y-6">
-      {/* 1. Üst Başlık & Metrikler */}
+      {/* 1. Üst Başlık & Eylemler */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageHeader
-          title="Seyir Defteri"
-          description="Pusula yön verir, Seyir Defteri yolculuğu ve zihni kaydeder. Düşüncelerini dök, günün muhasebesini yap."
+          title="Günlük"
+          description="Düşüncelerini, kararlarını ve günün muhasebesini kaydet."
         />
 
         <div className="flex items-center gap-2">
@@ -361,10 +361,10 @@ function JournalPageContent() {
             variant="outline"
             onClick={() => setIsZenMode(true)}
             className="gap-2 text-xs"
-            title="Dikkat dağıtıcı her şeyi gizle ve tam ekran daktilo moduna geç"
+            title="Dikkat dağıtıcı her şeyi gizle ve tam ekran odak moduna geç"
           >
             <Maximize2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Zen Modu</span>
+            <span className="hidden sm:inline">Odak Modu</span>
           </Button>
 
           <Button onClick={() => handleCreateNewEntry()} className="gap-2">
@@ -375,48 +375,48 @@ function JournalPageContent() {
       </div>
 
       {/* 2. Kompakt İstatistik Şeridi */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="border-border/60 bg-card/40 p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10 text-primary">
+      <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-border rounded-xl border border-border bg-card shadow-sm">
+        <div className="p-4 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-muted-foreground font-medium">Toplam Kayıt</div>
+            <div className="text-xl font-semibold tracking-tight text-foreground tabular-nums mt-0.5">{metrics.totalEntries}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-secondary text-muted-foreground">
             <BookOpen className="h-4 w-4" />
           </div>
-          <div>
-            <div className="text-lg font-bold">{metrics.totalEntries}</div>
-            <div className="text-[11px] text-muted-foreground">Seyir Kaydı</div>
-          </div>
-        </Card>
+        </div>
 
-        <Card className="border-border/60 bg-card/40 p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+        <div className="p-4 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-muted-foreground font-medium">Toplam Kelime (~{metrics.totalReadingTimeMinutes} dk)</div>
+            <div className="text-xl font-semibold tracking-tight text-foreground tabular-nums mt-0.5">{metrics.totalWords.toLocaleString()}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-secondary text-muted-foreground">
             <PenTool className="h-4 w-4" />
           </div>
-          <div>
-            <div className="text-lg font-bold">{metrics.totalWords.toLocaleString()}</div>
-            <div className="text-[11px] text-muted-foreground">Toplam Kelime (~{metrics.totalReadingTimeMinutes} dk)</div>
-          </div>
-        </Card>
+        </div>
 
-        <Card className="border-border/60 bg-card/40 p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+        <div className="p-4 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-muted-foreground font-medium">Yazma Serisi</div>
+            <div className="text-xl font-semibold tracking-tight text-foreground tabular-nums mt-0.5">{metrics.writingStreak} Gün</div>
+          </div>
+          <div className="p-2 rounded-lg bg-secondary text-muted-foreground">
             <Flame className="h-4 w-4" />
           </div>
-          <div>
-            <div className="text-lg font-bold">{metrics.writingStreak} Gün</div>
-            <div className="text-[11px] text-muted-foreground">Yazma Serisi</div>
-          </div>
-        </Card>
+        </div>
 
-        <Card className="border-border/60 bg-card/40 p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-            <Sparkles className="h-4 w-4" />
-          </div>
+        <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold truncate">
+            <div className="text-xs text-muted-foreground font-medium">Baskın Ruh Hali</div>
+            <div className="text-sm font-semibold tracking-tight text-foreground mt-1 truncate">
               {metrics.mostFrequentMood ? JOURNAL_MOODS[metrics.mostFrequentMood].label.split(' ')[0] : 'Dengeli'}
             </div>
-            <div className="text-[11px] text-muted-foreground">Baskın Ruh Hali</div>
           </div>
-        </Card>
+          <div className="p-2 rounded-lg bg-secondary text-muted-foreground">
+            <Sparkles className="h-4 w-4" />
+          </div>
+        </div>
       </div>
 
       {/* 3. Ana Çalışma Alanı: Sol Liste (4 Kolon) + Sağ Daktilo Masası (8 Kolon) */}
@@ -532,7 +532,7 @@ function JournalPageContent() {
 
             {filteredEntries.length === 0 && (
               <div className="p-8 text-center text-xs text-muted-foreground border border-dashed border-border/60 rounded-xl">
-                Aradığınız kriterlere uygun seyir notu bulunamadı.
+                Aradığınız kriterlere uygun kayıt bulunamadı.
               </div>
             )}
           </div>
@@ -598,7 +598,7 @@ function JournalPageContent() {
                       size="sm"
                       onClick={() => handleDeleteEntry(selectedEntryId)}
                       className="h-8 text-xs text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
-                      title="Seyir Notunu Sil"
+                      title="Kaydı Sil"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -613,7 +613,7 @@ function JournalPageContent() {
                     {saveStatus === 'saved' ? (
                       <>
                         <Check className="h-3.5 w-3.5 text-emerald-400" />
-                        <span>Mühürlendi</span>
+                        <span>Kaydedildi</span>
                       </>
                     ) : (
                       <>
@@ -625,11 +625,11 @@ function JournalPageContent() {
                 </div>
               </div>
 
-              {/* Günün Akıllı Bağlam Şeridi (Smart Day Context Ribbon) */}
+              {/* Günün Akıllı Bağlam Şeridi */}
               <div className="flex items-center justify-between text-xs py-1.5 px-3 rounded-lg bg-primary/5 border border-primary/20 text-primary">
                 <div className="flex items-center gap-1.5 font-medium">
-                  <Compass className="h-3.5 w-3.5 shrink-0 animate-spin-slow" />
-                  <span>Günün Seyir Bağlamı:</span>
+                  <Compass className="h-3.5 w-3.5 shrink-0" />
+                  <span>Günün Bağlamı:</span>
                   <span className="text-foreground/90 font-normal">{dayContext.summaryText}</span>
                 </div>
 
@@ -728,13 +728,13 @@ function JournalPageContent() {
 
       {/* 4. Zen / Tam Ekran Yazı Modu (Distraction-Free Fullscreen) */}
       {isZenMode && (
-        <div className="fixed inset-0 z-50 bg-[#070a14] text-slate-100 flex flex-col p-6 sm:p-12 overflow-y-auto animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-50 bg-[#0c0c0e] text-slate-100 flex flex-col p-6 sm:p-12 overflow-y-auto animate-in fade-in duration-300">
           <div className="max-w-3xl mx-auto w-full flex-1 flex flex-col justify-between space-y-6">
             {/* Üst Zen Bar */}
-            <div className="flex items-center justify-between pb-4 border-b border-white/10">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <Compass className="h-4 w-4 text-emerald-400" />
-                <span>Seyir Defteri • Zen Daktilo</span>
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Compass className="h-4 w-4 text-primary" />
+                <span>Günlük • Odak Modu</span>
                 <span>•</span>
                 <span>{editorDate}</span>
                 <span>•</span>
@@ -742,7 +742,7 @@ function JournalPageContent() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 font-mono">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {currentWordCount} kelime
                 </span>
                 <Button
@@ -756,8 +756,8 @@ function JournalPageContent() {
                 <button
                   type="button"
                   onClick={() => setIsZenMode(false)}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                  title="Zen Modundan Çık (Esc)"
+                  className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  title="Odak Modundan Çık (Esc)"
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
@@ -770,22 +770,22 @@ function JournalPageContent() {
                 value={editorTitle}
                 onChange={(e) => setEditorTitle(e.target.value)}
                 placeholder="Başlık..."
-                className="text-2xl sm:text-4xl font-bold bg-transparent border-none outline-none text-white placeholder:text-slate-600"
+                className="text-2xl sm:text-4xl font-bold bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
               />
 
               <textarea
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
-                placeholder="Zihnini serbest bırak..."
+                placeholder="Düşüncelerini buraya dök..."
                 rows={20}
-                className="w-full flex-1 bg-transparent text-slate-200 font-sans text-base sm:text-lg leading-relaxed outline-none border-none placeholder:text-slate-700 resize-none"
+                className="w-full flex-1 bg-transparent text-foreground/90 font-sans text-base sm:text-lg leading-relaxed outline-none border-none placeholder:text-muted-foreground/40 resize-none"
                 autoFocus
               />
             </div>
 
             {/* Alt Bilgi */}
-            <div className="pt-4 border-t border-white/10 flex items-center justify-between text-xs text-slate-500">
-              <span>Zen modundan çıkmak için <strong>ESC</strong> tuşuna basın veya sağ üstteki simgeye tıklayın.</span>
+            <div className="pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+              <span>Odak modundan çıkmak için <strong>ESC</strong> tuşuna basın veya sağ üstteki simgeye tıklayın.</span>
               <span>~{currentReadingTime} dakika okuma süresi</span>
             </div>
           </div>
@@ -800,7 +800,7 @@ export default function JournalPage() {
     <Suspense
       fallback={
         <div className="p-8 text-center text-muted-foreground text-sm">
-          Seyir Defteri açılıyor...
+          Günlük yükleniyor...
         </div>
       }
     >

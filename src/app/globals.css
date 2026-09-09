@@ -4,38 +4,50 @@
 
 @layer base {
   :root {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
+    /* Canvas / Zemin */
+    --background: 240 5% 5%;
+    --foreground: 240 5% 94%;
 
-    --card: 224 71% 7%;
-    --card-foreground: 213 31% 91%;
+    /* Yüzey Seviyesi 1 (Kartlar) */
+    --card: 240 4% 8%;
+    --card-foreground: 240 5% 94%;
 
-    --popover: 224 71% 7%;
-    --popover-foreground: 213 31% 91%;
+    /* Yüzey Seviyesi 2 (Modallar & Popover) */
+    --popover: 240 4% 11%;
+    --popover-foreground: 240 5% 94%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Odak & İmza Aksanı (Nordic Steel Blue) */
+    --primary: 226 70% 64%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 222.2 47.4% 11.2%;
-    --secondary-foreground: 210 40% 98%;
+    /* İkincil Nötr Yüzeyler */
+    --secondary: 240 4% 14%;
+    --secondary-foreground: 240 5% 90%;
 
-    --muted: 217.2 32.6% 14%;
-    --muted-foreground: 215 20.2% 65.1%;
+    /* Kısık Alanlar & İkincil Metinler */
+    --muted: 240 4% 13%;
+    --muted-foreground: 240 3% 58%;
 
-    --accent: 217.2 32.6% 14%;
-    --accent-foreground: 210 40% 98%;
+    /* Hover Yüzeyleri */
+    --accent: 240 4% 16%;
+    --accent-foreground: 240 5% 96%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    /* Sakin Anlamsal Durumlar */
+    --destructive: 356 65% 58%;
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 142 76% 36%;
-    --success-foreground: 210 40% 98%;
+    --success: 154 48% 52%;
+    --success-foreground: 154 80% 10%;
 
-    --border: 215 27.9% 16.9%;
-    --input: 215 27.9% 16.9%;
-    --ring: 217.2 91.2% 59.8%;
+    --warning: 38 75% 58%;
+    --warning-foreground: 38 80% 10%;
 
-    --radius: 0.5rem;
+    /* Kenarlık & Odak Halkası */
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 226 70% 64%;
+
+    --radius: 0.625rem;
   }
 }
 

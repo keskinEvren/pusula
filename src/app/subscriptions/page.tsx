@@ -381,28 +381,28 @@ export default function SubscriptionsPage() {
     })
   }
 
-  // Category Icon & Color Helper
+  // Category Icon & Meta Helper
   const getCategoryMeta = (cat: string) => {
     switch (cat) {
       case 'Eğlence & Medya':
-        return { icon: Film, color: 'text-purple-400', badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30' }
+        return { icon: Film, color: 'text-muted-foreground', badge: 'border-border text-muted-foreground' }
       case 'Spor & Yaşam':
-        return { icon: Dumbbell, color: 'text-emerald-400', badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' }
+        return { icon: Dumbbell, color: 'text-muted-foreground', badge: 'border-border text-muted-foreground' }
       case 'İletişim & Fatura':
-        return { icon: Smartphone, color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30' }
+        return { icon: Smartphone, color: 'text-muted-foreground', badge: 'border-border text-muted-foreground' }
       case 'Yazılım & SaaS':
-        return { icon: Laptop, color: 'text-cyan-400', badge: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' }
+        return { icon: Laptop, color: 'text-muted-foreground', badge: 'border-border text-muted-foreground' }
       default:
-        return { icon: Sparkles, color: 'text-amber-400', badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30' }
+        return { icon: Sparkles, color: 'text-muted-foreground', badge: 'border-border text-muted-foreground' }
     }
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Düzenli Giderler & Tasarruf Radarı"
-        description="Aboneliklerinizi, faturalarınızı ve spor/yaşam üyeliklerinizi denetleyin; gereksizleri eleyerek yılda ne kadar tasarruf edebileceğinizi görün."
-        badge={<Badge variant="outline" className="text-xs font-semibold">{activeSubs.length} Aktif Gider</Badge>}
+        title="Abonelikler & Sabit Giderler"
+        description="Aylık ve yıllık düzenli aboneliklerinizi, sabit giderlerinizi ve tasarruf fırsatlarını takip edin."
+        badge={<Badge variant="outline" className="text-xs font-medium">{activeSubs.length} Aktif Gider</Badge>}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -411,8 +411,8 @@ export default function SubscriptionsPage() {
               onClick={() => setIsPickerOpen(true)}
               className="gap-1.5 shadow-sm"
             >
-              <Receipt className="h-4 w-4 text-primary" />
-              <span>Hareketlerden Yakala</span>
+              <Receipt className="h-4 w-4" />
+              <span>Hareketlerden Seç</span>
             </Button>
             <Button
               size="sm"
@@ -420,87 +420,73 @@ export default function SubscriptionsPage() {
               className="gap-1.5 shadow-sm"
             >
               <Plus className="h-4 w-4" />
-              <span>Yeni Düzenli Gider</span>
+              <span>Yeni Gider</span>
             </Button>
           </div>
         }
       />
 
-      {/* TASARRUF & GİDER DENETİMİ KPI ŞERİDİ */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Unified Segmented Metric Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         {/* 1. Toplam Düzenli Çıkış */}
-        <Card className="border-border bg-card shadow-sm border-l-4 border-l-primary">
-          <CardContent className="p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-              <span>Aylık Düzenli Yük</span>
-              <DollarSign className="h-4 w-4 text-primary" />
-            </div>
-            <div className="mt-2 text-2xl font-bold font-mono text-foreground">
-              {formatCurrency(totalMonthlyLoad)}
-              <span className="text-xs text-muted-foreground font-sans font-normal ml-1">/ ay</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground font-mono">
-              Yıllık Maliyet: <strong className="text-foreground">{formatCurrency(totalYearlyLoad)}</strong>
-            </p>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Aylık Düzenli Yük
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(totalMonthlyLoad)}
+            <span className="text-xs text-muted-foreground font-normal ml-1">/ ay</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Yıllık: <strong className="text-foreground font-medium">{formatCurrency(totalYearlyLoad)}</strong>
+          </p>
+        </div>
 
         {/* 2. Vazgeçilmez / Zorunlu */}
-        <Card className="border-border bg-card shadow-sm border-l-4 border-l-emerald-500">
-          <CardContent className="p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-              <span>🟢 Vazgeçilmez Giderler</span>
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold font-mono text-foreground">
-              {formatCurrency(essentialMonthlyTotal)}
-              <span className="text-xs text-muted-foreground font-sans font-normal ml-1">/ ay</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {essentialSubs.length} adet onaylanmış zorunlu gider
-            </p>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Zorunlu Giderler
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(essentialMonthlyTotal)}
+            <span className="text-xs text-muted-foreground font-normal ml-1">/ ay</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {essentialSubs.length} adet onaylanmış gider
+          </p>
+        </div>
 
         {/* 3. Potansiyel Tasarruf (Gözden Geçir / Esnek) */}
-        <Card className="border-border bg-card shadow-sm border-l-4 border-l-amber-500 bg-amber-500/5">
-          <CardContent className="p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-amber-400 flex items-center justify-between">
-              <span>🎯 Potansiyel Tasarruf</span>
-              <Sparkles className="h-4 w-4 text-amber-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold font-mono text-amber-400">
-              {formatCurrency(potentialMonthlySavings)}
-              <span className="text-xs text-muted-foreground font-sans font-normal ml-1">/ ay</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground font-medium">
-              {reviewSubs.length > 0 ? (
-                <span>
-                  Bunları keserseniz yılda <strong className="text-amber-400 font-bold font-mono">{formatCurrency(potentialYearlySavings)}</strong> cebinizde kalır!
-                </span>
-              ) : (
-                <span>Tüm giderler gözden geçirilmiş.</span>
-              )}
-            </p>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            İncelemedeki Giderler
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(potentialMonthlySavings)}
+            <span className="text-xs text-muted-foreground font-normal ml-1">/ ay</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {reviewSubs.length > 0 ? (
+              <span>Yıllık tasarruf potansiyeli: {formatCurrency(potentialYearlySavings)}</span>
+            ) : (
+              <span>İncelenecek gider yok</span>
+            )}
+          </p>
+        </div>
 
         {/* 4. Kurtarılan / Gerçekleşen Tasarruf */}
-        <Card className="border-border bg-card shadow-sm border-l-4 border-l-purple-500 bg-purple-500/5">
-          <CardContent className="p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-purple-400 flex items-center justify-between">
-              <span>🎉 Kurtarılan Yıllık Tasarruf</span>
-              <TrendingDown className="h-4 w-4 text-purple-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold font-mono text-purple-400">
-              {formatCurrency(realizedYearlySavings)}
-              <span className="text-xs text-muted-foreground font-sans font-normal ml-1">/ yıl</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {cancelledSubs.length} iptal edilen abonelik ile sağlanan tasarruf
-            </p>
-          </CardContent>
-        </Card>
+        <div className="p-4 space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            İptal Edilenler (Tasarruf)
+          </p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(realizedYearlySavings)}
+            <span className="text-xs text-muted-foreground font-normal ml-1">/ yıl</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {cancelledSubs.length} adet iptal edilen üyelik
+          </p>
+        </div>
       </div>
 
       {/* KATEGORİ FİLTRE SEKMELERİ & ARAMA */}
@@ -509,7 +495,7 @@ export default function SubscriptionsPage() {
           <button
             type="button"
             onClick={() => setActiveTab('ALL')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'ALL'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -520,54 +506,54 @@ export default function SubscriptionsPage() {
           <button
             type="button"
             onClick={() => setActiveTab('Eğlence & Medya')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'Eğlence & Medya'
-                ? 'bg-purple-600 text-white shadow-sm'
+                ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            🎬 Eğlence & Medya ({categoryCounts['Eğlence & Medya']})
+            Eğlence & Medya ({categoryCounts['Eğlence & Medya']})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('Spor & Yaşam')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'Spor & Yaşam'
-                ? 'bg-emerald-600 text-white shadow-sm'
+                ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            🏋️ Spor & Yaşam ({categoryCounts['Spor & Yaşam']})
+            Spor & Yaşam ({categoryCounts['Spor & Yaşam']})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('İletişim & Fatura')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'İletişim & Fatura'
-                ? 'bg-blue-600 text-white shadow-sm'
+                ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            📱 İletişim ({categoryCounts['İletişim & Fatura']})
+            İletişim & Fatura ({categoryCounts['İletişim & Fatura']})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('Yazılım & SaaS')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'Yazılım & SaaS'
-                ? 'bg-cyan-600 text-white shadow-sm'
+                ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
-            💻 Yazılım ({categoryCounts['Yazılım & SaaS']})
+            Yazılım & SaaS ({categoryCounts['Yazılım & SaaS']})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('ARCHIVED')}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'ARCHIVED'
-                ? 'bg-muted text-foreground border border-border shadow-sm'
-                : 'bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
             <Archive className="h-3.5 w-3.5 inline mr-1" />
@@ -605,8 +591,8 @@ export default function SubscriptionsPage() {
           {activeTab !== 'ARCHIVED' && (
             <div className="mt-4 flex items-center justify-center gap-2">
               <Button size="sm" onClick={() => setIsPickerOpen(true)} variant="outline" className="gap-1.5">
-                <Receipt className="h-4 w-4 text-primary" />
-                <span>Hareketlerden Yakala</span>
+                <Receipt className="h-4 w-4" />
+                <span>Hareketlerden Seç</span>
               </Button>
               <Button size="sm" onClick={() => handleOpenCreateModal()} className="gap-1.5">
                 <Plus className="h-4 w-4" />
@@ -627,11 +613,11 @@ export default function SubscriptionsPage() {
             return (
               <Card
                 key={sub.id}
-                className={`border-border bg-card shadow-sm transition-all hover:border-primary/40 flex flex-col justify-between ${
+                className={`border-border bg-card shadow-sm transition-all hover:border-border/80 flex flex-col justify-between ${
                   isArchived
                     ? 'opacity-60 bg-muted/10'
                     : isReview
-                    ? 'border-amber-500/40 bg-amber-500/[0.02]'
+                    ? 'border-border bg-card'
                     : ''
                 }`}
               >
@@ -639,11 +625,11 @@ export default function SubscriptionsPage() {
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className={`p-2 rounded-xl bg-muted/50 ${meta.color}`}>
+                        <div className={`p-2 rounded-xl bg-muted text-foreground`}>
                           <Icon className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
-                          <CardTitle className="text-base font-bold truncate" title={sub.service}>
+                          <CardTitle className="text-base font-semibold truncate" title={sub.service}>
                             {sub.service}
                           </CardTitle>
                           <CardDescription className="text-xs truncate">
@@ -651,11 +637,12 @@ export default function SubscriptionsPage() {
                           </CardDescription>
                         </div>
                       </div>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${meta.badge}`}
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-medium shrink-0"
                       >
                         {sub.model}
-                      </span>
+                      </Badge>
                     </div>
                   </CardHeader>
 
@@ -663,14 +650,14 @@ export default function SubscriptionsPage() {
                     {/* Tutar ve Yıllık Maliyet Çarpımı */}
                     <div className="flex items-baseline justify-between border-b border-border/50 pb-2.5">
                       <div>
-                        <div className="text-2xl font-bold font-mono text-foreground">
+                        <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
                           {formatCurrency(sub.amount)}{' '}
-                          <span className="text-xs text-muted-foreground font-sans font-normal">/ ay</span>
+                          <span className="text-xs text-muted-foreground font-normal">/ ay</span>
                         </div>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-muted-foreground block">Yıllık Yük:</span>
-                        <span className="text-xs font-bold font-mono text-foreground">
+                        <span className="text-xs font-semibold text-foreground tabular-nums">
                           {formatCurrency(yearlyCost)}
                         </span>
                       </div>
@@ -679,12 +666,12 @@ export default function SubscriptionsPage() {
                     {/* Stratejik Tasarruf Karar Barı */}
                     {!isArchived ? (
                       <div className="space-y-1.5">
-                        <div className="text-[10px] font-semibold text-muted-foreground flex items-center justify-between">
-                          <span>Tasarruf Kararı:</span>
+                        <div className="text-[10px] font-medium text-muted-foreground flex items-center justify-between">
+                          <span>Durum / Karar:</span>
                           {isReview && (
-                            <span className="text-[10px] text-amber-400 font-bold animate-pulse">
-                              ⚠️ İncelemede (Kesilebilir)
-                            </span>
+                            <Badge variant="warning" className="text-[10px] py-0 px-1.5">
+                              İncelemede
+                            </Badge>
                           )}
                         </div>
                         <div className="grid grid-cols-3 gap-1 text-[11px]">
@@ -693,39 +680,39 @@ export default function SubscriptionsPage() {
                             onClick={() => handleQuickDecision(sub, 'Devam')}
                             className={`rounded-lg py-1 px-1.5 text-center font-medium border transition-all ${
                               sub.decision === 'Devam'
-                                ? 'bg-emerald-500/15 border-emerald-500 text-emerald-400 font-bold shadow-sm'
+                                ? 'bg-muted text-foreground border-border font-semibold shadow-sm'
                                 : 'border-border/60 text-muted-foreground hover:bg-muted'
                             }`}
-                            title="Bu harcama hayat/iş için zorunlu ve vazgeçilmezdir"
+                            title="Bu harcama hayat/iş için zorunlu kabul edilir"
                           >
-                            🟢 Zorunlu
+                            Zorunlu
                           </button>
                           <button
                             type="button"
                             onClick={() => handleQuickDecision(sub, 'Kararsız')}
                             className={`rounded-lg py-1 px-1.5 text-center font-medium border transition-all ${
                               sub.decision === 'Kararsız'
-                                ? 'bg-amber-500/20 border-amber-500 text-amber-400 font-bold shadow-sm'
+                                ? 'bg-muted text-foreground border-border font-semibold shadow-sm'
                                 : 'border-border/60 text-muted-foreground hover:bg-muted'
                             }`}
-                            title="Gerekliliği şüpheli; tasarruf için kesilebilir"
+                            title="Gözden geçirilebilir, tasarruf adayı"
                           >
-                            🟡 Gözden Geçir
+                            İncele
                           </button>
                           <button
                             type="button"
                             onClick={() => handleQuickDecision(sub, 'İptal Et')}
-                            className="rounded-lg py-1 px-1.5 text-center font-medium border border-border/60 text-muted-foreground hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-400 transition-all"
+                            className="rounded-lg py-1 px-1.5 text-center font-medium border border-border/60 text-muted-foreground hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-all"
                             title="Üyeliği/aboneliği iptal et ve tasarruf et"
                           >
-                            🔴 İptal Et
+                            İptal Et
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="rounded-lg bg-purple-500/10 border border-purple-500/30 p-2 text-xs flex items-center justify-between">
-                        <span className="text-purple-400 font-medium">
-                          ✓ İptal Edildi (Yıllık <strong>{formatCurrency(yearlyCost)}</strong> tasarruf)
+                      <div className="rounded-lg bg-muted/40 border border-border p-2 text-xs flex items-center justify-between">
+                        <span className="text-muted-foreground font-medium">
+                          İptal Edildi (Yıllık <strong className="text-foreground">{formatCurrency(yearlyCost)}</strong> tasarruf)
                         </span>
                         <button
                           type="button"
