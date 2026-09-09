@@ -25,6 +25,7 @@ import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
+import { slugify } from '@/lib/utils'
 import { useToast } from '@/lib/toast-context'
 import type { Idea } from '@/types/database'
 
@@ -65,6 +66,7 @@ function IdeasContent() {
 
   // Promote Modal State
   const [promoteTarget, setPromoteTarget] = useState<Idea | null>(null)
+  const [promoteSlug, setPromoteSlug] = useState('')
   const [promoteBudget, setPromoteBudget] = useState('10000')
   const [promoting, setPromoting] = useState(false)
 
@@ -199,6 +201,7 @@ function IdeasContent() {
     }
 
     setPromoteTarget(idea)
+    setPromoteSlug(slugify(idea.title))
     setPromoteBudget('10000')
   }
 
@@ -215,11 +218,7 @@ function IdeasContent() {
       if (!user) throw new Error('Oturum açılmamış')
 
       const budgetNum = promoteBudget ? parseFloat(promoteBudget) : null
-
-      const slug = promoteTarget.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '')
+      const finalSlug = slugify(promoteSlug || promoteTarget.title) || 'proje-' + Date.now()
 
       // 1. Create Project
       const { data: newProject, error: prjError } = await supabase
@@ -227,7 +226,7 @@ function IdeasContent() {
         .insert({
           user_id: user.id,
           name: promoteTarget.title,
-          slug,
+          slug: finalSlug,
           description: promoteTarget.description,
           status: 'Planlama',
           budget_limit: budgetNum || null,
@@ -248,7 +247,7 @@ function IdeasContent() {
 
       setPromoteTarget(null)
       toast.success('Fikir başarıyla projeye dönüştürüldü!')
-      router.push(`/projects/${slug}`)
+      router.push(`/projects/${finalSlug}`)
     } catch (err: any) {
       toast.error(err.message || 'Projeye dönüştürülemedi')
     } finally {
@@ -640,6 +639,23 @@ function IdeasContent() {
               {promoteTarget.description && (
                 <p className="text-muted-foreground text-[11px] line-clamp-2">{promoteTarget.description}</p>
               )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                URL Slug
+              </label>
+              <Input
+                required
+                placeholder="proje-link-adi"
+                prefix="/"
+                value={promoteSlug}
+                onChange={(e) => setPromoteSlug(slugify(e.target.value))}
+                className="text-xs font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Yeni proje linki: /projects/{slugify(promoteSlug || promoteTarget.title || 'slug')}
+              </p>
             </div>
 
             <div className="space-y-1">

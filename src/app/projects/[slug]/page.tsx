@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -16,9 +17,11 @@ import {
   DollarSign,
   AlertTriangle,
   FileText,
+  Settings,
+  Edit3,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, slugify } from '@/lib/utils'
 import { calculateProjectTotalCost, evaluateProjectBudget } from '@/lib/finance-engine'
 import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -36,6 +39,7 @@ export default function ProjectDetailPage({
 }: {
   params: Promise<{ slug: string }>
 }) {
+  const router = useRouter()
   const { toast } = useToast()
   const resolvedParams = use(params)
   const slug = resolvedParams.slug
@@ -53,6 +57,25 @@ export default function ProjectDetailPage({
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Task Edit Modal State
+  const [editingTask, setEditingTask] = useState<ProjectTask | null>(null)
+  const [editTaskForm, setEditTaskForm] = useState({
+    title: '',
+    category: 'Görev' as ProjectTask['category'],
+    status: 'Yapılacak' as ProjectTask['status'],
+  })
+
+  // Project Edit Modal State
+  const [isProjectEditModalOpen, setIsProjectEditModalOpen] = useState(false)
+  const [projectEditForm, setProjectEditForm] = useState({
+    name: '',
+    slug: '',
+    status: 'Planlama' as Project['status'],
+    budget_limit: '',
+    repo_url: '',
+    live_url: '',
+  })
 
   // Forms
   const [newTask, setNewTask] = useState({
@@ -250,6 +273,98 @@ export default function ProjectDetailPage({
     }
   }
 
+  const handleOpenEditTask = (task: ProjectTask) => {
+    setEditingTask(task)
+    setEditTaskForm({
+      title: task.title,
+      category: task.category,
+      status: task.status,
+    })
+  }
+
+  const handleUpdateTask = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingTask) return
+    setSubmitting(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('project_tasks')
+        .update({
+          title: editTaskForm.title,
+          category: editTaskForm.category,
+          status: editTaskForm.status,
+        })
+        .eq('id', editingTask.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      if (data) {
+        setTasks((prev) => prev.map((t) => (t.id === data.id ? data : t)))
+        setEditingTask(null)
+        toast.success('Görev başarıyla güncellendi!')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Görev güncellenemedi')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleOpenProjectEdit = () => {
+    if (!project) return
+    setProjectEditForm({
+      name: project.name,
+      slug: project.slug,
+      status: project.status,
+      budget_limit: project.budget_limit ? String(project.budget_limit) : '',
+      repo_url: project.repo_url || '',
+      live_url: project.live_url || '',
+    })
+    setIsProjectEditModalOpen(true)
+  }
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+    setSubmitting(true)
+    try {
+      const supabase = createClient()
+      const finalSlug = slugify(projectEditForm.slug || projectEditForm.name)
+      if (!finalSlug) throw new Error('Geçerli bir URL slug girilmelidir.')
+
+      const { data, error } = await supabase
+        .from('projects')
+        .update({
+          name: projectEditForm.name,
+          slug: finalSlug,
+          status: projectEditForm.status,
+          budget_limit: projectEditForm.budget_limit ? parseFloat(projectEditForm.budget_limit) : null,
+          repo_url: projectEditForm.repo_url || null,
+          live_url: projectEditForm.live_url || null,
+        })
+        .eq('id', project.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      if (data) {
+        const prevSlug = project.slug
+        setProject(data)
+        setIsProjectEditModalOpen(false)
+        toast.success('Proje bilgileri güncellendi!')
+        if (data.slug !== prevSlug) {
+          router.push(`/projects/${data.slug}`)
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Proje güncellenemedi')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center text-xs text-muted-foreground animate-pulse">
@@ -311,6 +426,9 @@ export default function ProjectDetailPage({
             <Badge variant="purple" className="text-xs">
               {project.status}
             </Badge>
+            <span className="text-xs font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/50" title={`URL: /projects/${project.slug}`}>
+              /{project.slug}
+            </span>
           </div>
           {project.description && (
             <p className="mt-1 text-sm text-muted-foreground max-w-2xl line-clamp-2">
@@ -320,6 +438,10 @@ export default function ProjectDetailPage({
         </div>
 
         <div className="flex items-center gap-3">
+          <Button onClick={handleOpenProjectEdit} variant="outline" size="sm" className="gap-1.5 text-xs">
+            <Settings className="h-3.5 w-3.5" />
+            Projeyi Düzenle
+          </Button>
           {project.repo_url && (
             <a href={project.repo_url} target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="gap-2 text-xs">
@@ -481,13 +603,14 @@ export default function ProjectDetailPage({
           {tasks.map((task) => (
             <div
               key={task.id}
-              className="flex items-center justify-between rounded-lg border border-border/40 bg-card/40 p-3 hover:bg-muted/30 transition-colors"
+              className="flex items-center justify-between rounded-lg border border-border/40 bg-card/40 p-3 hover:bg-muted/30 transition-colors group"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <button
                   type="button"
                   onClick={() => handleToggleTaskStatus(task)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground shrink-0"
+                  title={task.status === 'Tamamlandı' ? 'Yapılacak olarak işaretle' : 'Tamamlandı olarak işaretle'}
                 >
                   {task.status === 'Tamamlandı' ? (
                     <CheckCircle2 className="h-5 w-5 text-success" />
@@ -495,30 +618,51 @@ export default function ProjectDetailPage({
                     <Circle className="h-5 w-5" />
                   )}
                 </button>
-                <div>
+                <div
+                  className="cursor-pointer min-w-0"
+                  onClick={() => handleOpenEditTask(task)}
+                  title="Görevi düzenlemek için tıklayın"
+                >
                   <div
-                    className={`text-sm font-medium ${
+                    className={`text-sm font-medium truncate ${
                       task.status === 'Tamamlandı'
                         ? 'line-through text-muted-foreground'
-                        : 'text-foreground'
+                        : 'text-foreground group-hover:text-primary transition-colors'
                     }`}
                   >
                     {task.title}
                   </div>
-                  <Badge variant="outline" className="text-[10px] mt-1">
-                    {task.category}
-                  </Badge>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Badge variant="outline" className="text-[10px]">
+                      {task.category}
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground">
+                      {task.status}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDeleteTask(task.id)}
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleOpenEditTask(task)}
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  title="Görevi Düzenle"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDeleteTask(task.id)}
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  title="Görevi Sil"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           ))}
 
@@ -692,6 +836,190 @@ export default function ProjectDetailPage({
           </div>
         </form>
       </Modal>
+
+      {/* Edit Task Modal */}
+      <Modal
+        isOpen={!!editingTask}
+        onClose={() => setEditingTask(null)}
+        title="Görevi Düzenle"
+        description="Görev başlığını, kategorisini veya durumunu güncelleyin."
+      >
+        {editingTask && (
+          <form onSubmit={handleUpdateTask} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
+              <Input
+                required
+                placeholder="Örn: Supabase Auth kurulumu"
+                value={editTaskForm.title}
+                onChange={(e) => setEditTaskForm({ ...editTaskForm, title: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Kategori</label>
+                <Select
+                  value={editTaskForm.category}
+                  onChange={(e) =>
+                    setEditTaskForm({ ...editTaskForm, category: e.target.value as ProjectTask['category'] })
+                  }
+                  className="text-xs"
+                >
+                  <option value="Görev">Görev</option>
+                  <option value="Epics">Epic / Büyük Hedef</option>
+                  <option value="Bug">Hata (Bug)</option>
+                  <option value="Fikir">Fikir</option>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Durum</label>
+                <Select
+                  value={editTaskForm.status}
+                  onChange={(e) =>
+                    setEditTaskForm({ ...editTaskForm, status: e.target.value as ProjectTask['status'] })
+                  }
+                  className="text-xs"
+                >
+                  <option value="Yapılacak">Yapılacak</option>
+                  <option value="Sürüyor">Sürüyor</option>
+                  <option value="Tamamlandı">Tamamlandı</option>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setEditingTask(null)}>
+                İptal
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Güncelleniyor...' : 'Görevi Güncelle'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Edit Project & Slug Modal */}
+      <Modal
+        isOpen={isProjectEditModalOpen}
+        onClose={() => setIsProjectEditModalOpen(false)}
+        title="Projeyi Düzenle"
+        description="Proje adını, URL slug adresini, durumunu ve bütçe sınırlarını güncelleyin."
+        size="lg"
+      >
+        {project && (
+          <form onSubmit={handleUpdateProject} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Proje Adı</label>
+              <Input
+                required
+                placeholder="Örn: PusulaOS, KadroPlan"
+                value={projectEditForm.name}
+                onChange={(e) => {
+                  const newName = e.target.value
+                  const oldNameSlug = slugify(projectEditForm.name)
+                  const currentSlug = projectEditForm.slug
+                  setProjectEditForm((prev) => ({
+                    ...prev,
+                    name: newName,
+                    slug: currentSlug === '' || currentSlug === oldNameSlug ? slugify(newName) : prev.slug,
+                  }))
+                }}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">URL Slug</label>
+                <Input
+                  required
+                  placeholder="proje-adi"
+                  prefix="/"
+                  value={projectEditForm.slug}
+                  onChange={(e) => setProjectEditForm({ ...projectEditForm, slug: slugify(e.target.value) })}
+                  className="text-xs font-mono"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Proje linki: /projects/{slugify(projectEditForm.slug || projectEditForm.name || 'slug')}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Proje Durumu</label>
+                <Select
+                  value={projectEditForm.status}
+                  onChange={(e) =>
+                    setProjectEditForm({
+                      ...projectEditForm,
+                      status: e.target.value as Project['status'],
+                    })
+                  }
+                  className="text-xs"
+                >
+                  <option value="Planlama">📐 Planlama</option>
+                  <option value="Geliştirmede">🚧 Geliştirmede</option>
+                  <option value="Canlı">🚀 Canlı</option>
+                  <option value="Fikir">💡 Fikir</option>
+                  <option value="Arşiv">📦 Arşiv</option>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Bütçe Tavanı (Opsiyonel)
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="20000.00"
+                prefix="₺"
+                value={projectEditForm.budget_limit}
+                onChange={(e) => setProjectEditForm({ ...projectEditForm, budget_limit: e.target.value })}
+                className="text-xs font-mono"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">GitHub Repo URL</label>
+                <Input
+                  type="url"
+                  placeholder="https://github.com/..."
+                  value={projectEditForm.repo_url}
+                  onChange={(e) => setProjectEditForm({ ...projectEditForm, repo_url: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Canlı Site URL</label>
+                <Input
+                  type="url"
+                  placeholder="https://..."
+                  value={projectEditForm.live_url}
+                  onChange={(e) => setProjectEditForm({ ...projectEditForm, live_url: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setIsProjectEditModalOpen(false)}>
+                İptal
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }
+

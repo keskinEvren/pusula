@@ -14,7 +14,7 @@ import {
   Sliders,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, slugify } from '@/lib/utils'
 import { calculateProjectTotalCost, evaluateProjectBudget } from '@/lib/finance-engine'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -95,16 +95,15 @@ function ProjectsContent() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
-      const slug =
-        projectForm.slug ||
-        projectForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      const finalSlug = slugify(projectForm.slug || projectForm.name)
+      if (!finalSlug) throw new Error('Geçerli bir proje adı ve URL slug girilmelidir.')
 
       const { data, error } = await supabase
         .from('projects')
         .insert({
           user_id: user.id,
           name: projectForm.name,
-          slug,
+          slug: finalSlug,
           description: projectForm.description || null,
           status: projectForm.status,
           budget_limit: projectForm.budget_limit ? parseFloat(projectForm.budget_limit) : null,
@@ -331,7 +330,16 @@ function ProjectsContent() {
               required
               placeholder="Örn: Watchpath, PusulaOS, KadroPlan"
               value={projectForm.name}
-              onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+              onChange={(e) => {
+                const newName = e.target.value
+                const oldSlug = slugify(projectForm.name)
+                const currentSlug = projectForm.slug
+                setProjectForm((prev) => ({
+                  ...prev,
+                  name: newName,
+                  slug: currentSlug === '' || currentSlug === oldSlug ? slugify(newName) : prev.slug,
+                }))
+              }}
               className="text-xs"
             />
           </div>
@@ -340,12 +348,16 @@ function ProjectsContent() {
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">URL Slug</label>
               <Input
+                required
                 placeholder="watchpath"
                 prefix="/"
                 value={projectForm.slug}
-                onChange={(e) => setProjectForm({ ...projectForm, slug: e.target.value })}
+                onChange={(e) => setProjectForm({ ...projectForm, slug: slugify(e.target.value) })}
                 className="text-xs font-mono"
               />
+              <p className="text-[10px] text-muted-foreground">
+                Link: /projects/{slugify(projectForm.slug || projectForm.name || 'slug')}
+              </p>
             </div>
 
             <div className="space-y-1">
