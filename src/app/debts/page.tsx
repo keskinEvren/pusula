@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Plus,
@@ -13,6 +13,11 @@ import {
   Search,
   Check,
   ChevronDown,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw,
+  X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -78,11 +83,36 @@ function DebtsContent() {
     id: '',
     type: 'Alacak' as 'Borç' | 'Alacak',
     category: 'Maaş',
-    person_or_entity: 'Hızır Global AŞ',
+    person_or_entity: '',
     description: '',
     principal: '',
     past_payments: '0',
   })
+
+  // Sorting
+  const [debtSortField, setDebtSortField] = useState<'default' | 'person' | 'principal' | 'remaining'>('default')
+  const [debtSortOrder, setDebtSortOrder] = useState<'asc' | 'desc'>('asc')
+
+  const handleDebtSort = (field: 'person' | 'principal' | 'remaining') => {
+    if (debtSortField === field) {
+      setDebtSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setDebtSortField(field)
+      setDebtSortOrder(field === 'person' ? 'asc' : 'desc')
+    }
+  }
+
+  // Active filters check & clear
+  const hasActiveDebtFilters =
+    typeFilter !== 'ALL' || statusFilter !== 'ALL' || searchQuery.trim() !== '' || debtSortField !== 'default'
+
+  const handleClearDebtFilters = () => {
+    setTypeFilter('ALL')
+    setStatusFilter('ALL')
+    setSearchQuery('')
+    setDebtSortField('default')
+    setDebtSortOrder('asc')
+  }
 
   useEffect(() => {
     loadData()
@@ -230,7 +260,7 @@ function DebtsContent() {
       id: '',
       type: 'Alacak',
       category: 'Maaş',
-      person_or_entity: 'Hızır Global AŞ',
+      person_or_entity: '',
       description: '',
       principal: '',
       past_payments: '0',
@@ -357,19 +387,43 @@ function DebtsContent() {
 
   const netBalance = totalReceivables - totalDebts
 
-  // Filtered & Chronological Sorted List
-  const filteredDebts = sortDebtsChronological(debts).filter((d) => {
-    if (typeFilter !== 'ALL' && d.type !== typeFilter) return false
-    if (statusFilter !== 'ALL' && d.status !== statusFilter) return false
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      const matchP = d.person_or_entity.toLowerCase().includes(q)
-      const matchD = (d.description || '').toLowerCase().includes(q)
-      const matchC = d.category.toLowerCase().includes(q)
-      if (!matchP && !matchD && !matchC) return false
+  // Filtered & Sorted List
+  const filteredDebts = useMemo(() => {
+    const list = debts.filter((d) => {
+      if (typeFilter !== 'ALL' && d.type !== typeFilter) return false
+      if (statusFilter !== 'ALL' && d.status !== statusFilter) return false
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const matchP = d.person_or_entity.toLowerCase().includes(q)
+        const matchD = (d.description || '').toLowerCase().includes(q)
+        const matchC = d.category.toLowerCase().includes(q)
+        if (!matchP && !matchD && !matchC) return false
+      }
+      return true
+    })
+
+    if (debtSortField === 'default') {
+      return sortDebtsChronological(list)
     }
-    return true
-  })
+
+    return [...list].sort((a, b) => {
+      if (debtSortField === 'person') {
+        const cmp = (a.person_or_entity || '').localeCompare(b.person_or_entity || '', 'tr-TR')
+        return debtSortOrder === 'asc' ? cmp : -cmp
+      }
+      if (debtSortField === 'principal') {
+        const aVal = Number(a.principal || 0)
+        const bVal = Number(b.principal || 0)
+        return debtSortOrder === 'asc' ? aVal - bVal : bVal - aVal
+      }
+      if (debtSortField === 'remaining') {
+        const aVal = Number(a.remaining || 0)
+        const bVal = Number(b.remaining || 0)
+        return debtSortOrder === 'asc' ? aVal - bVal : bVal - aVal
+      }
+      return 0
+    })
+  }, [debts, typeFilter, statusFilter, searchQuery, debtSortField, debtSortOrder])
 
   return (
     <div className="space-y-6">
@@ -479,6 +533,20 @@ function DebtsContent() {
             <option value="Açık">Açıklar</option>
             <option value="Kapatıldı">Kapatılanlar</option>
           </Select>
+
+          {hasActiveDebtFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearDebtFilters}
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground shrink-0 gap-1.5"
+              title="Filtreleri Temizle"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Temizle</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -491,14 +559,62 @@ function DebtsContent() {
                 <th className="py-3 px-3 w-10 text-center">No</th>
                 <th className="py-3 px-3 w-24">Tür</th>
                 <th className="py-3 px-3 w-28">Kategori</th>
-                <th className="py-3 px-4 w-40">Kişi / Kurum</th>
+                <th
+                  className="py-3 px-4 w-40 cursor-pointer select-none hover:text-foreground transition-colors group"
+                  onClick={() => handleDebtSort('person')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Kişi / Kurum</span>
+                    {debtSortField === 'person' ? (
+                      debtSortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                    )}
+                  </div>
+                </th>
                 <th className="py-3 px-4">Açıklama</th>
-                <th className="py-3 px-3 text-right w-28">Ana Tutar</th>
+                <th
+                  className="py-3 px-3 text-right w-28 cursor-pointer select-none hover:text-foreground transition-colors group"
+                  onClick={() => handleDebtSort('principal')}
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Ana Tutar</span>
+                    {debtSortField === 'principal' ? (
+                      debtSortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                    )}
+                  </div>
+                </th>
                 <th className="py-3 px-3 text-right w-32">Geçmiş Ödeme</th>
                 <th className="py-3 px-3 text-right w-32 text-emerald-400 bg-emerald-500/5">
                   Yeni Hareketlerden
                 </th>
-                <th className="py-3 px-3 text-right w-28 text-emerald-400 font-bold">Kalan</th>
+                <th
+                  className="py-3 px-3 text-right w-28 text-emerald-400 font-bold cursor-pointer select-none hover:text-emerald-300 transition-colors group"
+                  onClick={() => handleDebtSort('remaining')}
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Kalan</span>
+                    {debtSortField === 'remaining' ? (
+                      debtSortOrder === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-emerald-400" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5 text-emerald-400" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                    )}
+                  </div>
+                </th>
                 <th className="py-3 px-3 text-center w-28 sticky right-0 bg-card/95 backdrop-blur-sm shadow-[-4px_0_8px_rgba(0,0,0,0.2)] border-l border-border z-20">
                   İşlem
                 </th>
@@ -751,7 +867,7 @@ function DebtsContent() {
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Banka hareketlerinde ara (örn: Hızır, 15000)..."
+                    placeholder="Banka hareketlerinde ara (örn: Ahmet, 15000)..."
                     value={bankSearch}
                     onChange={(e) => setBankSearch(e.target.value)}
                     className="pl-9 text-xs"
@@ -869,7 +985,7 @@ function DebtsContent() {
                 required
                 value={rowForm.person_or_entity}
                 onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
-                placeholder="Örn: Hızır Global AŞ, Akbank"
+                placeholder="Örn: Ahmet Yılmaz, Akbank"
                 className="text-xs"
               />
             </div>
