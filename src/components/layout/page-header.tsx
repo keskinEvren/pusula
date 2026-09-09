@@ -9,22 +9,22 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, badge, actions }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-border/40">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-border/50">
       <div>
         <div className="flex items-center gap-2.5 flex-wrap">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
             {title}
           </h1>
           {badge}
         </div>
         {description && (
-          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground/80 leading-normal">
             {description}
           </p>
         )}
       </div>
       {actions && (
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           {actions}
         </div>
       )}
