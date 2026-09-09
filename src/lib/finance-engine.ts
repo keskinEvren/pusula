@@ -433,3 +433,78 @@ export function calculateDcaAverageCost(
   }
 }
 
+/**
+ * 11. Kasa & Nakit Akışı Analizi (Maaş / Gelir, Kart Ödemesi, Faizler)
+ * Gerçek nakit girişlerini, kredi kartlarına aktarılan tutarları ve net kasa değişimini hesaplar.
+ */
+export interface MonthlyCashFlowResult {
+  totalInflow: number
+  cardPayments: number
+  financingFees: number
+  netCashFlow: number
+  inflowCount: number
+  cardPaymentCount: number
+}
+
+export function calculateMonthlyCashFlow(
+  transactions: Array<{
+    amount: number | null | undefined
+    type?: string | null
+    analysis_group?: string | null
+    description?: string | null
+    merchant?: string | null
+  }>
+): MonthlyCashFlowResult {
+  let totalInflow = 0
+  let cardPayments = 0
+  let financingFees = 0
+  let inflowCount = 0
+  let cardPaymentCount = 0
+
+  for (const t of transactions) {
+    const amount = Number(t.amount || 0)
+    const desc = (t.description || '').toLowerCase()
+    const merch = (t.merchant || '').toLowerCase()
+    const type = t.type || ''
+    const group = t.analysis_group || ''
+
+    // İç transferleri filtrele (kendi hesapları arasındaki FAST/Havale)
+    // Maaş veya harici gelirleri al
+    const isInternalTransfer =
+      desc.includes('fast anlık ödeme') ||
+      desc.includes('transfer') ||
+      desc.includes('gönd:') ||
+      merch.includes('vakıf katılım')
+
+    if (type === 'Gelir' || group === 'Gelir') {
+      if (!isInternalTransfer || desc.includes('maaş')) {
+        totalInflow = round2(totalInflow + amount)
+        inflowCount++
+      }
+    } else if (
+      type === 'Kart Ödemesi' ||
+      merch.includes('kart ödemesi') ||
+      desc.includes('kk tahsilat') ||
+      desc.includes('kredi kartı ödemesi')
+    ) {
+      cardPayments = round2(cardPayments + amount)
+      cardPaymentCount++
+    } else if (type === 'Finansman/Masraf' || group === 'Finansman') {
+      financingFees = round2(financingFees + amount)
+    }
+  }
+
+  const rawNet = round2(totalInflow - cardPayments - financingFees)
+  const netCashFlow = Object.is(rawNet, -0) ? 0 : rawNet
+
+  return {
+    totalInflow,
+    cardPayments,
+    financingFees,
+    netCashFlow,
+    inflowCount,
+    cardPaymentCount,
+  }
+}
+
+
