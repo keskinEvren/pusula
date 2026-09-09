@@ -1,0 +1,1280 @@
+'use client'
+
+import { useState, useEffect, Suspense, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import {
+  Orbit,
+  Plus,
+  Sparkles,
+  Flame,
+  Battery,
+  BatteryCharging,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  Circle,
+  Clock,
+  Edit2,
+  Trash2,
+  Play,
+  Pause,
+  RotateCcw,
+  Compass,
+  AlertTriangle,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  SunMedium,
+  Check,
+  X,
+  Target,
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
+import type { Routine, RoutineLog, Dream } from '@/types/database'
+import {
+  TimeBlock,
+  TIME_BLOCK_META,
+  getCurrentTimeBlock,
+  filterRoutinesByTimeBlock,
+  calculateStreak,
+  calculateDailyCompletion,
+  generateWeeklyDaySummaries,
+  generateMonthCalendar,
+  generateConstellationGraph,
+  formatDateToYmd,
+  parseYmdToDate,
+  addDays,
+  INITIAL_SAMPLE_ROUTINES,
+} from '@/lib/routines-engine'
+
+const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
+const STORAGE_KEY_LOGS = 'pusula_local_routine_logs'
+
+function RoutinesPageContent() {
+  const searchParams = useSearchParams()
+  const todayStr = formatDateToYmd(new Date())
+
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr)
+  const [routines, setRoutines] = useState<Routine[]>([])
+  const [routineLogs, setRoutineLogs] = useState<RoutineLog[]>([])
+  const [dreams, setDreams] = useState<Dream[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Düşük Pil Modu (Minimum Etkili Doz Toggle)
+  const [isLowBattery, setIsLowBattery] = useState(false)
+
+  // Aylık takvim navigasyonu (Yıl ve Ay)
+  const [calendarMonthDate, setCalendarMonthDate] = useState(new Date())
+
+  // Modal Durumları
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null)
+
+  // Zen / Odak Sayacı Modalı
+  const [isTimerOpen, setIsTimerOpen] = useState(false)
+  const [activeTimerRoutine, setActiveTimerRoutine] = useState<Routine | null>(null)
+  const [timerSecondsLeft, setTimerSecondsLeft] = useState(25 * 60)
+  const [isTimerRunning, setIsTimerRunning] = useState(false)
+
+  // Not Ekleme Popover / Modalı
+  const [noteRoutine, setNoteRoutine] = useState<Routine | null>(null)
+  const [noteInput, setNoteInput] = useState('')
+
+  // Form State
+  const [formData, setFormData] = useState({
+    title: '',
+    icon: '☀️',
+    time_block: 'morning' as TimeBlock,
+    frequency: 'daily',
+    target_duration_minutes: 15,
+    minimum_effective_dose: '',
+    dream_id: '',
+    identity_persona: '',
+  })
+
+  // Timer Interval Ref
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // 1. Veri Yükleme (Supabase + LocalStorage Fallback)
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true)
+      const supabase = createClient()
+
+      try {
+        // Rutinleri çek
+        const { data: dbRoutines, error: rError } = await supabase
+          .from('routines')
+          .select('*')
+          .order('order_index', { ascending: true })
+
+        if (!rError && dbRoutines && dbRoutines.length > 0) {
+          setRoutines(dbRoutines as Routine[])
+        } else {
+          // LocalStorage fallback
+          const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
+          if (localRoutinesStr) {
+            try {
+              setRoutines(JSON.parse(localRoutinesStr))
+            } catch {
+              setRoutines(INITIAL_SAMPLE_ROUTINES)
+            }
+          } else {
+            setRoutines(INITIAL_SAMPLE_ROUTINES)
+            localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
+          }
+        }
+
+        // Logları çek
+        const { data: dbLogs } = await supabase.from('routine_logs').select('*')
+        if (dbLogs && dbLogs.length > 0) {
+          setRoutineLogs(dbLogs as RoutineLog[])
+        } else {
+          const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
+          if (localLogsStr) {
+            try {
+              setRoutineLogs(JSON.parse(localLogsStr))
+            } catch {
+              setRoutineLogs([])
+            }
+          }
+        }
+
+        // Hayaller tablosundan kimlik ve hedefleri al (bağlantı için)
+        const { data: dbDreams } = await supabase.from('dreams').select('*')
+        if (dbDreams) {
+          setDreams(dbDreams as Dream[])
+        } else {
+          const localDreams = localStorage.getItem('pusula_local_dreams')
+          if (localDreams) {
+            try {
+              setDreams(JSON.parse(localDreams))
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.error('Routines load error:', err)
+        const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
+        setRoutines(localRoutinesStr ? JSON.parse(localRoutinesStr) : INITIAL_SAMPLE_ROUTINES)
+        const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
+        if (localLogsStr) setRoutineLogs(JSON.parse(localLogsStr))
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  // URL'de ?new=true varsa otomatik modal aç
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      handleOpenCreateModal()
+    }
+  }, [searchParams])
+
+  // Timer Tick Mantığı
+  useEffect(() => {
+    if (isTimerRunning) {
+      timerIntervalRef.current = setInterval(() => {
+        setTimerSecondsLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerIntervalRef.current!)
+            setIsTimerRunning(false)
+            // Otomatik tamamla
+            if (activeTimerRoutine) {
+              handleToggleRoutine(activeTimerRoutine.id)
+            }
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    } else {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+    }
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+    }
+  }, [isTimerRunning, activeTimerRoutine])
+
+  // LocalStorage senkronizasyonu
+  function saveRoutinesToLocal(updated: Routine[]) {
+    setRoutines(updated)
+    localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(updated))
+  }
+
+  function saveLogsToLocal(updated: RoutineLog[]) {
+    setRoutineLogs(updated)
+    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated))
+  }
+
+  // -------------------------------------------------------------------------
+  // Rutin Tamamlama / Geri Alma (Optimistic Toggle)
+  // -------------------------------------------------------------------------
+  async function handleToggleRoutine(routineId: string, customStatus?: 'completed' | 'micro_dose') {
+    const statusToSet = customStatus || (isLowBattery ? 'micro_dose' : 'completed')
+    const existingLog = routineLogs.find(
+      (l) => l.routine_id === routineId && l.log_date === selectedDate
+    )
+
+    let updatedLogs: RoutineLog[]
+
+    if (existingLog) {
+      // Zaten tamamlanmışsa geri al (sil)
+      updatedLogs = routineLogs.filter((l) => l.id !== existingLog.id)
+      saveLogsToLocal(updatedLogs)
+
+      const supabase = createClient()
+      try {
+        await supabase.from('routine_logs').delete().eq('id', existingLog.id)
+      } catch (err) {
+        console.error('Delete routine log error:', err)
+      }
+    } else {
+      // Yeni tamamlama kaydı oluştur
+      const newLog: RoutineLog = {
+        id: `log-${Date.now()}`,
+        user_id: 'local',
+        routine_id: routineId,
+        log_date: selectedDate,
+        status: statusToSet,
+        note: null,
+        duration_minutes: 0,
+        completed_at: new Date().toISOString(),
+      }
+
+      updatedLogs = [newLog, ...routineLogs]
+      saveLogsToLocal(updatedLogs)
+
+      const supabase = createClient()
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          newLog.user_id = user.id
+          await supabase.from('routine_logs').insert([newLog])
+        }
+      } catch (err) {
+        console.error('Insert routine log error:', err)
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Not Kaydetme
+  // -------------------------------------------------------------------------
+  async function handleSaveNote() {
+    if (!noteRoutine) return
+    const log = routineLogs.find(
+      (l) => l.routine_id === noteRoutine.id && l.log_date === selectedDate
+    )
+
+    if (log) {
+      const updatedLogs = routineLogs.map((l) =>
+        l.id === log.id ? { ...l, note: noteInput } : l
+      )
+      saveLogsToLocal(updatedLogs)
+      const supabase = createClient()
+      try {
+        await supabase.from('routine_logs').update({ note: noteInput }).eq('id', log.id)
+      } catch {}
+    } else {
+      // Önce rutini tamamla sonra not iliştir
+      const newLog: RoutineLog = {
+        id: `log-${Date.now()}`,
+        user_id: 'local',
+        routine_id: noteRoutine.id,
+        log_date: selectedDate,
+        status: isLowBattery ? 'micro_dose' : 'completed',
+        note: noteInput,
+        duration_minutes: 0,
+        completed_at: new Date().toISOString(),
+      }
+      const updatedLogs = [newLog, ...routineLogs]
+      saveLogsToLocal(updatedLogs)
+      const supabase = createClient()
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) newLog.user_id = user.id
+        await supabase.from('routine_logs').insert([newLog])
+      } catch {}
+    }
+
+    setNoteRoutine(null)
+    setNoteInput('')
+  }
+
+  // -------------------------------------------------------------------------
+  // Form / CRUD
+  // -------------------------------------------------------------------------
+  function handleOpenCreateModal() {
+    setEditingRoutine(null)
+    setFormData({
+      title: '',
+      icon: '☀️',
+      time_block: getCurrentTimeBlock(),
+      frequency: 'daily',
+      target_duration_minutes: 15,
+      minimum_effective_dose: '',
+      dream_id: '',
+      identity_persona: '',
+    })
+    setIsFormOpen(true)
+  }
+
+  function handleOpenEditModal(r: Routine) {
+    setEditingRoutine(r)
+    setFormData({
+      title: r.title,
+      icon: r.icon,
+      time_block: r.time_block as TimeBlock,
+      frequency: r.frequency,
+      target_duration_minutes: r.target_duration_minutes || 15,
+      minimum_effective_dose: r.minimum_effective_dose || '',
+      dream_id: r.dream_id || '',
+      identity_persona: r.identity_persona || '',
+    })
+    setIsFormOpen(true)
+  }
+
+  async function handleSaveRoutine(e: React.FormEvent) {
+    e.preventDefault()
+    if (!formData.title.trim()) return
+
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const userId = user?.id || 'local'
+
+    if (editingRoutine) {
+      const updated: Routine = {
+        ...editingRoutine,
+        title: formData.title,
+        icon: formData.icon,
+        time_block: formData.time_block,
+        frequency: formData.frequency as any,
+        target_duration_minutes: Number(formData.target_duration_minutes) || 15,
+        minimum_effective_dose: formData.minimum_effective_dose || null,
+        dream_id: formData.dream_id || null,
+        identity_persona: formData.identity_persona || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const updatedList = routines.map((r) => (r.id === editingRoutine.id ? updated : r))
+      saveRoutinesToLocal(updatedList)
+
+      try {
+        await supabase.from('routines').update(updated).eq('id', editingRoutine.id)
+      } catch {}
+    } else {
+      const newRoutine: Routine = {
+        id: `routine-${Date.now()}`,
+        user_id: userId,
+        title: formData.title,
+        icon: formData.icon,
+        time_block: formData.time_block,
+        frequency: formData.frequency as any,
+        target_days: [1, 2, 3, 4, 5, 6, 7],
+        target_duration_minutes: Number(formData.target_duration_minutes) || 15,
+        minimum_effective_dose: formData.minimum_effective_dose || null,
+        dream_id: formData.dream_id || null,
+        identity_persona: formData.identity_persona || null,
+        is_active: true,
+        order_index: routines.length,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      const updatedList = [...routines, newRoutine]
+      saveRoutinesToLocal(updatedList)
+
+      try {
+        if (user) {
+          await supabase.from('routines').insert([newRoutine])
+        }
+      } catch {}
+    }
+
+    setIsFormOpen(false)
+    setEditingRoutine(null)
+  }
+
+  async function handleDeleteRoutine(routineId: string) {
+    if (!confirm('Bu rutini silmek istediğinize emin misiniz?')) return
+    const updated = routines.filter((r) => r.id !== routineId)
+    saveRoutinesToLocal(updated)
+
+    const supabase = createClient()
+    try {
+      await supabase.from('routines').delete().eq('id', routineId)
+    } catch {}
+  }
+
+  // -------------------------------------------------------------------------
+  // Timer Başlatma
+  // -------------------------------------------------------------------------
+  function handleStartTimer(routine: Routine) {
+    setActiveTimerRoutine(routine)
+    setTimerSecondsLeft((routine.target_duration_minutes || 25) * 60)
+    setIsTimerRunning(true)
+    setIsTimerOpen(true)
+  }
+
+  // -------------------------------------------------------------------------
+  // Veri ve Metrik Hesaplamaları
+  // -------------------------------------------------------------------------
+  const dailyCompletion = calculateDailyCompletion(routines, routineLogs, selectedDate)
+  const weeklyDays = generateWeeklyDaySummaries(selectedDate, routines, routineLogs)
+  const constellationGraph = generateConstellationGraph(routines, routineLogs, selectedDate)
+
+  // Aylık takvim
+  const calYear = calendarMonthDate.getFullYear()
+  const calMonth = calendarMonthDate.getMonth()
+  const monthCalendarDays = generateMonthCalendar(calYear, calMonth, routines, routineLogs)
+  const monthName = calendarMonthDate.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+
+  const timeBlocks: TimeBlock[] = ['morning', 'afternoon', 'evening', 'night']
+
+  return (
+    <div className="space-y-6">
+      {/* 1. Üst Başlık & Kontroller */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <PageHeader
+          title="Günlük Rutinler & Gökyüzü"
+          description="Günün ritmini yakala, zincirleri kenetle ve kendi takımyıldızını gökyüzünde inşa et."
+        />
+
+        <div className="flex items-center gap-2">
+          {/* Düşük Pil Modu Anahtarı */}
+          <button
+            type="button"
+            onClick={() => setIsLowBattery(!isLowBattery)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+              isLowBattery
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/10'
+                : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted'
+            }`}
+            title="Enerjinin düşük olduğu günlerde rutinleri 2 dakikalık mikro-doz versiyonuna çevirir. Zincirin yanmaz!"
+          >
+            {isLowBattery ? (
+              <BatteryCharging className="h-4 w-4 text-amber-400 animate-pulse" />
+            ) : (
+              <Battery className="h-4 w-4" />
+            )}
+            <span>{isLowBattery ? 'Düşük Pil: Minimum Doz Aktif' : 'Düşük Pil Modu'}</span>
+          </button>
+
+          {/* Yeni Rutin Ekle Butonu */}
+          <Button onClick={handleOpenCreateModal} className="gap-2">
+            <Plus className="h-4 w-4" />
+            <span>Yeni Rutin Ekle</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. Haftalık Gün Şeridi (Weekly Day Strip) */}
+      <Card className="border-border/60 bg-card/40 backdrop-blur-sm">
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 pr-2 border-r border-border/50">
+              <CalendarIcon className="h-4 w-4 text-primary" />
+              <span className="font-medium hidden sm:inline">Haftalık Akış:</span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-1 justify-between">
+              {weeklyDays.map((day) => {
+                const isSelected = day.isSelected
+                const isToday = day.isToday
+                const isFull = day.completionRate === 100 && day.totalRoutines > 0
+
+                return (
+                  <button
+                    key={day.date}
+                    onClick={() => setSelectedDate(day.date)}
+                    className={`flex flex-col items-center justify-center py-2 px-3 sm:px-4 rounded-xl transition-all min-w-[58px] sm:min-w-[70px] ${
+                      isSelected
+                        ? 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary/40'
+                        : isToday
+                        ? 'bg-muted/80 text-foreground border border-primary/50'
+                        : 'bg-background/40 hover:bg-muted text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-wider opacity-80">
+                      {day.dayName}
+                    </span>
+                    <span className="text-sm sm:text-base font-bold my-0.5">
+                      {day.dayNumber}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {isFull ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
+                      ) : day.completedCount > 0 ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      ) : (
+                        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            {selectedDate !== todayStr && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDate(todayStr)}
+                className="shrink-0 text-xs gap-1 ml-2"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Bugüne Dön</span>
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 3. İki Sütunlu Ana Gövde (Sol: Komuta Masası | Sağ: Takımyıldızı & Takvim) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* SOL SÜTUN: GÜNÜN KOMUTA MASASI (lg:col-span-7) */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* Canlı Günlük İlerleme Özeti */}
+          <Card className="border-border/60 bg-gradient-to-r from-card to-card/50 overflow-hidden relative">
+            <div
+              className="absolute bottom-0 left-0 top-0 bg-primary/10 transition-all duration-500"
+              style={{ width: `${dailyCompletion.percent}%` }}
+            />
+            <CardContent className="p-4 relative z-10 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {parseYmdToDate(selectedDate).toLocaleDateString('tr-TR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                  </span>
+                  {dailyCompletion.isPerfectDay && (
+                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-[10px]">
+                      <Sparkles className="h-3 w-3" /> Kusursuz Gün
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-xl font-bold mt-0.5">
+                  %{dailyCompletion.percent} Tamamlandı
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    ({dailyCompletion.completedCount}/{dailyCompletion.totalActive} Rutin)
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-end">
+                  <Flame className="h-4 w-4 text-amber-500" />
+                  <span className="font-semibold text-foreground">
+                    {constellationGraph.formationName.split(' ')[0]}
+                  </span>
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  {dailyCompletion.percent === 100
+                    ? 'Gökyüzü tamamen kenetlendi'
+                    : `${dailyCompletion.totalActive - dailyCompletion.completedCount} adım kaldı`}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Düşük Pil Uyarısı */}
+          {isLowBattery && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center gap-2">
+              <BatteryCharging className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>
+                <strong>Düşük Pil Modu Açık:</strong> Bugün yüksek irade gerektiren hedefler yerine sadece 2 dakikalık <em>Minimum Etkili Dozları</em> tamamla. Ateşi söndürmediğin sürece zincir kırılmaz!
+              </span>
+            </div>
+          )}
+
+          {/* Zaman Dilimlerine Göre Gruplu Rutinler */}
+          {timeBlocks.map((block) => {
+            const blockMeta = TIME_BLOCK_META[block]
+            const blockRoutines = filterRoutinesByTimeBlock(routines, block)
+
+            if (blockRoutines.length === 0) return null
+
+            return (
+              <div key={block} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{blockMeta.icon}</span>
+                    <h3 className="text-sm font-semibold text-foreground tracking-wide">
+                      {blockMeta.label}
+                    </h3>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      ({blockMeta.timeRange})
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {
+                      blockRoutines.filter((r) =>
+                        routineLogs.some(
+                          (l) => l.routine_id === r.id && l.log_date === selectedDate
+                        )
+                      ).length
+                    }
+                    /{blockRoutines.length}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {blockRoutines.map((routine) => {
+                    const todayLog = routineLogs.find(
+                      (l) => l.routine_id === routine.id && l.log_date === selectedDate
+                    )
+                    const isCompleted = !!todayLog
+                    const streak = calculateStreak(routine.id, routineLogs, selectedDate)
+
+                    return (
+                      <div
+                        key={routine.id}
+                        className={`group relative flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 ${
+                          isCompleted
+                            ? todayLog?.status === 'micro_dose'
+                              ? 'bg-amber-500/5 border-amber-500/30'
+                              : 'bg-emerald-500/5 border-emerald-500/30'
+                            : 'bg-card/70 border-border/70 hover:border-border'
+                        }`}
+                      >
+                        {/* Sol Taraf: Tik Butonu ve Bilgiler */}
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRoutine(routine.id)}
+                            className={`shrink-0 h-7 w-7 rounded-lg flex items-center justify-center transition-all ${
+                              isCompleted
+                                ? todayLog?.status === 'micro_dose'
+                                  ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.5)]'
+                                  : 'bg-emerald-500 text-black shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                                : 'border-2 border-muted-foreground/30 hover:border-primary text-transparent'
+                            }`}
+                          >
+                            <Check className="h-4 w-4 stroke-[3]" />
+                          </button>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">{routine.icon}</span>
+                              <span
+                                className={`text-sm font-semibold truncate ${
+                                  isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
+                                }`}
+                              >
+                                {routine.title}
+                              </span>
+
+                              {/* Streak Rozeti */}
+                              {streak.currentStreak > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-400 gap-0.5"
+                                >
+                                  <Flame className="h-3 w-3" />
+                                  {streak.currentStreak}g
+                                </Badge>
+                              )}
+
+                              {streak.isCracked && !isCompleted && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-rose-500/40 bg-rose-500/10 text-rose-400 gap-0.5"
+                                  title="Dün kaçırıldı! Bugün yaparsan zincir kurtarılacak (Never Miss Twice)."
+                                >
+                                  <AlertTriangle className="h-3 w-3" />
+                                  Çatlak!
+                                </Badge>
+                              )}
+
+                              {streak.isKintsugi && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-yellow-500/40 bg-yellow-500/10 text-yellow-300 gap-0.5"
+                                  title="Altın dikişle onarıldı (Kintsugi). Asla iki kez kaçırmadın!"
+                                >
+                                  ✨ Onarıldı
+                                </Badge>
+                              )}
+                            </div>
+
+                            {/* Açıklama / Hedef / Minimum Doz */}
+                            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                              {isLowBattery && routine.minimum_effective_dose ? (
+                                <span className="text-amber-400/90 font-medium">
+                                  🎯 Mikro: {routine.minimum_effective_dose}
+                                </span>
+                              ) : (
+                                <span>{routine.target_duration_minutes || 15} dk</span>
+                              )}
+
+                              {routine.identity_persona && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-primary/80 font-medium">
+                                    {routine.identity_persona}
+                                  </span>
+                                </>
+                              )}
+
+                              {todayLog?.note && (
+                                <>
+                                  <span>•</span>
+                                  <span className="italic text-muted-foreground/80 truncate max-w-[140px]">
+                                    "{todayLog.note}"
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Sağ Taraf: Hızlı Araçlar (Sayaç, Not, Düzenle) */}
+                        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                          {/* Sayaç Başlat */}
+                          <button
+                            type="button"
+                            onClick={() => handleStartTimer(routine)}
+                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                            title="Zen Odak Sayacını Başlat"
+                          >
+                            <Clock className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Not Ekle */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNoteRoutine(routine)
+                              setNoteInput(todayLog?.note || '')
+                            }}
+                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                            title="Bugün için not ekle"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Düzenle */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(routine)}
+                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                            title="Rutini Düzenle"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Sil */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRoutine(routine.id)}
+                            className="p-1.5 rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400"
+                            title="Rutini Sil"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+          {routines.length === 0 && (
+            <Card className="border-dashed border-border p-8 text-center">
+              <Orbit className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+              <h4 className="text-sm font-semibold">Henüz Bir Rutin Eklenmedi</h4>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">
+                Günün ritmini yakalamak için ilk alışkanlığını oluşturabilirsin.
+              </p>
+              <Button size="sm" onClick={handleOpenCreateModal}>
+                + İlk Rutinini Ekle
+              </Button>
+            </Card>
+          )}
+        </div>
+
+        {/* SAĞ SÜTUN: TAKIMYILDIZI TUVALİ & AYLIK TAKVİM (lg:col-span-5) */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* ÜST KUTU: İNTERAKTİF TAKIMYILDIZI GÖKYÜZÜ (COSMOS CANVAS) */}
+          <Card className="border-border/60 bg-[#070a14] overflow-hidden relative shadow-xl">
+            <div className="p-4 border-b border-white/5 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-emerald-400" />
+                  <h3 className="text-sm font-semibold text-white tracking-wide">
+                    Takımyıldızı Gökyüzü
+                  </h3>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {constellationGraph.formationDescription}
+                </p>
+              </div>
+
+              <Badge
+                variant="outline"
+                className="border-emerald-500/40 text-emerald-300 bg-emerald-500/10 text-xs px-2"
+              >
+                {constellationGraph.formationName}
+              </Badge>
+            </div>
+
+            {/* Kozmik SVG Alanı */}
+            <div className="relative w-full aspect-square max-h-[360px] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-950/40 via-[#070a14] to-[#04060b] flex items-center justify-center p-4">
+              {/* Arka Plan Tozu & Rastgele Minik Yıldızlar */}
+              <div className="absolute inset-0 opacity-40 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
+
+              <svg viewBox="0 0 100 100" className="w-full h-full relative z-10 overflow-visible">
+                <defs>
+                  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="2" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                  <linearGradient id="activeBeam" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.9" />
+                  </linearGradient>
+                </defs>
+
+                {/* Işık Bağlantıları (Edges) */}
+                {constellationGraph.edges.map((edge, idx) => (
+                  <line
+                    key={`edge-${idx}`}
+                    x1={edge.fromX}
+                    y1={edge.fromY}
+                    x2={edge.toX}
+                    y2={edge.toY}
+                    stroke={edge.isActive ? 'url(#activeBeam)' : '#1e293b'}
+                    strokeWidth={edge.isActive ? '1.8' : '0.8'}
+                    strokeDasharray={edge.isActive ? 'none' : '2 2'}
+                    filter={edge.isActive ? 'url(#glow)' : undefined}
+                    className="transition-all duration-700"
+                  />
+                ))}
+
+                {/* Yıldız Düğümleri (Nodes) */}
+                {constellationGraph.nodes.map((node) => {
+                  const isDone = node.isCompleted
+
+                  return (
+                    <g
+                      key={node.id}
+                      className="cursor-pointer group/star transition-transform duration-300"
+                      onClick={() => handleToggleRoutine(node.routineId)}
+                    >
+                      {/* Dış Halka Işıma */}
+                      {isDone && (
+                        <circle
+                          cx={node.x}
+                          cy={node.y}
+                          r="6"
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="0.5"
+                          opacity="0.6"
+                          className="animate-ping origin-center"
+                        />
+                      )}
+
+                      {/* Ana Yıldız Gövdesi */}
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={isDone ? '3.8' : '2.8'}
+                        fill={isDone ? '#10b981' : '#334155'}
+                        stroke={isDone ? '#6ee7b7' : '#475569'}
+                        strokeWidth="1"
+                        filter={isDone ? 'url(#glow)' : undefined}
+                        className="transition-all duration-500 group-hover/star:scale-125"
+                      />
+
+                      {/* Emoji / İkon Etiketi */}
+                      <text
+                        x={node.x}
+                        y={node.y - 6}
+                        textAnchor="middle"
+                        className="text-[4.5px] fill-slate-300 font-sans pointer-events-none select-none"
+                      >
+                        {node.icon} {node.title.slice(0, 10)}
+                      </text>
+                    </g>
+                  )
+                })}
+              </svg>
+
+              {/* Ortada Pusula / Boş Durum Bilgisi */}
+              {constellationGraph.nodes.length === 0 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
+                  <Compass className="h-8 w-8 text-slate-600 mb-2" />
+                  <p className="text-xs text-slate-400">
+                    Rutin eklediğinizde gökyüzü haritası aydınlanacaktır.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* ALT KUTU: AYLIK RİTİM TAKVİMİ (MONTHLY CALENDAR HEAT GRID) */}
+          <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+            <CardContent className="p-4 space-y-3">
+              {/* Ay Başlığı ve Navigasyon */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold capitalize">
+                    {monthName}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCalendarMonthDate(new Date(calYear, calMonth - 1, 1))
+                    }
+                    className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="Önceki Ay"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarMonthDate(new Date())}
+                    className="text-[11px] font-medium px-2 py-0.5 rounded hover:bg-muted text-muted-foreground"
+                  >
+                    Bugün
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCalendarMonthDate(new Date(calYear, calMonth + 1, 1))
+                    }
+                    className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="Sonraki Ay"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Hafta Günleri Başlığı */}
+              <div className="grid grid-cols-7 text-center text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pb-1 border-b border-border/50">
+                <span>Pzt</span>
+                <span>Sal</span>
+                <span>Çar</span>
+                <span>Per</span>
+                <span>Cum</span>
+                <span>Cmt</span>
+                <span>Paz</span>
+              </div>
+
+              {/* Takvim Günleri Izgarası */}
+              <div className="grid grid-cols-7 gap-1">
+                {monthCalendarDays.map((day, idx) => {
+                  const isSelected = day.date === selectedDate
+                  const isFull = day.isPerfect
+
+                  return (
+                    <button
+                      key={`cal-${day.date}-${idx}`}
+                      onClick={() => setSelectedDate(day.date)}
+                      className={`h-9 flex flex-col items-center justify-center rounded-lg text-xs transition-all relative ${
+                        isSelected
+                          ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                          : day.isToday
+                          ? 'border border-primary/60 text-foreground font-semibold bg-muted/30'
+                          : day.isCurrentMonth
+                          ? 'text-foreground/90 hover:bg-muted/70'
+                          : 'text-muted-foreground/30 hover:bg-muted/40'
+                      }`}
+                    >
+                      <span className="text-[11px] leading-none">{day.dayNumber}</span>
+
+                      {/* Tamamlama Gösterge Noktası */}
+                      <div className="mt-1 flex items-center justify-center">
+                        {isFull ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#10b981]" />
+                        ) : day.hasCompleted ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                        ) : null}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-2 border-t border-border/40">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_4px_#10b981]" />
+                  Tamamlandı (%100)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" />
+                  Kısmi Tamamlama
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* 4. Rutin Ekleme / Düzenleme Modalı */}
+      <Modal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        title={editingRoutine ? 'Rutini Düzenle' : 'Yeni Rutin / Ritüel Ekle'}
+      >
+        <form onSubmit={handleSaveRoutine} className="space-y-4">
+          <div className="grid grid-cols-4 gap-3">
+            <div className="col-span-1">
+              <label className="text-xs font-semibold block mb-1">İkon</label>
+              <Input
+                value={formData.icon}
+                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                className="text-center text-lg"
+                placeholder="☀️"
+                maxLength={4}
+                required
+              />
+            </div>
+            <div className="col-span-3">
+              <label className="text-xs font-semibold block mb-1">Rutin Başlığı</label>
+              <Input
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Örn: 90 dk Kesintisiz Kod / Deep Work"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold block mb-1">Zaman Dilimi</label>
+              <Select
+                value={formData.time_block}
+                onChange={(e) =>
+                  setFormData({ ...formData, time_block: e.target.value as TimeBlock })
+                }
+              >
+                <option value="morning">🌅 Sabah (06:00 - 12:00)</option>
+                <option value="afternoon">☀️ Gün İçi (12:00 - 18:00)</option>
+                <option value="evening">🌙 Akşam (18:00 - 00:00)</option>
+                <option value="night">🌌 Gece (00:00 - 06:00)</option>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold block mb-1">Hedef Süre (Dakika)</label>
+              <Input
+                type="number"
+                min="1"
+                max="240"
+                value={formData.target_duration_minutes}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    target_duration_minutes: Number(e.target.value),
+                  })
+                }
+                placeholder="15"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold block mb-1">
+              Minimum Etkili Doz (Düşük Pil Hedefi)
+            </label>
+            <Input
+              value={formData.minimum_effective_dose}
+              onChange={(e) =>
+                setFormData({ ...formData, minimum_effective_dose: e.target.value })
+              }
+              placeholder="Zor günlerde: 1 sayfa oku / 2 dk esne / 1 satır kod yaz"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Yorgun olduğunda zinciri kurtaracak 2 dakikalık acil durum görevi.
+            </p>
+          </div>
+
+          {/* Hayallerim & Kimlik Köprüsü */}
+          <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+              <Compass className="h-4 w-4" />
+              <span>Hayallerim & Kimlik Köprüsü (Life OS)</span>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Bağlı Hayal / Vizyon
+              </label>
+              <Select
+                value={formData.dream_id}
+                onChange={(e) => {
+                  const selected = dreams.find((d) => d.id === e.target.value)
+                  setFormData({
+                    ...formData,
+                    dream_id: e.target.value,
+                    identity_persona: selected?.identity_persona || formData.identity_persona,
+                  })
+                }}
+              >
+                <option value="">(İsteğe bağlı bir hayale bağla)</option>
+                {dreams.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title} ({d.identity_persona || 'Kimliksiz'})
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Hedeflenen Kimlik Personası
+              </label>
+              <Input
+                value={formData.identity_persona}
+                onChange={(e) =>
+                  setFormData({ ...formData, identity_persona: e.target.value })
+                }
+                placeholder="Örn: Bağımsız Üretici, Sakin Zihin, Dayanıklı Sporcu"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border/50">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsFormOpen(false)}
+            >
+              Vazgeç
+            </Button>
+            <Button type="submit">
+              {editingRoutine ? 'Değişiklikleri Kaydet' : 'Rutini Oluştur'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 5. Mini Zen Odak Sayacı Modalı (Pomodoro) */}
+      <Modal
+        isOpen={isTimerOpen}
+        onClose={() => {
+          setIsTimerOpen(false)
+          setIsTimerRunning(false)
+        }}
+        title={`Zen Odak Sayacı: ${activeTimerRoutine?.title || 'Odak'}`}
+      >
+        <div className="text-center py-6 space-y-6">
+          <div className="inline-block p-8 rounded-full border-4 border-primary/30 bg-primary/5 shadow-2xl relative">
+            <div className="text-5xl sm:text-6xl font-mono font-bold tracking-tight text-foreground">
+              {String(Math.floor(timerSecondsLeft / 60)).padStart(2, '0')}:
+              {String(timerSecondsLeft % 60).padStart(2, '0')}
+            </div>
+            <div className="text-xs text-muted-foreground mt-2 font-medium">
+              {activeTimerRoutine?.identity_persona
+                ? `Oy Verilen Kimlik: ${activeTimerRoutine.identity_persona}`
+                : 'Derin Odak Seansı'}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              size="lg"
+              variant={isTimerRunning ? 'outline' : 'default'}
+              onClick={() => setIsTimerRunning(!isTimerRunning)}
+              className="gap-2 px-6"
+            >
+              {isTimerRunning ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              <span>{isTimerRunning ? 'Duraklat' : 'Başlat'}</span>
+            </Button>
+
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={() => {
+                setIsTimerRunning(false)
+                setTimerSecondsLeft((activeTimerRoutine?.target_duration_minutes || 25) * 60)
+              }}
+              className="gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>Sıfırla</span>
+            </Button>
+
+            <Button
+              size="lg"
+              variant="secondary"
+              onClick={() => {
+                if (activeTimerRoutine) {
+                  handleToggleRoutine(activeTimerRoutine.id)
+                  setIsTimerOpen(false)
+                  setIsTimerRunning(false)
+                }
+              }}
+              className="gap-2 text-emerald-400"
+            >
+              <Check className="h-5 w-5" />
+              <span>Tamamlandı İşaretle</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 6. Hızlı Not Ekleme Modalı */}
+      <Modal
+        isOpen={!!noteRoutine}
+        onClose={() => setNoteRoutine(null)}
+        title={`Günün Notu: ${noteRoutine?.title || ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            {selectedDate} tarihi için bu rutine dair kısa bir hatıra veya ölçüm not et (Örn: "24 sayfa okundu", "3km koşuldu").
+          </p>
+          <Input
+            value={noteInput}
+            onChange={(e) => setNoteInput(e.target.value)}
+            placeholder="Notunu yaz..."
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setNoteRoutine(null)}>
+              İptal
+            </Button>
+            <Button onClick={handleSaveNote}>Notu Kaydet</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+export default function RoutinesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-muted-foreground text-sm">
+          Gökyüzü yükleniyor...
+        </div>
+      }
+    >
+      <RoutinesPageContent />
+    </Suspense>
+  )
+}
