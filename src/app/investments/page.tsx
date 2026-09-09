@@ -580,7 +580,7 @@ function InvestmentsContent() {
       {/* Top Header */}
       <PageHeader
         title="Yatırımlar & Portföy"
-        description="BIST hisseleri, altın, fon ve kripto varlıklarınızı canlı piyasa fiyatlarıyla takip edin; net servetinizi büyütün."
+        description="BIST, fon, altın ve kripto varlık portföyü"
         actions={
           <div className="flex items-center gap-2">
             <Button

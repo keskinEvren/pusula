@@ -24,6 +24,8 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useToast } from '@/lib/toast-context'
 import type { Debt, Account, Transaction } from '@/types/database'
 
@@ -56,7 +58,7 @@ function DebtsContent() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Alacak' | 'Borç'>('ALL')
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Açık' | 'Kapatıldı'>('ALL')
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -291,16 +293,14 @@ function DebtsContent() {
   // Save Edit
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!selectedDebt) return
     setSubmitting(true)
     try {
       const supabase = createClient()
       const principalNum = parseFloat(rowForm.principal || '0')
       const pastNum = parseFloat(rowForm.past_payments || '0')
-
-      // Preserve any new payments previously deducted
-      const existing = debts.find((d) => d.id === rowForm.id)
-      const existingNewPayments = existing
-        ? Math.max(0, Number(existing.principal) - Number(existing.past_payments) - Number(existing.remaining))
+      const existingNewPayments = selectedDebt
+        ? Math.max(0, Number(selectedDebt.principal) - Number(selectedDebt.past_payments) - Number(selectedDebt.remaining))
         : 0
 
       const remainingNum = Math.max(0, principalNum - pastNum - existingNewPayments)
@@ -317,7 +317,7 @@ function DebtsContent() {
           remaining: remainingNum,
           status: remainingNum <= 0 ? 'Kapatıldı' : 'Açık',
         })
-        .eq('id', rowForm.id)
+        .eq('id', selectedDebt.id)
 
       if (error) throw error
       setIsEditModalOpen(false)
@@ -330,42 +330,43 @@ function DebtsContent() {
     }
   }
 
-  // Delete Row
   const handleDelete = async (id: string) => {
-    if (!confirm('Bu satırı silmek istediğinize emin misiniz?')) return
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.from('debts').delete().eq('id', id)
-      if (error) throw error
-      setDebts(debts.filter((d) => d.id !== id))
-      toast.success('Kayıt silindi.')
-    } catch (err: any) {
-      toast.error(err.message || 'Silinemedi')
+    if (!confirm('Bu satırı ve ilişkili hareket bağlantılarını silmek istediğinize emin misiniz?')) {
+      return
+    }
+
+    const supabase = createClient()
+    const { error } = await supabase.from('debts').delete().eq('id', id)
+
+    if (error) {
+      toast.error('Silinemedi: ' + error.message)
+    } else {
+      toast.success('Satır silindi.')
+      await loadData()
     }
   }
 
-  // Calculations for summary
+  // Summary Metrics
   const totalReceivables = debts
-    .filter((d) => d.type === 'Alacak')
+    .filter((d) => d.type === 'Alacak' && d.status !== 'Kapatıldı')
     .reduce((sum, d) => sum + Number(d.remaining || 0), 0)
 
   const totalDebts = debts
-    .filter((d) => d.type === 'Borç')
+    .filter((d) => d.type === 'Borç' && d.status !== 'Kapatıldı')
     .reduce((sum, d) => sum + Number(d.remaining || 0), 0)
 
   const netBalance = totalReceivables - totalDebts
 
-  // Filtered debts
-  const filteredDebts = debts.filter((d) => {
+  // Filtered & Chronological Sorted List
+  const filteredDebts = sortDebtsChronological(debts).filter((d) => {
     if (typeFilter !== 'ALL' && d.type !== typeFilter) return false
-    if (statusFilter === 'OPEN' && d.remaining <= 0) return false
-    if (statusFilter === 'CLOSED' && d.remaining > 0) return false
-    if (searchQuery) {
+    if (statusFilter !== 'ALL' && d.status !== statusFilter) return false
+    if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
-      const matchPerson = d.person_or_entity?.toLowerCase().includes(q)
-      const matchDesc = d.description?.toLowerCase().includes(q)
-      const matchCat = d.category?.toLowerCase().includes(q)
-      if (!matchPerson && !matchDesc && !matchCat) return false
+      const matchP = d.person_or_entity.toLowerCase().includes(q)
+      const matchD = (d.description || '').toLowerCase().includes(q)
+      const matchC = d.category.toLowerCase().includes(q)
+      if (!matchP && !matchD && !matchC) return false
     }
     return true
   })
@@ -374,8 +375,8 @@ function DebtsContent() {
     <div className="space-y-6">
       {/* Top PageHeader & Actions */}
       <PageHeader
-        title="Borç & Alacak Takip Tablosu"
-        description="Maaş hakedişleri ve şahsi borçların dönem dönem takibi. Ödeme aldıkça satırdan doğrudan düşün."
+        title="Borç & Alacak"
+        description="Maaş hakedişleri ve şahsi borçların dönem takibi"
         actions={
           <Button onClick={handleOpenAdd} className="gap-2 shadow-sm text-xs h-9 font-semibold">
             <Plus className="h-4 w-4" />
@@ -384,42 +385,36 @@ function DebtsContent() {
         }
       />
 
-      {/* Summary Banner */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 flex items-center justify-between">
+      {/* Summary Segmented Metric Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm">
+        <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
-              Kesin Alacaklarım (Kalan)
-            </div>
-            <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">
+            <div className="text-xs text-muted-foreground font-medium">Kesin Alacaklar (Kalan)</div>
+            <div className="text-xl font-semibold tracking-tight text-emerald-400 tabular-nums mt-0.5">
               {formatCurrency(totalReceivables)}
             </div>
           </div>
-          <div className="rounded-full bg-emerald-500/20 p-2 text-emerald-400">
-            <ArrowUpRight className="h-5 w-5" />
-          </div>
+          <Badge variant="success" className="text-[10px] font-mono">
+            Alacak
+          </Badge>
         </div>
 
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 flex items-center justify-between">
+        <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider">
-              Toplam Borcum (Kalan)
-            </div>
-            <div className="text-xl font-bold font-mono text-rose-400 mt-0.5">
+            <div className="text-xs text-muted-foreground font-medium">Toplam Borç (Kalan)</div>
+            <div className="text-xl font-semibold tracking-tight text-rose-400 tabular-nums mt-0.5">
               {formatCurrency(totalDebts)}
             </div>
           </div>
-          <div className="rounded-full bg-rose-500/20 p-2 text-rose-400">
-            <TrendingDown className="h-5 w-5" />
-          </div>
+          <Badge variant="destructive" className="text-[10px] font-mono">
+            Borç
+          </Badge>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between">
+        <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Net Alacak Fazlası
-            </div>
-            <div className="text-xl font-bold font-mono text-foreground mt-0.5">
+            <div className="text-xs text-muted-foreground font-medium">Net Bakiye</div>
+            <div className="text-xl font-semibold tracking-tight text-foreground tabular-nums mt-0.5">
               {formatCurrency(netBalance)}
             </div>
           </div>
@@ -481,8 +476,8 @@ function DebtsContent() {
             className="h-8 text-xs w-28 bg-background"
           >
             <option value="ALL">Tüm Durumlar</option>
-            <option value="OPEN">Açıklar</option>
-            <option value="CLOSED">Kapatılanlar</option>
+            <option value="Açık">Açıklar</option>
+            <option value="Kapatıldı">Kapatılanlar</option>
           </Select>
         </div>
       </div>
@@ -535,50 +530,49 @@ function DebtsContent() {
                       }`}
                     >
                       {/* No */}
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-muted-foreground">
+                      <td className="py-2.5 px-3 text-center font-mono text-[11px] text-muted-foreground/60">
                         {idx + 1}
                       </td>
 
                       {/* Tür */}
                       <td className="py-2.5 px-3">
-                        <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                        <span className="text-xs text-muted-foreground font-medium">
                           {item.type}
-                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
                         </span>
                       </td>
 
                       {/* Kategori */}
-                      <td className="py-2.5 px-3 font-medium text-foreground">
+                      <td className="py-2.5 px-3 text-xs text-muted-foreground">
                         {item.category}
                       </td>
 
                       {/* Kişi / Kurum */}
-                      <td className="py-2.5 px-4 font-semibold text-foreground whitespace-nowrap">
+                      <td className="py-2.5 px-4 text-xs font-semibold text-foreground whitespace-nowrap">
                         {item.person_or_entity}
                       </td>
 
                       {/* Açıklama */}
-                      <td className="py-2.5 px-4 text-foreground/90 font-medium">
+                      <td className="py-2.5 px-4 text-xs text-muted-foreground/80 truncate max-w-[200px]">
                         {item.description || '-'}
                       </td>
 
                       {/* Ana Tutar */}
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-foreground whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-muted-foreground whitespace-nowrap">
                         {formatCurrency(principal)}
                       </td>
 
                       {/* Geçmiş Ödeme / Tahsil */}
-                      <td className="py-2.5 px-3 text-right font-mono text-muted-foreground whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-muted-foreground/60 whitespace-nowrap">
                         {pastPayments > 0 ? formatCurrency(pastPayments) : '-'}
                       </td>
 
-                      {/* Yeni Hareketlerden (Highlighted soft green background like in Excel) */}
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-950/20 whitespace-nowrap">
+                      {/* Yeni Hareketlerden */}
+                      <td className="py-2.5 px-3 text-right font-mono text-xs tabular-nums text-emerald-400 bg-emerald-500/5 whitespace-nowrap">
                         {newPayments > 0 ? formatCurrency(newPayments) : '-'}
                       </td>
 
-                      {/* Kalan (Bold green text like in Excel) */}
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      {/* Kalan */}
+                      <td className="py-2.5 px-3 text-right font-mono text-xs font-semibold tabular-nums text-foreground whitespace-nowrap">
                         {remaining > 0 ? formatCurrency(remaining) : '-'}
                       </td>
 
@@ -848,19 +842,36 @@ function DebtsContent() {
         title="Yeni Borç / Alacak Satırı Ekle"
       >
         <form onSubmit={handleSaveAdd} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Tür</label>
+            <SegmentedControl<'Alacak' | 'Borç'>
+              value={rowForm.type}
+              onChange={(val) => setRowForm({ ...rowForm, type: val })}
+              options={[
+                { value: 'Alacak', label: 'Alacak (Gelecek Para)', activeClassName: 'text-emerald-400' },
+                { value: 'Borç', label: 'Borç (Ödenecek Para)', activeClassName: 'text-rose-400' },
+              ]}
+            />
+          </div>
+
+          <HeroCurrencyInput
+            label="Ana Tutar"
+            type={rowForm.type === 'Alacak' ? 'income' : 'expense'}
+            value={rowForm.principal}
+            onChange={(val) => setRowForm({ ...rowForm, principal: val })}
+            placeholder="0.00"
+          />
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Tür</label>
-              <Select
-                value={rowForm.type}
-                onChange={(e) =>
-                  setRowForm({ ...rowForm, type: e.target.value as 'Borç' | 'Alacak' })
-                }
+              <label className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
+              <Input
+                required
+                value={rowForm.person_or_entity}
+                onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
+                placeholder="Örn: Hızır Global AŞ, Akbank"
                 className="text-xs"
-              >
-                <option value="Alacak">Alacak</option>
-                <option value="Borç">Borç</option>
-              </Select>
+              />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-foreground">Kategori</label>
@@ -875,17 +886,6 @@ function DebtsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
-            <Input
-              required
-              value={rowForm.person_or_entity}
-              onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
-              placeholder="Örn: Hızır Global AŞ, Akbank"
-              className="text-xs"
-            />
-          </div>
-
-          <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">Açıklama</label>
             <Input
               required
@@ -896,32 +896,17 @@ function DebtsContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Ana Tutar</label>
-              <Input
-                type="number"
-                step="0.01"
-                required
-                prefix="₺"
-                value={rowForm.principal}
-                onChange={(e) => setRowForm({ ...rowForm, principal: e.target.value })}
-                placeholder="63300.00"
-                className="text-xs font-mono font-semibold"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme</label>
-              <Input
-                type="number"
-                step="0.01"
-                prefix="₺"
-                value={rowForm.past_payments}
-                onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
-                placeholder="0.00"
-                className="text-xs font-mono"
-              />
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
+            <Input
+              type="number"
+              step="0.01"
+              prefix="₺"
+              value={rowForm.past_payments}
+              onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
+              placeholder="0.00"
+              className="text-xs font-mono"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-border">
@@ -942,19 +927,35 @@ function DebtsContent() {
         title="Satırı Düzenle"
       >
         <form onSubmit={handleSaveEdit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Tür</label>
+            <SegmentedControl<'Alacak' | 'Borç'>
+              value={rowForm.type}
+              onChange={(val) => setRowForm({ ...rowForm, type: val })}
+              options={[
+                { value: 'Alacak', label: 'Alacak (Gelecek Para)', activeClassName: 'text-emerald-400' },
+                { value: 'Borç', label: 'Borç (Ödenecek Para)', activeClassName: 'text-rose-400' },
+              ]}
+            />
+          </div>
+
+          <HeroCurrencyInput
+            label="Ana Tutar"
+            type={rowForm.type === 'Alacak' ? 'income' : 'expense'}
+            value={rowForm.principal}
+            onChange={(val) => setRowForm({ ...rowForm, principal: val })}
+            placeholder="0.00"
+          />
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Tür</label>
-              <Select
-                value={rowForm.type}
-                onChange={(e) =>
-                  setRowForm({ ...rowForm, type: e.target.value as 'Borç' | 'Alacak' })
-                }
+              <label className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
+              <Input
+                required
+                value={rowForm.person_or_entity}
+                onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
                 className="text-xs"
-              >
-                <option value="Alacak">Alacak</option>
-                <option value="Borç">Borç</option>
-              </Select>
+              />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-foreground">Kategori</label>
@@ -968,16 +969,6 @@ function DebtsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
-            <Input
-              required
-              value={rowForm.person_or_entity}
-              onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
-              className="text-xs"
-            />
-          </div>
-
-          <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">Açıklama</label>
             <Input
               required
@@ -987,30 +978,16 @@ function DebtsContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Ana Tutar</label>
-              <Input
-                type="number"
-                step="0.01"
-                required
-                prefix="₺"
-                value={rowForm.principal}
-                onChange={(e) => setRowForm({ ...rowForm, principal: e.target.value })}
-                className="text-xs font-mono font-semibold"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme</label>
-              <Input
-                type="number"
-                step="0.01"
-                prefix="₺"
-                value={rowForm.past_payments}
-                onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
-                className="text-xs font-mono"
-              />
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
+            <Input
+              type="number"
+              step="0.01"
+              prefix="₺"
+              value={rowForm.past_payments}
+              onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
+              className="text-xs font-mono"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-border">
@@ -1018,11 +995,12 @@ function DebtsContent() {
               İptal
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Güncelleniyor...' : 'Kaydet'}
+              {submitting ? 'Kaydediliyor...' : 'Kaydet'}
             </Button>
           </div>
         </form>
       </Modal>
+
     </div>
   )
 }

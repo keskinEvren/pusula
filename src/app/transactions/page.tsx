@@ -29,6 +29,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { useToast } from '@/lib/toast-context'
 import { financialBridge, getLinkedDebtId, getLinkedInvestmentId } from '@/lib/financial-bridge'
 import type { Transaction, Project, CreditCard, Account, Debt, Investment } from '@/types/database'
@@ -597,21 +599,21 @@ function TransactionsContent() {
       />
 
       {/* Segment Selector Tabs */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <button
           type="button"
           onClick={() => {
             setSegmentTab('all')
             setSelectedEntityId('ALL')
           }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
             segmentTab === 'all'
-              ? 'bg-primary text-primary-foreground shadow-md'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <Layers className="h-3.5 w-3.5" />
-          <span>📊 Konsolide Tüm Hareketler</span>
+          <span>Konsolide Tüm Hareketler</span>
         </button>
 
         <button
@@ -620,14 +622,14 @@ function TransactionsContent() {
             setSegmentTab('cards')
             setSelectedEntityId('ALL')
           }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
             segmentTab === 'cards'
-              ? 'bg-blue-600 text-white shadow-md'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <CardIcon className="h-3.5 w-3.5" />
-          <span>💳 Kredi Kartı Harcamaları</span>
+          <span>Kredi Kartı Harcamaları</span>
         </button>
 
         <button
@@ -636,14 +638,14 @@ function TransactionsContent() {
             setSegmentTab('accounts')
             setSelectedEntityId('ALL')
           }}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
             segmentTab === 'accounts'
-              ? 'bg-purple-600 text-white shadow-md'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <Building2 className="h-3.5 w-3.5" />
-          <span>🏦 Banka / Nakit Akışı</span>
+          <span>Banka / Nakit Akışı</span>
         </button>
       </div>
 
@@ -852,7 +854,7 @@ function TransactionsContent() {
                                 className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline transition-colors"
                                 title="Bu gelen parayı alacak hakedişine bağla"
                               >
-                                🎯 Alacağa Bağla
+                                Alacağa Bağla →
                               </button>
                             </div>
                           )
@@ -868,7 +870,7 @@ function TransactionsContent() {
                                   className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
                                   title="Bu harcamayı şahsi borca bağla"
                                 >
-                                  🎯 Borca Bağla
+                                  Borca Bağla →
                                 </button>
                               )}
                               <button
@@ -877,16 +879,16 @@ function TransactionsContent() {
                                 className="inline-flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold hover:underline transition-colors"
                                 title="Bu transferi/harcamayı portföydeki bir yatırıma bağla ve tüketim harcamasından muaf tut"
                               >
-                                📈 Yatırıma Aktar
+                                Yatırıma Aktar →
                               </button>
                               {tx.type === 'Harcama' && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRecurringModal(tx)}
-                                  className="inline-flex items-center gap-1 text-[10px] text-primary/80 hover:text-primary font-medium hover:underline transition-colors"
+                                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-medium hover:underline transition-colors"
                                   title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
                                 >
-                                  ⚡ Düzenli Gider Yap
+                                  Abonelik Yap →
                                 </button>
                               )}
                             </div>
@@ -953,10 +955,32 @@ function TransactionsContent() {
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title="Manuel Hareket Ekle"
+        title="Yeni Hareket Ekle"
         size="lg"
       >
         <form onSubmit={handleAddTransaction} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">İşlem Türü</label>
+            <SegmentedControl
+              value={newTx.type}
+              onChange={(val) => setNewTx({ ...newTx, type: val })}
+              options={[
+                { value: 'Harcama', label: 'Harcama', activeClassName: 'text-rose-400' },
+                { value: 'Gelir', label: 'Gelir', activeClassName: 'text-emerald-400' },
+                { value: 'Transfer', label: 'Transfer', activeClassName: 'text-primary' },
+                { value: 'Kart Ödemesi', label: 'Kart Ödemesi' },
+              ]}
+            />
+          </div>
+
+          <HeroCurrencyInput
+            label="İşlem Tutarı"
+            type={newTx.type === 'Gelir' ? 'income' : newTx.type === 'Harcama' ? 'expense' : 'neutral'}
+            value={newTx.amount}
+            onChange={(val) => setNewTx({ ...newTx, amount: val })}
+            placeholder="0.00"
+          />
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Tarih</label>
@@ -1001,36 +1025,6 @@ function TransactionsContent() {
                 required
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Tutar</label>
-              <Input
-                type="number"
-                step="0.01"
-                prefix="₺"
-                value={newTx.amount}
-                onChange={(e) => setNewTx({ ...newTx, amount: e.target.value })}
-                placeholder="0.00"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Tür</label>
-              <Select
-                value={newTx.type}
-                onChange={(e) => setNewTx({ ...newTx, type: e.target.value })}
-              >
-                <option value="Harcama">Harcama</option>
-                <option value="Gelir">Gelir</option>
-                <option value="Kart Ödemesi">Kart Ödemesi</option>
-                <option value="Transfer">Transfer</option>
-                <option value="Finansman/Masraf">Finansman / Masraf</option>
-                <option value="İade">İade</option>
-              </Select>
-            </div>
-
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Analiz Grubu</label>
               <Select

@@ -386,9 +386,8 @@ export default function DashboardPage() {
         <Card className="border-border bg-card shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                <Zap className="h-4 w-4 text-muted-foreground" />
-                <span>Nakit Dayanma Süresi (Runway)</span>
+              <CardTitle className="text-sm font-semibold text-foreground">
+                Nakit Dayanma Süresi (Runway)
               </CardTitle>
               {(() => {
                 const numRunway = typeof runwayMonths === 'number' ? runwayMonths : 99
@@ -441,21 +440,21 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-6 divide-x divide-border/50 py-1">
               {cashForecast.map((val, idx) => {
                 const monthNames = ['1. Ay', '2. Ay', '3. Ay', '4. Ay', '5. Ay', '6. Ay']
                 return (
                   <div
                     key={idx}
-                    className="flex flex-col items-center justify-end rounded-xl bg-muted/30 p-2.5 text-center border border-border/40"
+                    className="flex flex-col items-center justify-center px-1 text-center"
                   >
-                    <span className="text-[10px] font-semibold text-muted-foreground mb-1">
+                    <span className="text-[10px] font-medium text-muted-foreground mb-1">
                       {monthNames[idx]}
                     </span>
-                    <span className="text-xs font-bold font-mono text-foreground truncate w-full">
-                      {val > 0 ? formatCurrency(val).replace('₺', '') : '0'}
+                    <span className="text-xs font-semibold tabular-nums text-foreground truncate w-full">
+                      {val > 0 ? formatCurrency(val).replace('₺', '').trim() : '0'}
                     </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5">₺</span>
+                    <span className="text-[9px] text-muted-foreground/60 mt-0.5">₺</span>
                   </div>
                 )
               })}
@@ -468,7 +467,7 @@ export default function DashboardPage() {
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base">Aktif Projeler & Bütçe Köprüsü</CardTitle>
+                <CardTitle className="text-base">Aktif Projeler</CardTitle>
                 <CardDescription className="text-xs">
                   Geliştirilmekte olan projeler ve bütçe sınırları
                 </CardDescription>
@@ -486,15 +485,17 @@ export default function DashboardPage() {
                 Henüz aktif bir proje yok. Yeni bir fikir ekleyin veya proje başlatın.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="divide-y divide-border/50 -my-2">
                 {projects.slice(0, 3).map((prj) => (
-                  <Link key={prj.id} href={`/projects/${prj.slug}`}>
-                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/20 hover:bg-muted/40 border border-border/40 transition-colors cursor-pointer mb-2">
+                  <Link key={prj.id} href={`/projects/${prj.slug}`} className="block">
+                    <div className="flex items-center justify-between py-2.5 px-1 hover:bg-muted/20 transition-colors cursor-pointer rounded-lg">
                       <div>
-                        <div className="text-xs font-bold text-foreground">{prj.name}</div>
-                        <div className="text-[10px] text-muted-foreground capitalize">{prj.status} • Bütçe: {formatCurrency(prj.budget_limit || 0)}</div>
+                        <div className="text-xs font-semibold text-foreground">{prj.name}</div>
+                        <div className="text-[10px] text-muted-foreground capitalize mt-0.5">
+                          {prj.status} • Bütçe: {formatCurrency(prj.budget_limit || 0)}
+                        </div>
                       </div>
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-[10px] font-mono">
                         {prj.status}
                       </Badge>
                     </div>

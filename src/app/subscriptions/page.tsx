@@ -401,7 +401,7 @@ export default function SubscriptionsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Abonelikler & Sabit Giderler"
-        description="Aylık ve yıllık düzenli aboneliklerinizi, sabit giderlerinizi ve tasarruf fırsatlarını takip edin."
+        description="Aylık ve yıllık düzenli abonelik ve sabit gider takibi"
         badge={<Badge variant="outline" className="text-xs font-medium">{activeSubs.length} Aktif Gider</Badge>}
         actions={
           <div className="flex items-center gap-2">
