@@ -729,6 +729,53 @@ export interface Database {
         }
         Relationships: []
       }
+      journal_entries: {
+        Row: {
+          id: string
+          user_id: string
+          entry_date: string
+          title: string
+          content: string
+          mood: 'high_energy' | 'calm' | 'low_energy' | 'stormy' | 'reflective'
+          template_type: 'freeform' | 'stoic' | 'gratitude_victory' | 'weekly_retro'
+          tags: string[]
+          weather_note: string | null
+          pinned: boolean
+          word_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          entry_date?: string
+          title: string
+          content: string
+          mood?: 'high_energy' | 'calm' | 'low_energy' | 'stormy' | 'reflective'
+          template_type?: 'freeform' | 'stoic' | 'gratitude_victory' | 'weekly_retro'
+          tags?: string[]
+          weather_note?: string | null
+          pinned?: boolean
+          word_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          entry_date?: string
+          title?: string
+          content?: string
+          mood?: 'high_energy' | 'calm' | 'low_energy' | 'stormy' | 'reflective'
+          template_type?: 'freeform' | 'stoic' | 'gratitude_victory' | 'weekly_retro'
+          tags?: string[]
+          weather_note?: string | null
+          pinned?: boolean
+          word_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -762,5 +809,7 @@ export type Investment = Database['public']['Tables']['investments']['Row']
 export type Dream = Database['public']['Tables']['dreams']['Row']
 export type Routine = Database['public']['Tables']['routines']['Row']
 export type RoutineLog = Database['public']['Tables']['routine_logs']['Row']
+export type JournalEntry = Database['public']['Tables']['journal_entries']['Row']
+
 
 

@@ -22,6 +22,7 @@ import {
   TrendingUp,
   Sparkles,
   Orbit,
+  BookOpen,
 } from 'lucide-react'
 
 interface HeaderProps {
@@ -30,6 +31,7 @@ interface HeaderProps {
 
 const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   '': { category: 'Genel', title: 'Komuta Merkezi' },
+  journal: { category: 'Genel', title: 'Seyir Defteri' },
   dreams: { category: 'Genel', title: 'Hayallerim & Vizyon' },
   routines: { category: 'Genel', title: 'Günlük Rutinler & Gökyüzü' },
   transactions: { category: 'Finans', title: 'Hareketler' },
@@ -229,6 +231,14 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               >
                 <Orbit className="h-3.5 w-3.5 text-emerald-400" />
                 <span>+ Rutin Ekle</span>
+              </Link>
+              <Link
+                href="/journal?new=true"
+                onClick={() => setIsQuickAddOpen(false)}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-muted transition-colors"
+              >
+                <BookOpen className="h-3.5 w-3.5 text-sky-400" />
+                <span>+ Seyir Defterine Yaz</span>
               </Link>
             </div>
           )}
