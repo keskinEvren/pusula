@@ -109,9 +109,17 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="text-sm font-medium text-muted-foreground animate-pulse">
-          Pusula verileri yükleniyor...
+      <div className="space-y-6 animate-pulse">
+        <div className="h-16 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-24 rounded-xl bg-card/60 border border-border/40" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-28 rounded-xl bg-card/60 border border-border/40" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="h-48 rounded-xl bg-card/60 border border-border/40" />
+          <div className="h-48 rounded-xl bg-card/60 border border-border/40" />
         </div>
       </div>
     )
@@ -125,14 +133,14 @@ export default function DashboardPage() {
         description="Finansal durumunuz, yaklaşan ödemeleriniz ve aktif projeleriniz"
         actions={
           <>
-            <Link href="/import">
-              <Button className="gap-2 shadow-sm h-9 text-xs font-semibold">
+            <Link href="/import" className="flex-1 sm:flex-initial">
+              <Button className="w-full sm:w-auto gap-2 shadow-sm h-9 text-xs font-semibold">
                 <Receipt className="h-4 w-4" />
                 Ekstre İçe Aktar
               </Button>
             </Link>
-            <Link href="/transactions?new=true">
-              <Button variant="outline" className="gap-2 h-9 text-xs">
+            <Link href="/transactions?new=true" className="flex-1 sm:flex-initial">
+              <Button variant="outline" className="w-full sm:w-auto gap-2 h-9 text-xs">
                 <Plus className="h-4 w-4" />
                 Hareket Ekle
               </Button>
@@ -166,7 +174,7 @@ export default function DashboardPage() {
       )}
 
       {/* Linear Tarzı Konsolide KPI Şeridi */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm">
         {/* 1. Net Varlık */}
         <div className="p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
@@ -218,7 +226,7 @@ export default function DashboardPage() {
         {/* 4. Kredi Kartı Borçları */}
         <Link href="/cards" className="p-4 sm:p-5 flex flex-col justify-between group hover:bg-accent/40 transition-colors">
           <div className="flex items-center justify-between text-xs font-medium text-muted-foreground group-hover:text-foreground">
-            <span>Kredi Kartı Borcu</span>
+            <span>Kredi Kartı Borçları</span>
             <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </div>
           <div className="mt-3">
@@ -226,7 +234,7 @@ export default function DashboardPage() {
               {formatCurrency(totalCardDebt)}
             </div>
             <div className="mt-1 text-[11px] text-muted-foreground">
-              {cards.length} aktif kart
+              {cards.length} kart borcu
             </div>
           </div>
         </Link>
@@ -234,7 +242,7 @@ export default function DashboardPage() {
         {/* 5. Alacaklar */}
         <Link href="/debts" className="p-4 sm:p-5 flex flex-col justify-between group hover:bg-accent/40 transition-colors">
           <div className="flex items-center justify-between text-xs font-medium text-muted-foreground group-hover:text-foreground">
-            <span>Kesin Alacaklar</span>
+            <span>Bekleyen Alacaklar</span>
             <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </div>
           <div className="mt-3">
@@ -267,21 +275,20 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-6 divide-x divide-border/50 py-1">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-0 sm:divide-x divide-border/50 py-1">
               {cashForecast.map((val, idx) => {
                 const monthNames = ['1. Ay', '2. Ay', '3. Ay', '4. Ay', '5. Ay', '6. Ay']
                 return (
                   <div
                     key={idx}
-                    className="flex flex-col items-center justify-center px-1 text-center"
+                    className="flex flex-col items-center justify-center p-2 sm:px-1 text-center bg-muted/20 sm:bg-transparent rounded-lg sm:rounded-none"
                   >
-                    <span className="text-[10px] font-medium text-muted-foreground mb-1">
+                    <span className="text-[11px] font-medium text-muted-foreground mb-1">
                       {monthNames[idx]}
                     </span>
                     <span className="text-xs font-semibold tabular-nums text-foreground truncate w-full">
-                      {val > 0 ? formatCurrency(val).replace('₺', '').trim() : '0'}
+                      {val > 0 ? formatCurrency(val).replace('₺', '').trim() : '0'} ₺
                     </span>
-                    <span className="text-[9px] text-muted-foreground/60 mt-0.5">₺</span>
                   </div>
                 )
               })}
@@ -318,11 +325,11 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between py-2.5 px-1 hover:bg-muted/20 transition-colors cursor-pointer rounded-lg">
                       <div>
                         <div className="text-xs font-semibold text-foreground">{prj.name}</div>
-                        <div className="text-[10px] text-muted-foreground capitalize mt-0.5">
+                        <div className="text-[11px] text-muted-foreground capitalize mt-0.5">
                           {prj.status} • Bütçe: {formatCurrency(prj.budget_limit || 0)}
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-[10px] font-mono">
+                      <Badge variant="outline" className="text-[11px] font-mono">
                         {prj.status}
                       </Badge>
                     </div>

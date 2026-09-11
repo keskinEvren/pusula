@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { Project, Transaction, Subscription } from '@/types/database'
 
@@ -159,23 +160,39 @@ function ProjectsContent() {
   )
   const isCapacityFull = activeDevProjects.length >= 2
 
+  if (loading) {
+    return (
+      <div className="space-y-8 animate-pulse" aria-busy="true" aria-label="Projeler yükleniyor">
+        <div className="flex flex-col gap-2">
+          <div className="h-8 w-64 bg-muted rounded" />
+          <div className="h-4 w-96 bg-muted/60 rounded" />
+        </div>
+        <div className="flex md:grid md:grid-cols-5 gap-4 md:gap-6 overflow-x-auto">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="w-[82vw] sm:w-[320px] md:w-auto shrink-0 h-96 rounded-xl bg-card border border-border p-4 space-y-3">
+              <div className="h-4 w-24 bg-muted rounded" />
+              <div className="h-32 bg-muted/40 rounded-lg" />
+              <div className="h-32 bg-muted/40 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
-      {/* Top Bar */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Proje Portföyü (Kanban)
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Geliştirme süreçleri, bütçe tavanı ve gerçek harcanan maliyet köprüsü
-          </p>
-        </div>
-        <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-md">
-          <Plus className="h-4 w-4" />
-          Yeni Proje Aç
-        </Button>
-      </div>
+      {/* Top Bar with PageHeader */}
+      <PageHeader
+        title="Proje Portföyü (Kanban)"
+        description="Geliştirme süreçleri, bütçe tavanı ve gerçek harcanan maliyet köprüsü"
+        actions={
+          <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm min-h-[36px]">
+            <Plus className="h-4 w-4" />
+            Yeni Proje Aç
+          </Button>
+        }
+      />
 
       {/* Capacity Gate Banner */}
       {isCapacityFull && (
@@ -193,18 +210,18 @@ function ProjectsContent() {
         </div>
       )}
 
-      {/* Kanban Columns */}
-      <div className="grid gap-6 md:grid-cols-5">
+      {/* Kanban Columns (Fluid mobile swipe + snap) */}
+      <div className="flex md:grid md:grid-cols-5 gap-4 md:gap-6 overflow-x-auto md:overflow-visible pb-4 md:pb-0 snap-x snap-mandatory">
         {COLUMNS.map((col) => {
           const colProjects = projects.filter((p) => p.status === col.status)
 
           return (
-            <div key={col.status} className="space-y-3">
+            <div key={col.status} className="w-[82vw] sm:w-[320px] md:w-auto shrink-0 md:shrink space-y-3 snap-start">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <span className="font-semibold text-xs text-foreground uppercase tracking-wider">
                   {col.title}
                 </span>
-                <Badge variant="outline" className="text-[10px] font-mono">
+                <Badge variant="outline" className="text-[11px] font-mono">
                   {colProjects.length}
                 </Badge>
               </div>
@@ -234,8 +251,12 @@ function ProjectsContent() {
                           >
                             {project.name}
                           </Link>
-                          <Link href={`/projects/${project.slug}`}>
-                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                          <Link
+                            href={`/projects/${project.slug}`}
+                            aria-label={`${project.name} projesini aç`}
+                            className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-primary transition-colors"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
                           </Link>
                         </div>
                         {project.description && (
@@ -248,7 +269,7 @@ function ProjectsContent() {
                       <CardContent className="p-3 pt-0 space-y-3">
                         {/* Cost & Budget Bridge */}
                         <div className="rounded-lg bg-muted/40 p-2 text-xs border border-border/40">
-                          <div className="flex justify-between items-center text-[10px] text-muted-foreground">
+                          <div className="flex justify-between items-center text-[11px] text-muted-foreground">
                             <span>Gerçek Maliyet:</span>
                             <span className="font-mono font-bold text-foreground">
                               {formatCurrency(totalCost)}
@@ -257,7 +278,7 @@ function ProjectsContent() {
 
                           {project.budget_limit && (
                             <div className="mt-1 space-y-1">
-                              <div className="flex justify-between text-[10px]">
+                              <div className="flex justify-between text-[11px]">
                                 <span className="text-muted-foreground">Bütçe:</span>
                                 <span className="font-mono text-muted-foreground">
                                   {formatCurrency(project.budget_limit)}
@@ -283,7 +304,12 @@ function ProjectsContent() {
 
                         {/* Quick Status Shift */}
                         <div className="flex justify-between items-center pt-1 border-t border-border/40">
+                          <label htmlFor={`prj-status-${project.id}`} className="sr-only">
+                            {project.name} durumunu değiştir
+                          </label>
                           <Select
+                            id={`prj-status-${project.id}`}
+                            aria-label={`${project.name} durumunu değiştir`}
                             value={project.status}
                             onChange={(e) =>
                               handleStatusChange(
@@ -291,7 +317,7 @@ function ProjectsContent() {
                                 e.target.value as Project['status']
                               )
                             }
-                            className="h-6 text-[10px] py-0 px-1 bg-transparent border-none"
+                            className="h-7 text-xs py-0 px-2 bg-transparent border border-border/50 rounded"
                           >
                             <option value="Fikir">💡 Fikir</option>
                             <option value="Planlama">📐 Planlama</option>
@@ -325,8 +351,9 @@ function ProjectsContent() {
       >
         <form onSubmit={handleAddProject} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Proje Adı</label>
+            <label htmlFor="prj-modal-name" className="text-xs font-semibold text-muted-foreground">Proje Adı</label>
             <Input
+              id="prj-modal-name"
               required
               placeholder="Örn: Watchpath, PusulaOS, KadroPlan"
               value={projectForm.name}
@@ -344,10 +371,11 @@ function ProjectsContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">URL Slug</label>
+              <label htmlFor="prj-modal-slug" className="text-xs font-semibold text-muted-foreground">URL Slug</label>
               <Input
+                id="prj-modal-slug"
                 required
                 placeholder="watchpath"
                 prefix="/"
@@ -355,14 +383,15 @@ function ProjectsContent() {
                 onChange={(e) => setProjectForm({ ...projectForm, slug: slugify(e.target.value) })}
                 className="text-xs font-mono"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Link: /projects/{slugify(projectForm.slug || projectForm.name || 'slug')}
               </p>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Başlangıç Durumu</label>
+              <label htmlFor="prj-modal-status" className="text-xs font-semibold text-muted-foreground">Başlangıç Durumu</label>
               <Select
+                id="prj-modal-status"
                 value={projectForm.status}
                 onChange={(e) =>
                   setProjectForm({
@@ -380,10 +409,11 @@ function ProjectsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">
+            <label htmlFor="prj-modal-budget" className="text-xs font-semibold text-muted-foreground">
               Bütçe Tavanı (Opsiyonel)
             </label>
             <Input
+              id="prj-modal-budget"
               type="number"
               step="0.01"
               placeholder="20000.00"
@@ -395,8 +425,9 @@ function ProjectsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Açıklama</label>
+            <label htmlFor="prj-modal-desc" className="text-xs font-semibold text-muted-foreground">Açıklama</label>
             <Textarea
+              id="prj-modal-desc"
               placeholder="Projenin temel amacı, hedef kitlesi ve değeri..."
               value={projectForm.description}
               onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}

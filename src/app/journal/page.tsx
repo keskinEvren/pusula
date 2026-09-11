@@ -16,6 +16,7 @@ import {
   Trash2,
   Save,
   Check,
+  ChevronLeft,
   ChevronRight,
   Compass,
   FileText,
@@ -30,6 +31,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
@@ -55,6 +58,8 @@ function JournalPageContent() {
 
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+  const [entryToDelete, setEntryToDelete] = useState<string | null>(null)
+  const [mobileTab, setMobileTab] = useState<'editor' | 'list'>('editor')
   const [routines, setRoutines] = useState<Routine[]>([])
   const [routineLogs, setRoutineLogs] = useState<RoutineLog[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -194,6 +199,7 @@ function JournalPageContent() {
   function handleSelectEntry(entry: JournalEntry) {
     setSelectedEntryId(entry.id)
     populateEditor(entry)
+    setMobileTab('editor')
   }
 
   function handleCreateNewEntry(templateKey: JournalTemplateType = 'freeform') {
@@ -208,6 +214,7 @@ function JournalPageContent() {
     setEditorTags([])
     setEditorWeather('')
     setEditorPinned(false)
+    setMobileTab('editor')
 
     setTimeout(() => {
       textareaRef.current?.focus()
@@ -301,8 +308,9 @@ function JournalPageContent() {
     setTimeout(() => setSaveStatus('idle'), 2000)
   }
 
-  async function handleDeleteEntry(id: string) {
-    if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return
+  async function confirmDeleteEntry() {
+    if (!entryToDelete) return
+    const id = entryToDelete
     const updated = entries.filter((e) => e.id !== id)
     saveEntriesToLocal(updated)
 
@@ -320,6 +328,7 @@ function JournalPageContent() {
       await supabase.from('journal_entries').delete().eq('id', id)
     } catch {}
     toast.success('Kayıt silindi.')
+    setEntryToDelete(null)
   }
 
   function handleAddTag() {
@@ -347,32 +356,50 @@ function JournalPageContent() {
   const currentReadingTime = calculateReadingTimeMinutes(currentWordCount)
   const moodMeta = JOURNAL_MOODS[editorMood]
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-10 w-48 bg-muted/60 rounded-lg animate-pulse" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 bg-muted/30 rounded-xl border border-border/40" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-pulse">
+          <div className="lg:col-span-4 h-96 bg-muted/20 rounded-xl border border-border/40" />
+          <div className="lg:col-span-8 h-96 bg-muted/20 rounded-xl border border-border/40" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* 1. Üst Başlık & Eylemler */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageHeader
-          title="Günlük"
-          description="Düşüncelerini, kararlarını ve günün muhasebesini kaydet."
-        />
+      <PageHeader
+        title="Günlük"
+        description="Düşüncelerini, kararlarını ve günün muhasebesini kaydet."
+        badge={metrics.writingStreak > 0 ? `${metrics.writingStreak} Gün Seri` : undefined}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsZenMode(true)}
+              className="gap-2 text-xs"
+              title="Dikkat dağıtıcı her şeyi gizle ve tam ekran odak moduna geç"
+            >
+              <Maximize2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Odak Modu</span>
+            </Button>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setIsZenMode(true)}
-            className="gap-2 text-xs"
-            title="Dikkat dağıtıcı her şeyi gizle ve tam ekran odak moduna geç"
-          >
-            <Maximize2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Odak Modu</span>
-          </Button>
-
-          <Button onClick={() => handleCreateNewEntry()} className="gap-2">
-            <Plus className="h-4 w-4" />
-            <span>Yeni Sayfa</span>
-          </Button>
-        </div>
-      </div>
+            <Button size="sm" onClick={() => handleCreateNewEntry()} className="gap-2">
+              <Plus className="h-4 w-4" />
+              <span>Yeni Sayfa</span>
+            </Button>
+          </div>
+        }
+      />
 
       {/* 2. Kompakt İstatistik Şeridi */}
       <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-border rounded-xl border border-border bg-card shadow-sm">
@@ -419,10 +446,36 @@ function JournalPageContent() {
         </div>
       </div>
 
+      {/* Mobil Sekme Değiştirici */}
+      <div className="lg:hidden flex items-center p-1 bg-muted/40 rounded-lg border border-border">
+        <button
+          type="button"
+          onClick={() => setMobileTab('editor')}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            mobileTab === 'editor'
+              ? 'bg-background text-foreground shadow-sm font-semibold'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Yazı Masası
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('list')}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            mobileTab === 'list'
+              ? 'bg-background text-foreground shadow-sm font-semibold'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Arşiv ({filteredEntries.length})
+        </button>
+      </div>
+
       {/* 3. Ana Çalışma Alanı: Sol Liste (4 Kolon) + Sağ Daktilo Masası (8 Kolon) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px]">
         {/* SOL PANEL: ZAMAN TÜNELİ & ARŞİV (lg:col-span-4) */}
-        <div className="lg:col-span-4 space-y-3">
+        <div className={`lg:col-span-4 space-y-3 ${mobileTab === 'editor' ? 'hidden lg:block' : 'block'}`}>
           {/* Arama & Ruh Hali Filtreleri */}
           <div className="space-y-2">
             <div className="relative">
@@ -431,6 +484,7 @@ function JournalPageContent() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Yazılarda veya etiketlerde ara..."
+                aria-label="Yazılarda veya etiketlerde ara"
                 className="pl-8 h-9 text-xs"
               />
               {searchQuery && (
@@ -438,6 +492,7 @@ function JournalPageContent() {
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                  aria-label="Aramayı temizle"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -468,6 +523,7 @@ function JournalPageContent() {
                       : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                   }`}
                   title={m.label}
+                  aria-label={m.label}
                 >
                   <span>{m.icon}</span>
                 </button>
@@ -501,7 +557,7 @@ function JournalPageContent() {
                         <Pin className="h-3 w-3 text-amber-400 fill-amber-400 shrink-0" />
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
+                    <span className="text-[11px] text-muted-foreground shrink-0">
                       {entry.word_count || countWords(entry.content)} kelime
                     </span>
                   </div>
@@ -519,7 +575,7 @@ function JournalPageContent() {
                       {entry.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="text-[9px] px-1.5 py-0.2 rounded bg-muted/70 text-muted-foreground"
+                          className="text-[11px] px-1.5 py-0.5 rounded bg-muted/70 text-muted-foreground"
                         >
                           #{tag}
                         </span>
@@ -539,7 +595,19 @@ function JournalPageContent() {
         </div>
 
         {/* SAĞ PANEL: DAKTİLO & YAZI MASASI (lg:col-span-8) */}
-        <div className="lg:col-span-8">
+        <div className={`lg:col-span-8 ${mobileTab === 'list' ? 'hidden lg:block' : 'block'}`}>
+          <div className="lg:hidden flex items-center justify-between pb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobileTab('list')}
+              className="text-xs text-muted-foreground hover:text-foreground gap-1 h-8 px-2"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span>Arşive Dön ({filteredEntries.length})</span>
+            </Button>
+          </div>
+
           <Card className="border-border/60 bg-card/80 backdrop-blur-sm shadow-md overflow-hidden flex flex-col h-full">
             {/* Üst Bar: Tarih, Ruh Hali Seçimi, Eylemler */}
             <div className="p-4 border-b border-border/50 space-y-3 bg-muted/20">
@@ -552,6 +620,7 @@ function JournalPageContent() {
                       type="date"
                       value={editorDate}
                       onChange={(e) => setEditorDate(e.target.value)}
+                      aria-label="Kayıt Tarihi"
                       className="bg-transparent text-foreground outline-none text-xs"
                     />
                   </div>
@@ -565,6 +634,7 @@ function JournalPageContent() {
                         : 'border-border/60 text-muted-foreground hover:bg-muted'
                     }`}
                     title="Başa Tuttur"
+                    aria-label="Başa Tuttur"
                   >
                     <Pin className={`h-3.5 w-3.5 ${editorPinned ? 'fill-amber-400' : ''}`} />
                   </button>
@@ -583,6 +653,7 @@ function JournalPageContent() {
                           : 'text-muted-foreground hover:bg-muted/70'
                       }`}
                       title={m.label}
+                      aria-label={m.label}
                     >
                       <span>{m.icon}</span>
                       <span className="hidden sm:inline text-[11px]">{m.label.split('/')[0]}</span>
@@ -596,9 +667,10 @@ function JournalPageContent() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDeleteEntry(selectedEntryId)}
+                      onClick={() => setEntryToDelete(selectedEntryId)}
                       className="h-8 text-xs text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
                       title="Kaydı Sil"
+                      aria-label="Kaydı Sil"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -666,6 +738,7 @@ function JournalPageContent() {
                 value={editorTitle}
                 onChange={(e) => setEditorTitle(e.target.value)}
                 placeholder="Günün Başlığı..."
+                aria-label="Günün Başlığı"
                 className="text-lg sm:text-xl font-bold border-none shadow-none focus-visible:ring-0 px-0 bg-transparent placeholder:text-muted-foreground/40"
               />
 
@@ -674,6 +747,7 @@ function JournalPageContent() {
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
                 placeholder="Rüzgar nasıl esiyor? Zihninden geçenleri, şükranlarını veya günün fırtınalarını buraya dök..."
+                aria-label="Günlük İçeriği"
                 rows={16}
                 className="w-full flex-1 bg-transparent text-foreground/90 font-sans text-sm sm:text-base leading-relaxed resize-none outline-none border-none placeholder:text-muted-foreground/40"
               />
@@ -693,6 +767,7 @@ function JournalPageContent() {
                         type="button"
                         onClick={() => handleRemoveTag(tag)}
                         className="hover:text-rose-400"
+                        aria-label={`Etiketi kaldır: ${tag}`}
                       >
                         ×
                       </button>
@@ -709,6 +784,7 @@ function JournalPageContent() {
                         }
                       }}
                       placeholder="+ etiket"
+                      aria-label="Yeni etiket ekle"
                       className="bg-transparent text-[11px] w-16 outline-none text-foreground/80 placeholder:text-muted-foreground/50"
                     />
                   </div>
@@ -725,6 +801,17 @@ function JournalPageContent() {
           </Card>
         </div>
       </div>
+
+      {/* Kayıt Silme Onay Modalı */}
+      <ConfirmDialog
+        isOpen={!!entryToDelete}
+        onClose={() => setEntryToDelete(null)}
+        onConfirm={confirmDeleteEntry}
+        title="Kaydı Sil"
+        description="Bu günlük kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz."
+        confirmLabel="Kaydı Sil"
+        variant="destructive"
+      />
 
       {/* 4. Zen / Tam Ekran Yazı Modu (Distraction-Free Fullscreen) */}
       {isZenMode && (
@@ -770,6 +857,7 @@ function JournalPageContent() {
                 value={editorTitle}
                 onChange={(e) => setEditorTitle(e.target.value)}
                 placeholder="Başlık..."
+                aria-label="Başlık"
                 className="text-2xl sm:text-4xl font-bold bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
               />
 
@@ -777,6 +865,7 @@ function JournalPageContent() {
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
                 placeholder="Düşüncelerini buraya dök..."
+                aria-label="Günlük İçeriği"
                 rows={20}
                 className="w-full flex-1 bg-transparent text-foreground/90 font-sans text-base sm:text-lg leading-relaxed outline-none border-none placeholder:text-muted-foreground/40 resize-none"
                 autoFocus

@@ -14,7 +14,7 @@ import {
   Edit2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { calculateStatementChange } from '@/lib/finance-engine'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,8 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/layout/page-header'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
 import type { CreditCard as CardType, CardStatement } from '@/types/database'
 
@@ -37,6 +39,8 @@ export default function CardsPage() {
   const [isStmtModalOpen, setIsStmtModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [editingCard, setEditingCard] = useState<CardType | null>(null)
+  const [deleteTargetCard, setDeleteTargetCard] = useState<CardType | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Form states
   const [editCardForm, setEditCardForm] = useState({
@@ -283,144 +287,239 @@ export default function CardsPage() {
     }
   }
 
-  const handleDeleteCard = async (id: string) => {
-    if (!confirm('Bu kartı ve tüm ekstre geçmişini silmek istediğinize emin misiniz?')) return
+  const confirmDeleteCard = async () => {
+    if (!deleteTargetCard) return
+    setIsDeleting(true)
     try {
       const supabase = createClient()
-      const { error } = await supabase.from('credit_cards').delete().eq('id', id)
+      const { error } = await supabase.from('credit_cards').delete().eq('id', deleteTargetCard.id)
       if (error) throw error
-      setCards(cards.filter((c) => c.id !== id))
+      setCards(cards.filter((c) => c.id !== deleteTargetCard.id))
       toast.success('Kredi kartı ve geçmişi silindi.')
+      setDeleteTargetCard(null)
     } catch (err: any) {
       toast.error(err.message || 'Silinemedi')
+    } finally {
+      setIsDeleting(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-8 animate-pulse">
+        <div className="h-16 rounded-xl bg-card/60 border border-border/40" />
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-44 rounded-xl bg-card/60 border border-border/40" />
+          ))}
+        </div>
+        <div className="h-64 rounded-xl bg-card/60 border border-border/40" />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-8">
-      {/* Top Bar */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Kredi Kartları & Ekstre Trendi
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Dönemden döneme borç değişimi, asgari ödemeler ve faiz yükleri
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={() => setIsStmtModalOpen(true)} variant="outline" className="gap-2">
-            <Calendar className="h-4 w-4" />
-            Ekstre Kaydı Gir
-          </Button>
-          <Button onClick={() => setIsCardModalOpen(true)} className="gap-2 shadow-md">
-            <Plus className="h-4 w-4" />
-            Yeni Kart Ekle
-          </Button>
-        </div>
-      </div>
+      {/* Page Header */}
+      <PageHeader
+        title="Kredi Kartları & Ekstre Trendi"
+        description="Dönemden döneme borç değişimi, asgari ödemeler ve faiz yükleri"
+        actions={
+          <>
+            <Button onClick={() => setIsStmtModalOpen(true)} variant="outline" className="w-full sm:w-auto gap-2">
+              <Calendar className="h-4 w-4" />
+              Ekstre Kaydı Gir
+            </Button>
+            <Button onClick={() => setIsCardModalOpen(true)} className="w-full sm:w-auto gap-2 shadow-md">
+              <Plus className="h-4 w-4" />
+              Yeni Kart Ekle
+            </Button>
+          </>
+        }
+      />
 
       {/* Cards List */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {cards.map((card) => (
-          <Card key={card.id} className="border-border bg-card shadow-sm flex flex-col justify-between">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-base font-bold">{card.bank}</CardTitle>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleOpenEditModal(card)}
-                    className="h-7 w-7 text-muted-foreground hover:text-primary"
-                    title="Kartı ve Güncel Borcu Düzenle"
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteCard(card.id)}
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    title="Kartı Sil"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-              <CardDescription className="text-xs font-mono">
-                {card.card_name} {card.last_four && `(•• ${card.last_four})`}
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <div className="text-xs text-muted-foreground">Güncel Toplam Borç</div>
-                  <div className="text-2xl font-bold font-mono text-foreground">
-                    {formatCurrency(card.current_debt)}
+      <div>
+        {cards.length === 0 ? (
+          <div className="p-8 text-center rounded-xl border border-border/60 bg-card">
+            <CreditCard className="h-8 w-8 text-muted-foreground/60 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-foreground">Henüz kayıtlı kredi kartı yok</p>
+            <p className="text-xs text-muted-foreground mt-1 mb-4">Kartlarınızı ekleyerek ekstre kesimlerini ve borç trendlerini takip edin.</p>
+            <Button onClick={() => setIsCardModalOpen(true)} size="sm" className="gap-2">
+              <Plus className="h-4 w-4" /> Yeni Kart Ekle
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {cards.map((card) => (
+              <Card key={card.id} className="border-border bg-card shadow-sm flex flex-col justify-between hover:border-primary/40 transition-colors">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-primary" />
+                      <CardTitle className="text-base font-bold">{card.bank}</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenEditModal(card)}
+                        className="h-9 w-9 text-muted-foreground hover:text-primary rounded-full"
+                        title="Kartı ve Güncel Borcu Düzenle"
+                        aria-label={`${card.bank} kartını düzenle`}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteTargetCard(card)}
+                        className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-full"
+                        title="Kartı Sil"
+                        aria-label={`${card.bank} kartını sil`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                {card.current_debt <= 0 ? (
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[11px]">
-                    Borçsuz / Kapandı
-                  </Badge>
-                ) : card.current_debt < card.statement_debt ? (
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[11px]">
-                    Kısmi Ödendi
-                  </Badge>
-                ) : null}
-              </div>
+                  <CardDescription className="text-xs font-mono">
+                    {card.card_name} {card.last_four && `(•• ${card.last_four})`}
+                  </CardDescription>
+                </CardHeader>
 
-              <div className="space-y-1.5 pt-3 border-t border-border text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Son Dönem Borcu:</span>
-                  <span className="font-mono font-semibold">{formatCurrency(card.statement_debt)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Asgari Ödeme:</span>
-                  <span className={`font-mono font-semibold ${card.minimum_payment <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {card.minimum_payment <= 0 ? '₺0,00 (Ödendi)' : formatCurrency(card.minimum_payment)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Faiz/Masraf Yükü:</span>
-                  <span className="font-mono text-destructive">{formatCurrency(card.interest_fees)}</span>
-                </div>
-                <div className="flex justify-between pt-1">
-                  <span className="text-muted-foreground">Son Ödeme Tarihi:</span>
-                  <span className="font-semibold text-foreground">{formatDate(card.due_date)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <CardContent className="space-y-4">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <div className="text-[11px] text-muted-foreground uppercase font-semibold">Güncel Borç</div>
+                      <div className="text-2xl font-bold font-mono text-foreground mt-0.5">
+                        {formatCurrency(card.current_debt)}
+                      </div>
+                    </div>
+                    {card.statement_debt && (
+                      <div className="text-right">
+                        <div className="text-[11px] text-muted-foreground">Son Ekstre</div>
+                        <div className="text-xs font-mono font-medium text-foreground/80 mt-0.5">
+                          {formatCurrency(card.statement_debt)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 border-t border-border/50 pt-3 text-xs">
+                    {card.minimum_payment && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Asgari Tutar:</span>
+                        <span className="font-mono text-foreground">{formatCurrency(card.minimum_payment)}</span>
+                      </div>
+                    )}
+                    {card.statement_date && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Ekstre Kesim:</span>
+                        <span className="font-mono text-foreground">{formatDate(card.statement_date)}</span>
+                      </div>
+                    )}
+                    {card.due_date && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Son Ödeme:</span>
+                        <span className="font-mono text-foreground font-semibold">{formatDate(card.due_date)}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Statement History Table with Trend Delta */}
+      {/* Ekstre Geçmişi Tablosu */}
       <Card className="border-border bg-card shadow-sm overflow-hidden">
-        <CardHeader>
-          <CardTitle className="text-base">Ekstre Geçmişi & Değişim Trendi</CardTitle>
-          <CardDescription>
-            Her dönemin borç değişimi ve trendi (▲ Kırmızı: Borç Artışı / ▼ Yeşil: Borç Azalışı)
+        <CardHeader className="pb-3 border-b border-border">
+          <CardTitle className="text-base font-semibold">Tüm Kredi Kartları Dönem Ekstreleri</CardTitle>
+          <CardDescription className="text-xs">
+            Dönem borçlarının seyri, harcama ve ödeme toplamları
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          {/* Mobil Görünüm (<md) */}
+          <div className="p-4 md:hidden space-y-3">
+            {statements.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                Henüz ekstre geçmişi kaydı bulunmuyor.
+              </div>
+            ) : (
+              statements.map((stmt) => {
+                const card = cards.find((c) => c.id === stmt.card_id)
+                const changeAmt = stmt.change_amount
+                const changePct = stmt.change_pct !== null && stmt.change_pct !== undefined ? stmt.change_pct * 100 : null
+                const isIncreased = changeAmt !== null && changeAmt > 0
+                const isDecreased = changeAmt !== null && changeAmt < 0
+
+                return (
+                  <div key={stmt.id} className="p-3.5 rounded-xl border border-border/60 bg-muted/10 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-foreground">
+                        {card ? `${card.bank} - ${card.card_name}` : 'Kredi Kartı'}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatDate(stmt.statement_date)}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between border-t border-border/40 pt-2">
+                      <span className="text-xs text-muted-foreground">Dönem Borcu:</span>
+                      <span className="text-sm font-bold font-mono text-foreground">
+                        {formatCurrency(stmt.period_debt)}
+                      </span>
+                    </div>
+                    {changeAmt !== null && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Değişim:</span>
+                        <div
+                          className={`inline-flex items-center gap-1 font-semibold font-mono ${
+                            isIncreased
+                              ? 'text-destructive'
+                              : isDecreased
+                              ? 'text-success'
+                              : 'text-muted-foreground'
+                          }`}
+                        >
+                          {isIncreased && <TrendingUp className="h-3.5 w-3.5" />}
+                          {isDecreased && <TrendingDown className="h-3.5 w-3.5" />}
+                          <span>
+                            {isIncreased ? '+' : ''}
+                            {formatCurrency(changeAmt)}
+                            {changePct !== null && ` (${changePct > 0 ? '+' : ''}${changePct.toFixed(1)}%)`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-1 border-t border-border/30">
+                      <div>
+                        Ödemeler: <span className="font-mono text-success font-medium">{formatCurrency(stmt.payments)}</span>
+                      </div>
+                      <div className="text-right">
+                        Son Ödeme: <span className="font-mono text-foreground">{formatDate(stmt.due_date)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Masaüstü Görünüm (md+) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
                 <tr>
                   <th className="p-3">Ekstre Tarihi</th>
-                  <th className="p-3">Banka / Kart</th>
+                  <th className="p-3">Kart</th>
                   <th className="p-3 text-right">Dönem Borcu</th>
                   <th className="p-3 text-right">Önceki Borç</th>
-                  <th className="p-3 text-center">Dönem Değişimi</th>
+                  <th className="p-3 text-center">Değişim</th>
                   <th className="p-3 text-right">Ödemeler</th>
-                  <th className="p-3 text-right">Harcama</th>
-                  <th className="p-3 text-right">Faiz/BSMV</th>
+                  <th className="p-3 text-right">Dönem İçi Harcama</th>
+                  <th className="p-3 text-right">Faiz & Ücretler</th>
                   <th className="p-3">Son Ödeme</th>
                 </tr>
               </thead>
@@ -508,8 +607,9 @@ export default function CardsPage() {
         <form onSubmit={handleAddCard} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Banka</label>
+              <label htmlFor="card-bank" className="text-xs font-semibold text-muted-foreground">Banka</label>
               <Input
+                id="card-bank"
                 required
                 placeholder="Örn: Akbank, Enpara, Ziraat"
                 value={cardForm.bank}
@@ -518,8 +618,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Kart Adı / Tipi</label>
+              <label htmlFor="card-name" className="text-xs font-semibold text-muted-foreground">Kart Adı / Tipi</label>
               <Input
+                id="card-name"
                 required
                 placeholder="Örn: Axess Platinum, Bankkart"
                 value={cardForm.card_name}
@@ -531,8 +632,9 @@ export default function CardsPage() {
 
           <div className="flex gap-3">
             <div className="w-28 space-y-1 shrink-0">
-              <label className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
+              <label htmlFor="card-last-four" className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
               <Input
+                id="card-last-four"
                 placeholder="1697"
                 maxLength={4}
                 value={cardForm.last_four}
@@ -541,8 +643,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="flex-1 space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Güncel Toplam Borç</label>
+              <label htmlFor="card-current-debt" className="text-xs font-semibold text-muted-foreground">Güncel Toplam Borç</label>
               <Input
+                id="card-current-debt"
                 type="number"
                 step="0.01"
                 placeholder="0.00"
@@ -556,8 +659,9 @@ export default function CardsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Son Ekstre Kesim Tarihi</label>
+              <label htmlFor="card-statement-date" className="text-xs font-semibold text-muted-foreground">Son Ekstre Kesim Tarihi</label>
               <Input
+                id="card-statement-date"
                 type="date"
                 value={cardForm.statement_date}
                 onChange={(e) => setCardForm({ ...cardForm, statement_date: e.target.value })}
@@ -565,8 +669,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
+              <label htmlFor="card-due-date" className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
               <Input
+                id="card-due-date"
                 type="date"
                 value={cardForm.due_date}
                 onChange={(e) => setCardForm({ ...cardForm, due_date: e.target.value })}
@@ -595,8 +700,9 @@ export default function CardsPage() {
       >
         <form onSubmit={handleAddStatement} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Kredi Kartı</label>
+            <label htmlFor="stmt-card-id" className="text-xs font-semibold text-muted-foreground">Kredi Kartı</label>
             <Select
+              id="stmt-card-id"
               required
               value={stmtForm.card_id}
               onChange={(e) => setStmtForm({ ...stmtForm, card_id: e.target.value })}
@@ -613,8 +719,9 @@ export default function CardsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
+              <label htmlFor="stmt-statement-date" className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
               <Input
+                id="stmt-statement-date"
                 type="date"
                 required
                 value={stmtForm.statement_date}
@@ -623,8 +730,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Dönem Borcu</label>
+              <label htmlFor="stmt-period-debt" className="text-xs font-semibold text-muted-foreground">Dönem Borcu</label>
               <Input
+                id="stmt-period-debt"
                 type="number"
                 step="0.01"
                 required
@@ -639,8 +747,9 @@ export default function CardsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
+              <label htmlFor="stmt-minimum" className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
               <Input
+                id="stmt-minimum"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -651,8 +760,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Faiz / Masraf Yükü</label>
+              <label htmlFor="stmt-interest-fees" className="text-xs font-semibold text-muted-foreground">Faiz / Masraf Yükü</label>
               <Input
+                id="stmt-interest-fees"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -665,8 +775,9 @@ export default function CardsPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
+            <label htmlFor="stmt-due-date" className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
             <Input
+              id="stmt-due-date"
               type="date"
               value={stmtForm.due_date}
               onChange={(e) => setStmtForm({ ...stmtForm, due_date: e.target.value })}
@@ -698,8 +809,9 @@ export default function CardsPage() {
         <form onSubmit={handleEditCard} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Banka</label>
+              <label htmlFor="edit-card-bank" className="text-xs font-semibold text-muted-foreground">Banka</label>
               <Input
+                id="edit-card-bank"
                 required
                 value={editCardForm.bank}
                 onChange={(e) => setEditCardForm({ ...editCardForm, bank: e.target.value })}
@@ -707,8 +819,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Kart Adı</label>
+              <label htmlFor="edit-card-name" className="text-xs font-semibold text-muted-foreground">Kart Adı</label>
               <Input
+                id="edit-card-name"
                 required
                 value={editCardForm.card_name}
                 onChange={(e) => setEditCardForm({ ...editCardForm, card_name: e.target.value })}
@@ -719,8 +832,9 @@ export default function CardsPage() {
 
           <div className="flex gap-3">
             <div className="w-28 space-y-1 shrink-0">
-              <label className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
+              <label htmlFor="edit-card-last-four" className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
               <Input
+                id="edit-card-last-four"
                 maxLength={4}
                 value={editCardForm.last_four}
                 onChange={(e) => setEditCardForm({ ...editCardForm, last_four: e.target.value })}
@@ -728,8 +842,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="flex-1 space-y-1">
-              <label className="text-xs font-semibold text-primary">Güncel Toplam Borç</label>
+              <label htmlFor="edit-card-current-debt" className="text-xs font-semibold text-primary">Güncel Toplam Borç</label>
               <Input
+                id="edit-card-current-debt"
                 type="number"
                 step="0.01"
                 required
@@ -743,8 +858,9 @@ export default function CardsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Son Dönem Borcu</label>
+              <label htmlFor="edit-card-statement-debt" className="text-xs font-semibold text-muted-foreground">Son Dönem Borcu</label>
               <Input
+                id="edit-card-statement-debt"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -754,8 +870,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
+              <label htmlFor="edit-card-min-payment" className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
               <Input
+                id="edit-card-min-payment"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -768,8 +885,9 @@ export default function CardsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
+              <label htmlFor="edit-card-statement-date" className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
               <Input
+                id="edit-card-statement-date"
                 type="date"
                 value={editCardForm.statement_date}
                 onChange={(e) => setEditCardForm({ ...editCardForm, statement_date: e.target.value })}
@@ -777,8 +895,9 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
+              <label htmlFor="edit-card-due-date" className="text-xs font-semibold text-muted-foreground">Son Ödeme Tarihi</label>
               <Input
+                id="edit-card-due-date"
                 type="date"
                 value={editCardForm.due_date}
                 onChange={(e) => setEditCardForm({ ...editCardForm, due_date: e.target.value })}
@@ -804,6 +923,19 @@ export default function CardsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Card Confirmation */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteTargetCard)}
+        onClose={() => setDeleteTargetCard(null)}
+        onConfirm={confirmDeleteCard}
+        title="Kredi Kartını Sil"
+        description={`"${deleteTargetCard?.bank} - ${deleteTargetCard?.card_name}" kartını silmek istediğinize emin misiniz? Bu işlem karta ait tüm dönem ekstresi kayıtlarını da silecektir.`}
+        confirmLabel="Kartı Sil"
+        cancelLabel="Vazgeç"
+        isLoading={isDeleting}
+        variant="destructive"
+      />
     </div>
   )
 }

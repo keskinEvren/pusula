@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
 import { slugify } from '@/lib/utils'
@@ -69,6 +70,10 @@ function IdeasContent() {
   const [promoteSlug, setPromoteSlug] = useState('')
   const [promoteBudget, setPromoteBudget] = useState('10000')
   const [promoting, setPromoting] = useState(false)
+
+  // Dialog States
+  const [ideaToDelete, setIdeaToDelete] = useState<{ id: string; title: string } | null>(null)
+  const [capacityWarningTarget, setCapacityWarningTarget] = useState<Idea | null>(null)
 
   useEffect(() => {
     loadIdeas()
@@ -195,11 +200,16 @@ function IdeasContent() {
       .from('projects')
       .select('id, status')
       .not('status', 'in', '("Arşiv", "Canlı")')
-    
+
     if (activeProjects && activeProjects.length >= 2) {
-      if (!confirm("Odak kapasiteniz dolu! (Maksimum 2 aktif proje önerilir). Yine de devam etmek istiyor musunuz?")) return
+      setCapacityWarningTarget(idea)
+      return
     }
 
+    proceedWithPromote(idea)
+  }
+
+  const proceedWithPromote = (idea: Idea) => {
     setPromoteTarget(idea)
     setPromoteSlug(slugify(idea.title))
     setPromoteBudget('10000')
@@ -267,20 +277,42 @@ function IdeasContent() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bu fikri silmek istediğinize emin misiniz?')) return
+  const confirmDeleteIdea = async () => {
+    if (!ideaToDelete) return
     try {
       const supabase = createClient()
-      const { error } = await supabase.from('ideas').delete().eq('id', id)
+      const { error } = await supabase.from('ideas').delete().eq('id', ideaToDelete.id)
       if (error) throw error
-      setIdeas(ideas.filter((i) => i.id !== id))
+      setIdeas((prev) => prev.filter((i) => i.id !== ideaToDelete.id))
       toast.success('Fikir silindi.')
+      setIdeaToDelete(null)
     } catch (err: any) {
       toast.error(err.message || 'Silinemedi')
     }
   }
 
   const filteredIdeas = ideas.filter((i) => i.status === activeTab)
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Fikirler yükleniyor">
+        <div className="flex flex-col gap-2">
+          <div className="h-8 w-48 bg-muted rounded" />
+          <div className="h-4 w-80 bg-muted/60 rounded" />
+        </div>
+        <div className="flex gap-2 pb-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-9 w-28 bg-muted rounded-lg" />
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-48 rounded-xl bg-card border border-border p-4" />
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -289,7 +321,7 @@ function IdeasContent() {
         title="Fikirler"
         description="Yeni fikirlerinizi kaydedin, değerlendirin ve hayata geçirmek için projeye dönüştürün."
         actions={
-          <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm text-xs h-9 font-semibold">
+          <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm text-xs min-h-[36px] font-semibold">
             <Plus className="h-4 w-4" />
             Yeni Fikir
           </Button>
@@ -297,15 +329,19 @@ function IdeasContent() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto">
+      <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto" role="tablist" aria-label="Fikir durumları">
         {TABS.map((tab) => {
           const count = ideas.filter((i) => i.status === tab.key).length
           const isActive = activeTab === tab.key
           return (
             <button
               key={tab.key}
+              id={`tab-${tab.key}`}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`panel-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap min-h-[36px] ${
                 isActive
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -313,7 +349,7 @@ function IdeasContent() {
             >
               <span>{tab.label}</span>
               <span
-                className={`rounded-full px-2 py-0.5 text-[10px] ${
+                className={`rounded-full px-2 py-0.5 text-[11px] ${
                   isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
                 }`}
               >
@@ -325,7 +361,12 @@ function IdeasContent() {
       </div>
 
       {/* Ideas Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div
+        id={`panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${activeTab}`}
+        className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+      >
         {filteredIdeas.map((idea) => (
           <Card key={idea.id} className="border-border bg-card shadow-sm flex flex-col justify-between">
             <CardHeader
@@ -341,11 +382,12 @@ function IdeasContent() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDelete(idea.id)}
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => setIdeaToDelete({ id: idea.id, title: idea.title })}
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    aria-label={`"${idea.title}" fikrini sil`}
                     title="Fikri Sil"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -365,7 +407,7 @@ function IdeasContent() {
               {idea.tags && idea.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {idea.tags.map((tag, idx) => (
-                    <Badge key={idx} variant="outline" className="text-[10px]">
+                    <Badge key={idx} variant="outline" className="text-[11px]">
                       #{tag}
                     </Badge>
                   ))}
@@ -374,7 +416,12 @@ function IdeasContent() {
 
               {/* Action Buttons */}
               <div className="flex items-center justify-between pt-3 border-t border-border gap-2">
+                <label htmlFor={`idea-status-${idea.id}`} className="sr-only">
+                  {idea.title} durumunu değiştir
+                </label>
                 <Select
+                  id={`idea-status-${idea.id}`}
+                  aria-label={`${idea.title} durumunu değiştir`}
                   value={idea.status}
                   onChange={(e) =>
                     handleStatusChange(idea.id, e.target.value as Idea['status'])
@@ -392,8 +439,9 @@ function IdeasContent() {
                     size="sm"
                     variant="ghost"
                     onClick={() => handleOpenIdeaDetail(idea)}
-                    className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground"
+                    className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground min-h-[30px]"
                     title="Şartnameyi Aç & Düzenle"
+                    aria-label={`"${idea.title}" fikrini incele ve şartnamesini aç`}
                   >
                     <Edit3 className="h-3 w-3" />
                     <span>İncele</span>
@@ -403,7 +451,8 @@ function IdeasContent() {
                     <Button
                       size="sm"
                       onClick={() => handleOpenPromoteModal(idea)}
-                      className="h-7 text-xs gap-1.5 shadow-sm px-2.5"
+                      className="h-7 text-xs gap-1.5 shadow-sm px-2.5 min-h-[30px]"
+                      aria-label={`"${idea.title}" fikrini projeye dönüştür`}
                     >
                       <FolderPlus className="h-3.5 w-3.5" />
                       <span>Projeye</span>
@@ -413,7 +462,7 @@ function IdeasContent() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 px-2"
+                        className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 px-2 min-h-[30px]"
                       >
                         <ArrowUpRight className="h-3.5 w-3.5" />
                         <span>Projelerde</span>
@@ -443,8 +492,9 @@ function IdeasContent() {
       >
         <form onSubmit={handleAddIdea} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Fikir Başlığı</label>
+            <label htmlFor="idea-add-title" className="text-xs font-semibold text-muted-foreground">Fikir Başlığı</label>
             <Input
+              id="idea-add-title"
               required
               placeholder="Örn: AI Destekli Fatura Okuyucu"
               value={ideaForm.title}
@@ -453,10 +503,11 @@ function IdeasContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Etiketler (Virgülle ayırın)</label>
+              <label htmlFor="idea-add-tags" className="text-xs font-semibold text-muted-foreground">Etiketler (Virgülle ayırın)</label>
               <Input
+                id="idea-add-tags"
                 placeholder="b2b, saas, mobile"
                 value={ideaForm.tags}
                 onChange={(e) => setIdeaForm({ ...ideaForm, tags: e.target.value })}
@@ -465,8 +516,9 @@ function IdeasContent() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Klasör</label>
+              <label htmlFor="idea-add-status" className="text-xs font-semibold text-muted-foreground">Klasör</label>
               <Select
+                id="idea-add-status"
                 value={ideaForm.status}
                 onChange={(e) =>
                   setIdeaForm({ ...ideaForm, status: e.target.value as Idea['status'] })
@@ -516,8 +568,9 @@ function IdeasContent() {
         {selectedIdea && (
           <div className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Başlık</label>
+              <label htmlFor="idea-edit-title" className="text-xs font-semibold text-muted-foreground">Başlık</label>
               <Input
+                id="idea-edit-title"
                 required
                 value={editForm.title}
                 onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
@@ -525,10 +578,11 @@ function IdeasContent() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Etiketler</label>
+                <label htmlFor="idea-edit-tags" className="text-xs font-semibold text-muted-foreground">Etiketler</label>
                 <Input
+                  id="idea-edit-tags"
                   value={editForm.tags}
                   onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
                   placeholder="b2b, saas, ai"
@@ -537,8 +591,9 @@ function IdeasContent() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Durum</label>
+                <label htmlFor="idea-edit-status" className="text-xs font-semibold text-muted-foreground">Durum</label>
                 <Select
+                  id="idea-edit-status"
                   value={editForm.status}
                   onChange={(e) =>
                     setEditForm({ ...editForm, status: e.target.value as Idea['status'] })
@@ -574,9 +629,9 @@ function IdeasContent() {
                 type="button"
                 variant="ghost"
                 onClick={() => {
-                  const id = selectedIdea.id
+                  const target = selectedIdea
                   setSelectedIdea(null)
-                  handleDelete(id)
+                  setIdeaToDelete({ id: target.id, title: target.title })
                 }}
                 className="h-8 text-xs text-destructive hover:bg-destructive/10"
               >
@@ -642,10 +697,11 @@ function IdeasContent() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor="idea-promote-slug" className="text-xs font-semibold text-muted-foreground">
                 URL Slug
               </label>
               <Input
+                id="idea-promote-slug"
                 required
                 placeholder="proje-link-adi"
                 prefix="/"
@@ -659,10 +715,11 @@ function IdeasContent() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor="idea-promote-budget" className="text-xs font-semibold text-muted-foreground">
                 Proje Bütçe Limiti (Opsiyonel)
               </label>
               <Input
+                id="idea-promote-budget"
                 type="number"
                 placeholder="10000.00"
                 prefix="₺"
@@ -687,6 +744,33 @@ function IdeasContent() {
           </form>
         )}
       </Modal>
+
+      {/* Idea Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!ideaToDelete}
+        onClose={() => setIdeaToDelete(null)}
+        onConfirm={confirmDeleteIdea}
+        title="Fikri Sil"
+        description={`"${ideaToDelete?.title}" fikrini kalıcı olarak silmek istediğinizden emin misiniz?`}
+        confirmLabel="Sil"
+        variant="destructive"
+      />
+
+      {/* Capacity Warning Dialog */}
+      <ConfirmDialog
+        isOpen={!!capacityWarningTarget}
+        onClose={() => setCapacityWarningTarget(null)}
+        onConfirm={() => {
+          const target = capacityWarningTarget
+          setCapacityWarningTarget(null)
+          if (target) proceedWithPromote(target)
+        }}
+        title="Odak Kapasitesi Dolu"
+        description="Kişisel odak kuralınız gereği aynı anda en fazla 2 aktif proje önerilir. Yine de bu fikri projeye dönüştürüp geliştirmeye başlamak istiyor musunuz?"
+        confirmLabel="Yine de Devam Et"
+        cancelLabel="Vazgeç"
+        variant="warning"
+      />
     </div>
   )
 }

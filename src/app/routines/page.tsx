@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { Routine, RoutineLog, Dream } from '@/types/database'
@@ -75,9 +76,13 @@ function RoutinesPageContent() {
   // Aylık takvim navigasyonu (Yıl ve Ay)
   const [calendarMonthDate, setCalendarMonthDate] = useState(new Date())
 
+  // Mobil takımyıldızı / takvim aç/kapa
+  const [showConstellationOnMobile, setShowConstellationOnMobile] = useState(false)
+
   // Modal Durumları
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null)
+  const [routineToDelete, setRoutineToDelete] = useState<{ id: string; title: string } | null>(null)
 
   // Zen / Odak Sayacı Modalı
   const [isTimerOpen, setIsTimerOpen] = useState(false)
@@ -408,8 +413,9 @@ function RoutinesPageContent() {
     setEditingRoutine(null)
   }
 
-  async function handleDeleteRoutine(routineId: string) {
-    if (!confirm('Bu rutini silmek istediğinize emin misiniz?')) return
+  async function confirmDeleteRoutine() {
+    if (!routineToDelete) return
+    const routineId = routineToDelete.id
     const updated = routines.filter((r) => r.id !== routineId)
     saveRoutinesToLocal(updated)
 
@@ -418,6 +424,7 @@ function RoutinesPageContent() {
       await supabase.from('routines').delete().eq('id', routineId)
     } catch {}
     toast.success('Rutin silindi.')
+    setRoutineToDelete(null)
   }
 
   // -------------------------------------------------------------------------
@@ -445,42 +452,64 @@ function RoutinesPageContent() {
 
   const timeBlocks: TimeBlock[] = ['morning', 'afternoon', 'evening', 'night']
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Rutinler yükleniyor">
+        <div className="flex flex-col gap-2">
+          <div className="h-8 w-64 bg-muted rounded" />
+          <div className="h-4 w-96 bg-muted/60 rounded" />
+        </div>
+        <div className="h-20 bg-card border border-border rounded-xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="h-24 bg-card border border-border rounded-xl" />
+            <div className="h-64 bg-card border border-border rounded-xl" />
+          </div>
+          <div className="lg:col-span-5 space-y-4">
+            <div className="h-80 bg-card border border-border rounded-xl" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* 1. Üst Başlık & Kontroller */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageHeader
-          title="Rutinler & Alışkanlıklar"
-          description="Günlük alışkanlıklarınızı takip edin, tutarlılık zincirini koruyun ve aylık ritminizi inceleyin."
-        />
+      <PageHeader
+        title="Rutinler & Alışkanlıklar"
+        description="Günlük alışkanlıklarınızı takip edin, tutarlılık zincirini koruyun ve aylık ritminizi inceleyin."
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Düşük Pil Modu Anahtarı */}
+            <button
+              type="button"
+              onClick={() => setIsLowBattery(!isLowBattery)}
+              role="switch"
+              aria-checked={isLowBattery}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all min-h-[36px] ${
+                isLowBattery
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-sm'
+                  : 'bg-card text-muted-foreground border-border hover:bg-muted'
+              }`}
+              title="Enerjinizin düşük olduğu günlerde rutinleri 2 dakikalık mikro versiyonuna çevirir."
+            >
+              {isLowBattery ? (
+                <BatteryCharging className="h-4 w-4 text-amber-400" />
+              ) : (
+                <Battery className="h-4 w-4" />
+              )}
+              <span>{isLowBattery ? 'Düşük Enerji Modu Aktif' : 'Düşük Enerji Modu'}</span>
+            </button>
 
-        <div className="flex items-center gap-2">
-          {/* Düşük Pil Modu Anahtarı */}
-          <button
-            type="button"
-            onClick={() => setIsLowBattery(!isLowBattery)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-              isLowBattery
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-sm'
-                : 'bg-card text-muted-foreground border-border hover:bg-muted'
-            }`}
-            title="Enerjinizin düşük olduğu günlerde rutinleri 2 dakikalık mikro versiyonuna çevirir."
-          >
-            {isLowBattery ? (
-              <BatteryCharging className="h-4 w-4 text-amber-400" />
-            ) : (
-              <Battery className="h-4 w-4" />
-            )}
-            <span>{isLowBattery ? 'Düşük Enerji Modu Aktif' : 'Düşük Enerji Modu'}</span>
-          </button>
-
-          {/* Yeni Rutin Ekle Butonu */}
-          <Button onClick={handleOpenCreateModal} className="gap-2">
-            <Plus className="h-4 w-4" />
-            <span>Yeni Rutin</span>
-          </Button>
-        </div>
-      </div>
+            {/* Yeni Rutin Ekle Butonu */}
+            <Button onClick={handleOpenCreateModal} className="gap-2 min-h-[36px]">
+              <Plus className="h-4 w-4" />
+              <span>Yeni Rutin</span>
+            </Button>
+          </div>
+        }
+      />
 
       {/* 2. Haftalık Gün Şeridi (Weekly Day Strip) */}
       <Card className="border-border/60 bg-card/40 backdrop-blur-sm">
@@ -509,7 +538,7 @@ function RoutinesPageContent() {
                         : 'bg-background/40 hover:bg-muted text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    <span className="text-[10px] font-semibold uppercase tracking-wider opacity-80">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
                       {day.dayName}
                     </span>
                     <span className="text-sm sm:text-base font-bold my-0.5">
@@ -565,7 +594,7 @@ function RoutinesPageContent() {
                     })}
                   </span>
                   {dailyCompletion.isPerfectDay && (
-                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-[10px]">
+                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-[11px]">
                       <Sparkles className="h-3 w-3" /> Kusursuz Gün
                     </Badge>
                   )}
@@ -685,7 +714,7 @@ function RoutinesPageContent() {
                               {streak.currentStreak > 0 && (
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-400 gap-0.5"
+                                  className="text-[11px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-400 gap-0.5"
                                 >
                                   <Flame className="h-3 w-3" />
                                   {streak.currentStreak}g
@@ -695,7 +724,7 @@ function RoutinesPageContent() {
                               {streak.isCracked && !isCompleted && (
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-rose-500/40 bg-rose-500/10 text-rose-400 gap-0.5"
+                                  className="text-[11px] px-1.5 py-0 border-rose-500/40 bg-rose-500/10 text-rose-400 gap-0.5"
                                   title="Dün kaçırıldı! Bugün yaparsan zincir kurtarılacak (Never Miss Twice)."
                                 >
                                   <AlertTriangle className="h-3 w-3" />
@@ -706,7 +735,7 @@ function RoutinesPageContent() {
                               {streak.isKintsugi && (
                                 <Badge
                                   variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-yellow-500/40 bg-yellow-500/10 text-yellow-300 gap-0.5"
+                                  className="text-[11px] px-1.5 py-0 border-yellow-500/40 bg-yellow-500/10 text-yellow-300 gap-0.5"
                                   title="Altın dikişle onarıldı (Kintsugi). Asla iki kez kaçırmadın!"
                                 >
                                   ✨ Onarıldı
@@ -751,10 +780,11 @@ function RoutinesPageContent() {
                           <button
                             type="button"
                             onClick={() => handleStartTimer(routine)}
-                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-md hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                            aria-label={`"${routine.title}" için sayaç başlat`}
                             title="Zen Odak Sayacını Başlat"
                           >
-                            <Clock className="h-3.5 w-3.5" />
+                            <Clock className="h-4 w-4" />
                           </button>
 
                           {/* Not Ekle */}
@@ -764,30 +794,33 @@ function RoutinesPageContent() {
                               setNoteRoutine(routine)
                               setNoteInput(todayLog?.note || '')
                             }}
-                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-md hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                            aria-label={`"${routine.title}" için not ekle`}
                             title="Bugün için not ekle"
                           >
-                            <FileText className="h-3.5 w-3.5" />
+                            <FileText className="h-4 w-4" />
                           </button>
 
                           {/* Düzenle */}
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(routine)}
-                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-md hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                            aria-label={`"${routine.title}" rutinini düzenle`}
                             title="Rutini Düzenle"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Edit2 className="h-4 w-4" />
                           </button>
 
                           {/* Sil */}
                           <button
                             type="button"
-                            onClick={() => handleDeleteRoutine(routine.id)}
-                            className="p-1.5 rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400"
+                            onClick={() => setRoutineToDelete({ id: routine.id, title: routine.title })}
+                            className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 flex items-center justify-center"
+                            aria-label={`"${routine.title}" rutinini sil`}
                             title="Rutini Sil"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
@@ -812,8 +845,26 @@ function RoutinesPageContent() {
           )}
         </div>
 
+        {/* Mobile Toggle for Constellation & Calendar */}
+        <div className="lg:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowConstellationOnMobile(!showConstellationOnMobile)}
+            className="w-full flex items-center justify-between text-xs min-h-[38px] border-border/80"
+          >
+            <span className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              <span>Alışkanlık Ağı & Aylık Takvim</span>
+            </span>
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {showConstellationOnMobile ? 'Gizle ▲' : 'Göster ▼'}
+            </span>
+          </Button>
+        </div>
+
         {/* SAĞ SÜTUN: ALIŞKANLIK AĞI & AYLIK TAKVİM (lg:col-span-5) */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className={`lg:col-span-5 space-y-6 ${showConstellationOnMobile ? 'block' : 'hidden lg:block'}`}>
           {/* ÜST KUTU: İNTERAKTİF ALIŞKANLIK AĞI */}
           <Card className="border-border bg-card overflow-hidden relative shadow-sm">
             <div className="p-4 border-b border-border flex items-center justify-between">
@@ -973,7 +1024,7 @@ function RoutinesPageContent() {
               </div>
 
               {/* Hafta Günleri Başlığı */}
-              <div className="grid grid-cols-7 text-center text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pb-1 border-b border-border/50">
+              <div className="grid grid-cols-7 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pb-1 border-b border-border/50">
                 <span>Pzt</span>
                 <span>Sal</span>
                 <span>Çar</span>
@@ -1042,8 +1093,9 @@ function RoutinesPageContent() {
         <form onSubmit={handleSaveRoutine} className="space-y-4">
           <div className="flex gap-3">
             <div className="w-14 shrink-0">
-              <label className="text-xs font-semibold block mb-1 text-muted-foreground">İkon</label>
+              <label htmlFor="routine-form-icon" className="text-xs font-semibold block mb-1 text-muted-foreground">İkon</label>
               <Input
+                id="routine-form-icon"
                 value={formData.icon}
                 onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
                 className="text-center text-xl p-0 h-9"
@@ -1053,8 +1105,9 @@ function RoutinesPageContent() {
               />
             </div>
             <div className="flex-1">
-              <label className="text-xs font-semibold block mb-1 text-muted-foreground">Rutin Başlığı</label>
+              <label htmlFor="routine-form-title" className="text-xs font-semibold block mb-1 text-muted-foreground">Rutin Başlığı</label>
               <Input
+                id="routine-form-title"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Örn: 90 dk Kesintisiz Kod / Deep Work"
@@ -1065,8 +1118,9 @@ function RoutinesPageContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold block mb-1 text-muted-foreground">Zaman Dilimi</label>
+              <label htmlFor="routine-form-timeblock" className="text-xs font-semibold block mb-1 text-muted-foreground">Zaman Dilimi</label>
               <Select
+                id="routine-form-timeblock"
                 value={formData.time_block}
                 onChange={(e) =>
                   setFormData({ ...formData, time_block: e.target.value as TimeBlock })
@@ -1080,8 +1134,9 @@ function RoutinesPageContent() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold block mb-1 text-muted-foreground">Hedef Süre</label>
+              <label htmlFor="routine-form-duration" className="text-xs font-semibold block mb-1 text-muted-foreground">Hedef Süre</label>
               <Input
+                id="routine-form-duration"
                 type="number"
                 min="1"
                 max="240"
@@ -1099,10 +1154,11 @@ function RoutinesPageContent() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold block mb-1">
+            <label htmlFor="routine-form-med" className="text-xs font-semibold block mb-1">
               Minimum Etkili Doz (Düşük Pil Hedefi)
             </label>
             <Input
+              id="routine-form-med"
               value={formData.minimum_effective_dose}
               onChange={(e) =>
                 setFormData({ ...formData, minimum_effective_dose: e.target.value })
@@ -1122,10 +1178,11 @@ function RoutinesPageContent() {
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground block mb-1">
+              <label htmlFor="routine-form-dream" className="text-xs text-muted-foreground block mb-1">
                 Bağlı Hayal / Vizyon
               </label>
               <Select
+                id="routine-form-dream"
                 value={formData.dream_id}
                 onChange={(e) => {
                   const selected = dreams.find((d) => d.id === e.target.value)
@@ -1146,10 +1203,11 @@ function RoutinesPageContent() {
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground block mb-1">
+              <label htmlFor="routine-form-persona" className="text-xs text-muted-foreground block mb-1">
                 Hedeflenen Kimlik Personası
               </label>
               <Input
+                id="routine-form-persona"
                 value={formData.identity_persona}
                 onChange={(e) =>
                   setFormData({ ...formData, identity_persona: e.target.value })
@@ -1246,10 +1304,11 @@ function RoutinesPageContent() {
         title={`Günün Notu: ${noteRoutine?.title || ''}`}
       >
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">
+          <label htmlFor="routine-note-input" className="text-xs text-muted-foreground block">
             {selectedDate} tarihi için bu rutine dair kısa bir hatıra veya ölçüm not et (Örn: "24 sayfa okundu", "3km koşuldu").
-          </p>
+          </label>
           <Input
+            id="routine-note-input"
             value={noteInput}
             onChange={(e) => setNoteInput(e.target.value)}
             placeholder="Notunu yaz..."
@@ -1263,6 +1322,17 @@ function RoutinesPageContent() {
           </div>
         </div>
       </Modal>
+
+      {/* 7. Rutin Silme Onay Modalı */}
+      <ConfirmDialog
+        isOpen={!!routineToDelete}
+        onClose={() => setRoutineToDelete(null)}
+        onConfirm={confirmDeleteRoutine}
+        title="Rutini Sil"
+        description={`"${routineToDelete?.title}" adlı rutini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmLabel="Rutini Sil"
+        variant="destructive"
+      />
     </div>
   )
 }

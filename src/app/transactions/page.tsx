@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate, formatMonthYear } from '@/lib/utils'
+import { formatCurrency, formatDate, formatMonthYear, cn } from '@/lib/utils'
 import { round2 } from '@/lib/finance-engine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +35,7 @@ import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
 import { financialBridge, getLinkedDebtId, getLinkedInvestmentId } from '@/lib/financial-bridge'
 import type { Transaction, Project, CreditCard, Account, Debt, Investment } from '@/types/database'
@@ -48,6 +49,26 @@ function TransactionsContent() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Mobile filters collapsible panel
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean
+    title: string
+    description: string
+    confirmLabel?: string
+    variant?: 'destructive' | 'warning' | 'default'
+    onConfirm: () => Promise<void>
+    isLoading?: boolean
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: async () => {},
+    isLoading: false,
+  })
 
   // Segment Tab: 'all' | 'cards' | 'accounts'
   const [segmentTab, setSegmentTab] = useState<'all' | 'cards' | 'accounts'>('all')
@@ -318,28 +339,37 @@ function TransactionsContent() {
     }
   }
 
-  const handleUnlinkFromDebt = async (tx: Transaction) => {
-    if (!confirm('Bu hareketin borç/alacak eşlemesini kaldırmak istiyor musunuz? Tutar borç bakiyesine iade edilecektir.')) {
-      return
-    }
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error('Oturum açılmamış')
+  const handleUnlinkFromDebt = (tx: Transaction) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Borç / Alacak Eşleşmesini Kaldır',
+      description: 'Bu hareketin borç/alacak eşlemesini kaldırmak istiyor musunuz? Tutar borç bakiyesine iade edilecektir.',
+      confirmLabel: 'Eşleşmeyi Kaldır',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
+        try {
+          const supabase = createClient()
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+          if (!user) throw new Error('Oturum açılmamış')
 
-      const res = await financialBridge.unlinkTransactionFromDebt({
-        userId: user.id,
-        transactionId: tx.id,
-      })
+          const res = await financialBridge.unlinkTransactionFromDebt({
+            userId: user.id,
+            transactionId: tx.id,
+          })
 
-      if (!res.success) throw new Error(res.error)
-      await loadTransactions()
-      toast.success('Borç/alacak eşlemesi kaldırıldı.')
-    } catch (err: any) {
-      toast.error(err.message || 'Bağlantı kaldırılamadı')
-    }
+          if (!res.success) throw new Error(res.error)
+          await loadTransactions()
+          toast.success('Borç/alacak eşlemesi kaldırıldı.')
+        } catch (err: any) {
+          toast.error(err.message || 'Bağlantı kaldırılamadı')
+        } finally {
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
+        }
+      },
+    })
   }
 
   const handleOpenInvestmentLinkModal = (tx: Transaction) => {
@@ -433,28 +463,37 @@ function TransactionsContent() {
     }
   }
 
-  const handleUnlinkFromInvestment = async (tx: Transaction) => {
-    if (!confirm('Bu hareketin yatırım bağlantısını kaldırmak ve tekrar standart harcama grubuna almak istiyor musunuz?')) {
-      return
-    }
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      const userId = user?.id || 'local'
+  const handleUnlinkFromInvestment = (tx: Transaction) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Yatırım Bağlantısını Kaldır',
+      description: 'Bu hareketin yatırım bağlantısını kaldırmak ve tekrar standart harcama grubuna almak istiyor musunuz?',
+      confirmLabel: 'Bağlantıyı Kaldır',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
+        try {
+          const supabase = createClient()
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+          const userId = user?.id || 'local'
 
-      const res = await financialBridge.unlinkTransactionFromInvestment({
-        userId,
-        transactionId: tx.id,
-      })
+          const res = await financialBridge.unlinkTransactionFromInvestment({
+            userId,
+            transactionId: tx.id,
+          })
 
-      if (!res.success) throw new Error(res.error)
-      await loadTransactions()
-      toast.success('Yatırım bağlantısı kaldırıldı.')
-    } catch (err: any) {
-      toast.error(err.message || 'Bağlantı kaldırılamadı')
-    }
+          if (!res.success) throw new Error(res.error)
+          await loadTransactions()
+          toast.success('Yatırım bağlantısı kaldırıldı.')
+        } catch (err: any) {
+          toast.error(err.message || 'Bağlantı kaldırılamadı')
+        } finally {
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
+        }
+      },
+    })
   }
 
   const handleAddTransaction = async (e: React.FormEvent) => {
@@ -557,15 +596,25 @@ function TransactionsContent() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bu hareketi silmek istediğinize emin misiniz?')) return
-    const res = await financialBridge.deleteTransaction(id)
-    if (res.success) {
-      setTransactions((prev) => prev.filter((t) => t.id !== id))
-      toast.success('Hareket silindi.')
-    } else {
-      toast.error(res.error || 'Silinemedi')
-    }
+  const handleDelete = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Hareketi Sil',
+      description: 'Bu hareketi işlem defterinden silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      confirmLabel: 'Hareketi Sil',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
+        const res = await financialBridge.deleteTransaction(id)
+        if (res.success) {
+          setTransactions((prev) => prev.filter((t) => t.id !== id))
+          toast.success('Hareket silindi.')
+        } else {
+          toast.error(res.error || 'Silinemedi')
+        }
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
+      },
+    })
   }
 
   // Filter pipeline
@@ -638,6 +687,17 @@ function TransactionsContent() {
     .filter((t) => t.analysis_group !== 'Hariç' && t.type !== 'Gelir' && t.type !== 'Tahsilat')
     .reduce((sum, t) => sum + (t.type === 'İade' ? -Number(t.amount || 0) : Number(t.amount || 0)), 0)
 
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-16 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-10 w-80 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-28 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-96 rounded-xl bg-card/60 border border-border/40" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Standart PageHeader */}
@@ -653,6 +713,7 @@ function TransactionsContent() {
                 onClick={() => setImportFilter('ALL')}
                 className="hover:text-destructive"
                 title="Filtreyi Kaldır"
+                aria-label="Paket filtresini kaldır"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -660,7 +721,7 @@ function TransactionsContent() {
           ) : undefined
         }
         actions={
-          <Button onClick={() => setIsAddModalOpen(true)} className="gap-2 shadow-sm h-9 text-xs font-semibold">
+          <Button onClick={() => setIsAddModalOpen(true)} className="gap-2 shadow-sm h-10 text-xs font-semibold">
             <Plus className="h-4 w-4" />
             Manuel Hareket Ekle
           </Button>
@@ -668,14 +729,16 @@ function TransactionsContent() {
       />
 
       {/* Segment Selector Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3" role="tablist" aria-label="Hareket Görünümü">
         <button
           type="button"
+          role="tab"
+          aria-selected={segmentTab === 'all'}
           onClick={() => {
             setSegmentTab('all')
             setSelectedEntityId('ALL')
           }}
-          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-2 min-h-[36px] text-xs font-semibold transition-all ${
             segmentTab === 'all'
               ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -687,11 +750,13 @@ function TransactionsContent() {
 
         <button
           type="button"
+          role="tab"
+          aria-selected={segmentTab === 'cards'}
           onClick={() => {
             setSegmentTab('cards')
             setSelectedEntityId('ALL')
           }}
-          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-2 min-h-[36px] text-xs font-semibold transition-all ${
             segmentTab === 'cards'
               ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -703,11 +768,13 @@ function TransactionsContent() {
 
         <button
           type="button"
+          role="tab"
+          aria-selected={segmentTab === 'accounts'}
           onClick={() => {
             setSegmentTab('accounts')
             setSelectedEntityId('ALL')
           }}
-          className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-2 min-h-[36px] text-xs font-semibold transition-all ${
             segmentTab === 'accounts'
               ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -720,15 +787,44 @@ function TransactionsContent() {
 
       {/* Filter Toolbar */}
       <Card className="border-border bg-card p-4 shadow-sm">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {/* Search Box */}
-          <div className="relative">
+        {/* Mobile Search & Filter toggle button */}
+        <div className="flex items-center gap-2 md:hidden">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="İşyeri veya açıklama ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 text-xs"
+              aria-label="İşyeri veya açıklama ara"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+            className="gap-1.5 shrink-0 h-10 px-3"
+            aria-expanded={isMobileFiltersOpen}
+            aria-label="Filtre panelini aç veya kapat"
+          >
+            <Filter className="h-4 w-4" />
+            <span className="text-xs">Filtreler</span>
+            {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-primary" />}
+          </Button>
+        </div>
+
+        {/* Desktop Filter Grid / Mobile Collapsible Panel */}
+        <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-5', !isMobileFiltersOpen && 'hidden md:grid', isMobileFiltersOpen && 'mt-3 md:mt-0')}>
+          {/* Search Box (Desktop) */}
+          <div className="relative hidden md:block">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="İşyeri veya açıklama ara..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 text-xs"
+              aria-label="İşyeri veya açıklama ara"
             />
           </div>
 
@@ -737,6 +833,7 @@ function TransactionsContent() {
             value={selectedEntityId}
             onChange={(e) => setSelectedEntityId(e.target.value)}
             className="text-xs font-semibold"
+            aria-label="Hesap veya Kart Filtresi"
           >
             <option value="ALL">Tüm Kartlar & Hesaplar</option>
             <optgroup label="💳 Kredi Kartları">
@@ -760,6 +857,7 @@ function TransactionsContent() {
             value={monthFilter}
             onChange={(e) => setMonthFilter(e.target.value)}
             className="text-xs"
+            aria-label="Dönem Filtresi"
           >
             <option value="ALL">Tüm Dönemler</option>
             {availableMonths.map((m) => (
@@ -774,6 +872,7 @@ function TransactionsContent() {
             value={groupFilter}
             onChange={(e) => setGroupFilter(e.target.value)}
             className="text-xs"
+            aria-label="Grup Filtresi"
           >
             <option value="ALL">Tüm Gruplar</option>
             <option value="Kişisel">Kişisel</option>
@@ -788,6 +887,7 @@ function TransactionsContent() {
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
             className="text-xs"
+            aria-label="Proje Filtresi"
           >
             <option value="ALL">Tüm Projeler</option>
             {projects.map((p) => (
@@ -865,7 +965,7 @@ function TransactionsContent() {
                           ? 'success'
                           : 'outline'
                       }
-                      className="text-[9px] px-1.5 py-0"
+                      className="text-[11px] px-1.5 py-0"
                     >
                       {tx.analysis_group}
                     </Badge>
@@ -883,12 +983,12 @@ function TransactionsContent() {
 
                   {/* Inline quick links */}
                   {(tx.type === 'Harcama' || tx.type === 'Transfer') && (
-                    <div className="flex items-center gap-3 pt-0.5 text-[10px]">
+                    <div className="flex items-center gap-3 pt-0.5 text-[11px]">
                       {tx.account_id && tx.type === 'Harcama' && (
                         <button
                           type="button"
                           onClick={() => handleOpenLinkModal(tx)}
-                          className="text-amber-400 hover:underline font-medium"
+                          className="text-amber-400 hover:underline font-medium min-h-[32px] inline-flex items-center"
                         >
                           Borca Bağla
                         </button>
@@ -896,7 +996,7 @@ function TransactionsContent() {
                       <button
                         type="button"
                         onClick={() => handleOpenInvestmentLinkModal(tx)}
-                        className="text-cyan-400 hover:underline font-medium"
+                        className="text-cyan-400 hover:underline font-medium min-h-[32px] inline-flex items-center"
                       >
                         Yatırıma Aktar
                       </button>
@@ -923,11 +1023,12 @@ function TransactionsContent() {
                   </div>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     onClick={() => handleDelete(tx.id)}
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-full"
+                    aria-label="Hareketi sil"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -941,10 +1042,15 @@ function TransactionsContent() {
             <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
               <tr>
                 <th
-                  className="p-3 cursor-pointer select-none hover:text-foreground transition-colors group"
-                  onClick={() => handleSort('date')}
+                  scope="col"
+                  className="p-3"
+                  aria-sort={sortField === 'date' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
-                  <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('date')}
+                    className="flex items-center gap-1.5 font-semibold uppercase hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-0.5"
+                  >
                     <span>Tarih</span>
                     {sortField === 'date' ? (
                       sortOrder === 'asc' ? (
@@ -953,20 +1059,25 @@ function TransactionsContent() {
                         <ArrowDown className="h-3.5 w-3.5 text-primary" />
                       )
                     ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                      <ArrowUpDown className="h-3 w-3 opacity-30 hover:opacity-100" />
                     )}
-                  </div>
+                  </button>
                 </th>
-                <th className="p-3">Hesap / Kart</th>
-                <th className="p-3">Tür</th>
-                <th className="p-3">İşyeri / Açıklama</th>
-                <th className="p-3">Grup</th>
-                <th className="p-3">Proje</th>
+                <th scope="col" className="p-3">Hesap / Kart</th>
+                <th scope="col" className="p-3">Tür</th>
+                <th scope="col" className="p-3">İşyeri / Açıklama</th>
+                <th scope="col" className="p-3">Grup</th>
+                <th scope="col" className="p-3">Proje</th>
                 <th
-                  className="p-3 text-right cursor-pointer select-none hover:text-foreground transition-colors group"
-                  onClick={() => handleSort('amount')}
+                  scope="col"
+                  className="p-3 text-right"
+                  aria-sort={sortField === 'amount' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
-                  <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('amount')}
+                    className="flex items-center justify-end gap-1.5 ml-auto font-semibold uppercase hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-0.5"
+                  >
                     <span>Tutar</span>
                     {sortField === 'amount' ? (
                       sortOrder === 'asc' ? (
@@ -975,11 +1086,11 @@ function TransactionsContent() {
                         <ArrowDown className="h-3.5 w-3.5 text-primary" />
                       )
                     ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                      <ArrowUpDown className="h-3 w-3 opacity-30 hover:opacity-100" />
                     )}
-                  </div>
+                  </button>
                 </th>
-                <th className="p-3 text-center w-12"></th>
+                <th scope="col" className="p-3 text-center w-12"><span className="sr-only">İşlemler</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40 font-mono">
@@ -1009,7 +1120,7 @@ function TransactionsContent() {
                             ? 'purple'
                             : 'default'
                         }
-                        className="text-[10px]"
+                        className="text-[11px]"
                       >
                         {tx.type}
                       </Badge>
@@ -1017,7 +1128,7 @@ function TransactionsContent() {
                     <td className="p-3 font-sans max-w-xs" title={tx.description || tx.merchant || ''}>
                       <span className="font-medium text-foreground">{tx.merchant}</span>
                       {tx.recurrence && (
-                        <Badge variant="outline" className="ml-1.5 text-[9px] font-mono">
+                        <Badge variant="outline" className="ml-1.5 text-[11px] font-mono">
                           {tx.recurrence}
                         </Badge>
                       )}
@@ -1037,13 +1148,13 @@ function TransactionsContent() {
                         if (linkedDebt) {
                           return (
                             <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
                                 ✓ {linkedDebt.type === 'Alacak' ? 'Tahsilat' : 'Ödeme'}: {linkedDebt.person_or_entity}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleUnlinkFromDebt(tx)}
-                                className="text-[10px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
+                                className="text-[11px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
                                 title="Eşleştirmeyi kaldır ve tutarı borç/alacak bakiyesine iade et"
                               >
                                 Çöz
@@ -1057,13 +1168,13 @@ function TransactionsContent() {
                         if (linkedInv || investmentId) {
                           return (
                             <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">
                                 📈 Portföy: {linkedInv ? linkedInv.name : 'Yatırım'}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleUnlinkFromInvestment(tx)}
-                                className="text-[10px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
+                                className="text-[11px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
                                 title="Yatırım bağlantısını kaldır ve hareketi normal harcamaya geri al"
                               >
                                 Çöz
@@ -1078,7 +1189,7 @@ function TransactionsContent() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenLinkModal(tx)}
-                                className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline transition-colors"
+                                className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline transition-colors"
                                 title="Bu gelen parayı alacak hakedişine bağla"
                               >
                                 Alacağa Bağla →
@@ -1094,7 +1205,7 @@ function TransactionsContent() {
                                 <button
                                   type="button"
                                   onClick={() => handleOpenLinkModal(tx)}
-                                  className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
+                                  className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
                                   title="Bu harcamayı şahsi borca bağla"
                                 >
                                   Borca Bağla →
@@ -1103,7 +1214,7 @@ function TransactionsContent() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenInvestmentLinkModal(tx)}
-                                className="inline-flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold hover:underline transition-colors"
+                                className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold hover:underline transition-colors"
                                 title="Bu transferi/harcamayı portföydeki bir yatırıma bağla ve tüketim harcamasından muaf tut"
                               >
                                 Yatırıma Aktar →
@@ -1112,7 +1223,7 @@ function TransactionsContent() {
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRecurringModal(tx)}
-                                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-medium hover:underline transition-colors"
+                                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground font-medium hover:underline transition-colors"
                                   title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
                                 >
                                   Abonelik Yap →
@@ -1136,7 +1247,7 @@ function TransactionsContent() {
                             ? 'success'
                             : 'outline'
                         }
-                        className="text-[10px]"
+                        className="text-[11px]"
                       >
                         {tx.analysis_group}
                       </Badge>
@@ -1163,11 +1274,12 @@ function TransactionsContent() {
                     <td className="p-3 text-center">
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         onClick={() => handleDelete(tx.id)}
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-md"
+                        aria-label="Hareketi sil"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>
                   </tr>
@@ -1201,6 +1313,7 @@ function TransactionsContent() {
           </div>
 
           <HeroCurrencyInput
+            id="add-tx-amount"
             label="İşlem Tutarı"
             type={newTx.type === 'Gelir' ? 'income' : newTx.type === 'Harcama' ? 'expense' : 'neutral'}
             value={newTx.amount}
@@ -1210,8 +1323,9 @@ function TransactionsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Tarih</label>
+              <label htmlFor="add-tx-date" className="text-xs font-semibold text-foreground">Tarih</label>
               <Input
+                id="add-tx-date"
                 type="date"
                 value={newTx.date}
                 onChange={(e) => setNewTx({ ...newTx, date: e.target.value })}
@@ -1219,8 +1333,9 @@ function TransactionsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Hesap / Kart</label>
+              <label htmlFor="add-tx-account" className="text-xs font-semibold text-foreground">Hesap / Kart</label>
               <Select
+                id="add-tx-account"
                 value={newTx.account_or_card}
                 onChange={(e) => setNewTx({ ...newTx, account_or_card: e.target.value })}
               >
@@ -1244,8 +1359,9 @@ function TransactionsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">İşyeri / Başlık</label>
+              <label htmlFor="add-tx-merchant" className="text-xs font-semibold text-foreground">İşyeri / Başlık</label>
               <Input
+                id="add-tx-merchant"
                 value={newTx.merchant}
                 onChange={(e) => setNewTx({ ...newTx, merchant: e.target.value })}
                 placeholder="Örn: Cursor, Market..."
@@ -1253,8 +1369,9 @@ function TransactionsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Analiz Grubu</label>
+              <label htmlFor="add-tx-group" className="text-xs font-semibold text-foreground">Analiz Grubu</label>
               <Select
+                id="add-tx-group"
                 value={newTx.analysis_group}
                 onChange={(e) => setNewTx({ ...newTx, analysis_group: e.target.value })}
               >
@@ -1268,8 +1385,9 @@ function TransactionsContent() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">Bağlı Proje (Opsiyonel)</label>
+            <label htmlFor="add-tx-project" className="text-xs font-semibold text-foreground">Bağlı Proje (Opsiyonel)</label>
             <Select
+              id="add-tx-project"
               value={newTx.project_id}
               onChange={(e) => setNewTx({ ...newTx, project_id: e.target.value })}
             >
@@ -1331,12 +1449,13 @@ function TransactionsContent() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+              <label htmlFor="link-debt-target" className="text-xs font-semibold text-foreground">
                 {selectedTxForLink.type === 'Gelir' || selectedTxForLink.type === 'Tahsilat'
                   ? 'Eşleştirilecek Açık Alacak'
                   : 'Eşleştirilecek Açık Borç'}
               </label>
               <Select
+                id="link-debt-target"
                 value={targetDebtId}
                 onChange={(e) => setTargetDebtId(e.target.value)}
                 className="text-xs"
@@ -1376,7 +1495,7 @@ function TransactionsContent() {
                         {formatCurrency(postRemaining)}
                       </strong>
                       {postRemaining === 0 && (
-                        <Badge variant="success" className="text-[9px]">
+                        <Badge variant="success" className="text-[11px]">
                           Tamamen Kapanacak
                         </Badge>
                       )}
@@ -1414,10 +1533,11 @@ function TransactionsContent() {
       >
         <form onSubmit={handleSaveRecurring} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
+            <label htmlFor="rec-service" className="text-xs font-semibold text-muted-foreground">
               Hizmet / Kurum / Fatura Adı
             </label>
             <Input
+              id="rec-service"
               required
               value={recurringForm.service}
               onChange={(e) => setRecurringForm({ ...recurringForm, service: e.target.value })}
@@ -1426,8 +1546,9 @@ function TransactionsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
+              <label htmlFor="rec-category" className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
               <Select
+                id="rec-category"
                 value={recurringForm.category}
                 onChange={(e) => setRecurringForm({ ...recurringForm, category: e.target.value as any })}
               >
@@ -1439,8 +1560,9 @@ function TransactionsContent() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Kapsam Grubu</label>
+              <label htmlFor="rec-group" className="text-xs font-semibold text-muted-foreground">Kapsam Grubu</label>
               <Select
+                id="rec-group"
                 value={recurringForm.group_type}
                 onChange={(e) => setRecurringForm({ ...recurringForm, group_type: e.target.value as any })}
               >
@@ -1452,8 +1574,9 @@ function TransactionsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
+              <label htmlFor="rec-amount" className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
               <Input
+                id="rec-amount"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -1464,8 +1587,9 @@ function TransactionsContent() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
+              <label htmlFor="rec-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
               <Select
+                id="rec-period"
                 value={recurringForm.period}
                 onChange={(e) => setRecurringForm({ ...recurringForm, period: e.target.value })}
               >
@@ -1478,20 +1602,22 @@ function TransactionsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor="rec-payment-method" className="text-xs font-semibold text-muted-foreground">
                 Ödeme Yolu / Kart / Kasa
               </label>
               <Input
+                id="rec-payment-method"
                 value={recurringForm.payment_method}
                 onChange={(e) => setRecurringForm({ ...recurringForm, payment_method: e.target.value })}
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor="rec-end-date" className="text-xs font-semibold text-muted-foreground">
                 Bitiş Tarihi (Taksitler için Opsiyonel)
               </label>
               <Input
+                id="rec-end-date"
                 type="date"
                 value={recurringForm.end_date}
                 onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
@@ -1546,13 +1672,14 @@ function TransactionsContent() {
 
             {/* Target Investment */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Hedef Yatırım / Varlık</label>
+              <label htmlFor="link-inv-target" className="text-xs font-semibold text-foreground">Hedef Yatırım / Varlık</label>
               {investments.length === 0 ? (
                 <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-md">
                   Portföyünüzde henüz tanımlı bir yatırım bulunmuyor. Lütfen önce <strong>Yatırımlar & Portföy</strong> sayfasından varlık ekleyin.
                 </p>
               ) : (
                 <Select
+                  id="link-inv-target"
                   value={targetInvestmentId}
                   onChange={(e) => handleTargetInvChange(e.target.value)}
                   className="text-xs"
@@ -1569,8 +1696,9 @@ function TransactionsContent() {
             {/* DCA Option Checkbox */}
             {investments.length > 0 && (
               <div className="space-y-3 pt-1 border-t border-border/50">
-                <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
+                <label htmlFor="inv-link-dca" className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
                   <input
+                    id="inv-link-dca"
                     type="checkbox"
                     checked={invLinkWithDca}
                     onChange={(e) => setInvLinkWithDca(e.target.checked)}
@@ -1598,10 +1726,11 @@ function TransactionsContent() {
                     <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-border/70 text-xs">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
-                          <label className="text-[11px] font-semibold text-muted-foreground">
+                          <label htmlFor="link-inv-unit-price" className="text-[11px] font-semibold text-muted-foreground">
                             Birim Alış Fiyatı
                           </label>
                           <Input
+                            id="link-inv-unit-price"
                             type="number"
                             step="any"
                             prefix="₺"
@@ -1618,10 +1747,11 @@ function TransactionsContent() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[11px] font-semibold text-muted-foreground">
+                          <label htmlFor="link-inv-added-qty" className="text-[11px] font-semibold text-muted-foreground">
                             Alınan Adet / Miktar
                           </label>
                           <Input
+                            id="link-inv-added-qty"
                             type="number"
                             step="any"
                             value={invLinkAddedQty}
@@ -1661,6 +1791,18 @@ function TransactionsContent() {
           </div>
         )}
       </Modal>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
+        isLoading={confirmDialog.isLoading}
+      />
     </div>
   )
 }

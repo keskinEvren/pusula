@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Compass, Lock, Mail, User, ArrowRight } from 'lucide-react'
+import { Compass, Lock, Mail, User, ArrowRight, Eye, EyeOff } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,7 @@ export default function SignupPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -69,25 +70,26 @@ export default function SignupPage() {
         </div>
 
         {error && (
-          <div className="mb-5 rounded-xl bg-destructive/15 border border-destructive/30 p-3 text-xs text-destructive font-medium">
+          <div role="alert" className="mb-5 rounded-xl bg-destructive/15 border border-destructive/30 p-3 text-xs text-destructive font-medium">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 p-3 text-xs text-emerald-400 font-medium">
+          <div role="status" aria-live="polite" className="mb-5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 p-3 text-xs text-emerald-400 font-medium">
             Hesabınız başarıyla oluşturuldu. Yönlendiriliyorsunuz...
           </div>
         )}
 
         <form onSubmit={handleSignup} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+            <label htmlFor="signup-fullname" className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
               Ad Soyad
             </label>
             <div className="relative">
               <User className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
               <Input
+                id="signup-fullname"
                 type="text"
                 required
                 placeholder="Evren Keskin"
@@ -99,12 +101,13 @@ export default function SignupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+            <label htmlFor="signup-email" className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
               E-posta Adresi
             </label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
               <Input
+                id="signup-email"
                 type="email"
                 required
                 placeholder="kurucu@sirket.com"
@@ -116,19 +119,28 @@ export default function SignupPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+            <label htmlFor="signup-password" className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
               Şifre
             </label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                type="password"
+                id="signup-password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 placeholder="••••••••"
-                className="pl-10 h-10 rounded-xl bg-white/[0.03] border-white/[0.08] text-xs focus:border-primary/50 focus:bg-white/[0.05]"
+                className="pl-10 pr-10 h-10 rounded-xl bg-white/[0.03] border-white/[0.08] text-xs focus:border-primary/50 focus:bg-white/[0.05]"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 transition-colors"
+                aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
@@ -138,8 +150,8 @@ export default function SignupPage() {
               disabled={loading || success}
               className="w-full h-11 text-xs font-semibold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2"
             >
-              {loading ? 'Hesap Oluşturuluyor...' : 'Kayıt Ol'}
-              <ArrowRight className="h-4 w-4" />
+              <span>{loading ? 'Hesap Oluşturuluyor...' : 'Kayıt Ol'}</span>
+              <ArrowRight className="h-4 w-4 shrink-0" />
             </Button>
           </div>
         </form>

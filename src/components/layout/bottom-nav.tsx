@@ -33,7 +33,7 @@ export function BottomNav({ onOpenQuickCapture, onOpenMenu }: BottomNavProps) {
           )}
         >
           <LayoutDashboard className={cn('h-4 w-4', isActive('/') && 'scale-110')} />
-          <span className="text-[10px] tracking-tight">Genel Bakış</span>
+          <span className="text-[11px] tracking-tight">Genel Bakış</span>
         </Link>
 
         {/* 2. Hareketler */}
@@ -47,7 +47,7 @@ export function BottomNav({ onOpenQuickCapture, onOpenMenu }: BottomNavProps) {
           )}
         >
           <ReceiptText className={cn('h-4 w-4', isActive('/transactions') && 'scale-110')} />
-          <span className="text-[10px] tracking-tight">Hareketler</span>
+          <span className="text-[11px] tracking-tight">Hareketler</span>
         </Link>
 
         {/* 3. Vurgulu Hızlı Ekle (Center FAB) */}
@@ -73,7 +73,7 @@ export function BottomNav({ onOpenQuickCapture, onOpenMenu }: BottomNavProps) {
           )}
         >
           <Orbit className={cn('h-4 w-4', isActive('/routines') && 'scale-110')} />
-          <span className="text-[10px] tracking-tight">Rutinler</span>
+          <span className="text-[11px] tracking-tight">Rutinler</span>
         </Link>
 
         {/* 5. Menü (Drawer Trigger) */}
@@ -84,7 +84,7 @@ export function BottomNav({ onOpenQuickCapture, onOpenMenu }: BottomNavProps) {
           aria-label="Tüm Menüyü Aç"
         >
           <Menu className="h-4 w-4" />
-          <span className="text-[10px] tracking-tight">Menü</span>
+          <span className="text-[11px] tracking-tight">Menü</span>
         </button>
       </div>
     </div>

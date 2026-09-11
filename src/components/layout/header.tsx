@@ -100,8 +100,9 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           variant="ghost"
           size="icon"
           onClick={onOpenMobileMenu}
-          className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
+          className="hidden sm:inline-flex lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
           aria-label="Menüyü Aç"
+          aria-haspopup="dialog"
         >
           <Menu className="h-5 w-5" />
         </Button>
@@ -135,19 +136,19 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         </nav>
       </div>
 
-      {/* Orta: Global Arama Çubuğu (⌘K ipucu) */}
+      {/* Orta: Hareketlerde Ara Bağlantısı */}
       <div className="hidden md:flex items-center">
         <Link
           href="/transactions"
-          className="flex h-9 w-64 lg:w-72 items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-all hover:bg-muted/70 hover:border-primary/40 focus:outline-none"
+          className="flex h-9 w-64 lg:w-72 items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-all hover:bg-muted/70 hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="flex items-center gap-2">
             <Search className="h-3.5 w-3.5 text-muted-foreground/80" />
-            <span>İşlem, hesap veya proje ara...</span>
+            <span>Hareketlerde ara...</span>
           </div>
-          <kbd className="inline-flex items-center gap-0.5 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/70">
-            ⌘K
-          </kbd>
+          <span className="text-[11px] text-muted-foreground/60 font-medium">
+            Filtrele
+          </span>
         </Link>
       </div>
 
@@ -158,7 +159,9 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           <Button
             size="sm"
             onClick={() => setIsQuickAddOpen(!isQuickAddOpen)}
-            className="h-8 gap-1.5 px-3 text-xs font-semibold shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-expanded={isQuickAddOpen}
+            aria-haspopup="true"
+            className="h-9 gap-1.5 px-3 text-xs font-semibold shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Hızlı Ekle</span>
@@ -169,7 +172,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             <div className="absolute right-0 mt-2 w-60 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-2xl z-50 animate-in fade-in-50 zoom-in-95 space-y-2">
               {/* Finans */}
               <div className="space-y-0.5">
-                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <div className="px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                   Finans
                 </div>
                 <Link
@@ -208,7 +211,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
               {/* Çalışma */}
               <div className="pt-1.5 border-t border-border/50 space-y-0.5">
-                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <div className="px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                   Çalışma
                 </div>
                 <Link
@@ -231,7 +234,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
               {/* Kişisel */}
               <div className="pt-1.5 border-t border-border/50 space-y-0.5">
-                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <div className="px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                   Kişisel
                 </div>
                 <Link

@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { financialBridge } from '@/lib/financial-bridge'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
 import type { Debt, Account, Transaction } from '@/types/database'
 
@@ -59,6 +60,10 @@ function DebtsContent() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Deletion confirmation
+  const [deleteTargetDebt, setDeleteTargetDebt] = useState<Debt | null>(null)
+  const [isDeletingDebt, setIsDeletingDebt] = useState(false)
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
@@ -360,19 +365,20 @@ function DebtsContent() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bu satırı ve ilişkili hareket bağlantılarını silmek istediğinize emin misiniz?')) {
-      return
-    }
-
-    const supabase = createClient()
-    const { error } = await supabase.from('debts').delete().eq('id', id)
-
-    if (error) {
-      toast.error('Silinemedi: ' + error.message)
-    } else {
+  const confirmDeleteDebt = async () => {
+    if (!deleteTargetDebt) return
+    setIsDeletingDebt(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('debts').delete().eq('id', deleteTargetDebt.id)
+      if (error) throw error
       toast.success('Satır silindi.')
+      setDeleteTargetDebt(null)
       await loadData()
+    } catch (err: any) {
+      toast.error('Silinemedi: ' + (err.message || 'Hata'))
+    } finally {
+      setIsDeletingDebt(false)
     }
   }
 
@@ -425,6 +431,17 @@ function DebtsContent() {
     })
   }, [debts, typeFilter, statusFilter, searchQuery, debtSortField, debtSortOrder])
 
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-16 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-24 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-12 rounded-xl bg-card/60 border border-border/40" />
+        <div className="h-80 rounded-xl bg-card/60 border border-border/40" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Top PageHeader & Actions */}
@@ -448,7 +465,7 @@ function DebtsContent() {
               {formatCurrency(totalReceivables)}
             </div>
           </div>
-          <Badge variant="success" className="text-[10px] font-mono">
+          <Badge variant="success" className="text-[11px] font-mono">
             Alacak
           </Badge>
         </div>
@@ -460,7 +477,7 @@ function DebtsContent() {
               {formatCurrency(totalDebts)}
             </div>
           </div>
-          <Badge variant="destructive" className="text-[10px] font-mono">
+          <Badge variant="destructive" className="text-[11px] font-mono">
             Borç
           </Badge>
         </div>
@@ -472,7 +489,7 @@ function DebtsContent() {
               {formatCurrency(netBalance)}
             </div>
           </div>
-          <Badge variant="outline" className="text-[10px] font-mono">
+          <Badge variant="outline" className="text-[11px] font-mono">
             {debts.length} Satır
           </Badge>
         </div>
@@ -552,18 +569,126 @@ function DebtsContent() {
 
       {/* Spreadsheet Table */}
       <Card className="border border-border shadow-md overflow-hidden rounded-xl bg-card">
-        <div className="overflow-x-auto">
+        {/* Mobile View (<md) */}
+        <div className="md:hidden divide-y divide-border/60 font-sans">
+          {filteredDebts.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-xs font-sans">
+              Filtreye uygun kayıt bulunamadı.
+            </div>
+          ) : (
+            filteredDebts.map((item) => {
+              const principal = Number(item.principal || 0)
+              const pastPayments = Number(item.past_payments || 0)
+              const remaining = Number(item.remaining || 0)
+              const newPayments = Math.max(
+                0,
+                Math.round((principal - pastPayments - remaining) * 100) / 100
+              )
+              const isClosed = remaining <= 0
+
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    'p-4 space-y-3 transition-colors',
+                    isClosed ? 'opacity-60 bg-muted/20' : 'hover:bg-muted/30'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={item.type === 'Alacak' ? 'success' : 'destructive'}
+                          className="text-[11px] px-1.5 py-0"
+                        >
+                          {item.type}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{item.category}</span>
+                      </div>
+                      <h2 className="font-semibold text-sm text-foreground mt-1">
+                        {item.person_or_entity}
+                      </h2>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                      )}
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-[11px] text-muted-foreground uppercase font-medium">Kalan</div>
+                      <div className="text-base font-bold font-mono text-emerald-400">
+                        {remaining > 0 ? formatCurrency(remaining) : 'Kapandı'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-muted/30 p-2.5 rounded-lg border border-border/40">
+                    <div>
+                      <div className="text-[11px] text-muted-foreground font-sans">Ana Tutar</div>
+                      <div className="text-foreground font-medium">{formatCurrency(principal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted-foreground font-sans">Ödenen / Düşülen</div>
+                      <div className="text-foreground/80 font-medium">
+                        {pastPayments + newPayments > 0 ? formatCurrency(pastPayments + newPayments) : '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    {!isClosed && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenDeduct(item)}
+                        className="h-9 px-3 text-xs gap-1.5 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Düş
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleOpenEdit(item)}
+                      className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full"
+                      aria-label={`${item.person_or_entity} kaydını düzenle`}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteTargetDebt(item)}
+                      className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-full"
+                      aria-label={`${item.person_or_entity} kaydını sil`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Desktop Wide Table (md+) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-muted/75 text-muted-foreground font-semibold uppercase text-[11px] tracking-wider border-b border-border">
-                <th className="py-3 px-3 w-10 text-center">No</th>
-                <th className="py-3 px-3 w-24">Tür</th>
-                <th className="py-3 px-3 w-28">Kategori</th>
+                <th scope="col" className="py-3 px-3 w-10 text-center">No</th>
+                <th scope="col" className="py-3 px-3 w-24">Tür</th>
+                <th scope="col" className="py-3 px-3 w-28">Kategori</th>
                 <th
-                  className="py-3 px-4 w-40 cursor-pointer select-none hover:text-foreground transition-colors group"
-                  onClick={() => handleDebtSort('person')}
+                  scope="col"
+                  className="py-3 px-4 w-40"
+                  aria-sort={debtSortField === 'person' ? (debtSortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
-                  <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDebtSort('person')}
+                    className="flex items-center gap-1.5 font-semibold uppercase hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-0.5"
+                  >
                     <span>Kişi / Kurum</span>
                     {debtSortField === 'person' ? (
                       debtSortOrder === 'asc' ? (
@@ -572,16 +697,21 @@ function DebtsContent() {
                         <ArrowDown className="h-3.5 w-3.5 text-primary" />
                       )
                     ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                      <ArrowUpDown className="h-3 w-3 opacity-30 hover:opacity-100" />
                     )}
-                  </div>
+                  </button>
                 </th>
-                <th className="py-3 px-4">Açıklama</th>
+                <th scope="col" className="py-3 px-4">Açıklama</th>
                 <th
-                  className="py-3 px-3 text-right w-28 cursor-pointer select-none hover:text-foreground transition-colors group"
-                  onClick={() => handleDebtSort('principal')}
+                  scope="col"
+                  className="py-3 px-3 text-right w-28"
+                  aria-sort={debtSortField === 'principal' ? (debtSortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
-                  <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDebtSort('principal')}
+                    className="flex items-center justify-end gap-1.5 ml-auto font-semibold uppercase hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-0.5"
+                  >
                     <span>Ana Tutar</span>
                     {debtSortField === 'principal' ? (
                       debtSortOrder === 'asc' ? (
@@ -590,19 +720,24 @@ function DebtsContent() {
                         <ArrowDown className="h-3.5 w-3.5 text-primary" />
                       )
                     ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                      <ArrowUpDown className="h-3 w-3 opacity-30 hover:opacity-100" />
                     )}
-                  </div>
+                  </button>
                 </th>
-                <th className="py-3 px-3 text-right w-32">Geçmiş Ödeme</th>
-                <th className="py-3 px-3 text-right w-32 text-emerald-400 bg-emerald-500/5">
+                <th scope="col" className="py-3 px-3 text-right w-32">Geçmiş Ödeme</th>
+                <th scope="col" className="py-3 px-3 text-right w-32 text-emerald-400 bg-emerald-500/5">
                   Yeni Hareketlerden
                 </th>
                 <th
-                  className="py-3 px-3 text-right w-28 text-emerald-400 font-bold cursor-pointer select-none hover:text-emerald-300 transition-colors group"
-                  onClick={() => handleDebtSort('remaining')}
+                  scope="col"
+                  className="py-3 px-3 text-right w-28 text-emerald-400 font-bold"
+                  aria-sort={debtSortField === 'remaining' ? (debtSortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
-                  <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDebtSort('remaining')}
+                    className="flex items-center justify-end gap-1.5 ml-auto font-semibold uppercase hover:text-emerald-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-0.5"
+                  >
                     <span>Kalan</span>
                     {debtSortField === 'remaining' ? (
                       debtSortOrder === 'asc' ? (
@@ -611,11 +746,12 @@ function DebtsContent() {
                         <ArrowDown className="h-3.5 w-3.5 text-emerald-400" />
                       )
                     ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+                      <ArrowUpDown className="h-3 w-3 opacity-30 hover:opacity-100" />
                     )}
-                  </div>
+                  </button>
                 </th>
-                <th className="py-3 px-3 text-center w-28 sticky right-0 bg-card/95 backdrop-blur-sm shadow-[-4px_0_8px_rgba(0,0,0,0.2)] border-l border-border z-20">
+                <th scope="col" className="py-3 px-3 text-center w-28 sticky right-0 bg-card/95 backdrop-blur-sm shadow-[-4px_0_8px_rgba(0,0,0,0.2)] border-l border-border z-20">
+                  <span className="sr-only">İşlemler</span>
                   İşlem
                 </th>
               </tr>
@@ -707,7 +843,7 @@ function DebtsContent() {
                               Düş
                             </Button>
                           ) : (
-                            <Badge variant="secondary" className="text-[10px] h-6 font-mono">
+                            <Badge variant="secondary" className="text-[11px] h-6 font-mono">
                               Kapandı
                             </Badge>
                           )}
@@ -715,19 +851,21 @@ function DebtsContent() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenEdit(item)}
-                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-md"
                             title="Düzenle"
+                            aria-label={`${item.person_or_entity} kaydını düzenle`}
                           >
-                            <Edit2 className="h-3 w-3" />
+                            <Edit2 className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(item.id)}
-                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteTargetDebt(item)}
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-md"
                             title="Sil"
+                            aria-label={`${item.person_or_entity} kaydını sil`}
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </td>
@@ -801,10 +939,11 @@ function DebtsContent() {
             {deductMethod === 'manual' ? (
               <form onSubmit={handleProcessDeduction} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
+                  <label htmlFor="deduct-amount" className="text-xs font-semibold text-foreground">
                     Düşülecek Tutar
                   </label>
                   <Input
+                    id="deduct-amount"
                     type="number"
                     step="0.01"
                     required
@@ -818,12 +957,13 @@ function DebtsContent() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
+                  <label htmlFor="deduct-account" className="text-xs font-semibold text-foreground">
                     {selectedDebt.type === 'Alacak'
                       ? 'Paranın Yatacağı Banka Hesabı (Opsiyonel)'
                       : 'Paranın Çıkacağı Banka Hesabı (Opsiyonel)'}
                   </label>
                   <Select
+                    id="deduct-account"
                     value={targetAccountId}
                     onChange={(e) => setTargetAccountId(e.target.value)}
                     className="text-xs"
@@ -867,10 +1007,12 @@ function DebtsContent() {
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
+                    id="deduct-bank-search"
                     placeholder="Banka hareketlerinde ara (örn: Ahmet, 15000)..."
                     value={bankSearch}
                     onChange={(e) => setBankSearch(e.target.value)}
                     className="pl-9 text-xs"
+                    aria-label="Banka hareketlerinde ara"
                   />
                 </div>
 
@@ -971,6 +1113,7 @@ function DebtsContent() {
           </div>
 
           <HeroCurrencyInput
+            id="add-debt-principal"
             label="Ana Tutar"
             type={rowForm.type === 'Alacak' ? 'income' : 'expense'}
             value={rowForm.principal}
@@ -980,8 +1123,9 @@ function DebtsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
+              <label htmlFor="add-debt-person" className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
               <Input
+                id="add-debt-person"
                 required
                 value={rowForm.person_or_entity}
                 onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
@@ -990,8 +1134,9 @@ function DebtsContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Kategori</label>
+              <label htmlFor="add-debt-category" className="text-xs font-semibold text-foreground">Kategori</label>
               <Input
+                id="add-debt-category"
                 required
                 value={rowForm.category}
                 onChange={(e) => setRowForm({ ...rowForm, category: e.target.value })}
@@ -1002,8 +1147,9 @@ function DebtsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">Açıklama</label>
+            <label htmlFor="add-debt-description" className="text-xs font-semibold text-foreground">Açıklama</label>
             <Input
+              id="add-debt-description"
               required
               value={rowForm.description}
               onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
@@ -1013,8 +1159,9 @@ function DebtsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
+            <label htmlFor="add-debt-past-payments" className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
             <Input
+              id="add-debt-past-payments"
               type="number"
               step="0.01"
               prefix="₺"
@@ -1056,6 +1203,7 @@ function DebtsContent() {
           </div>
 
           <HeroCurrencyInput
+            id="edit-debt-principal"
             label="Ana Tutar"
             type={rowForm.type === 'Alacak' ? 'income' : 'expense'}
             value={rowForm.principal}
@@ -1065,8 +1213,9 @@ function DebtsContent() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
+              <label htmlFor="edit-debt-person" className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
               <Input
+                id="edit-debt-person"
                 required
                 value={rowForm.person_or_entity}
                 onChange={(e) => setRowForm({ ...rowForm, person_or_entity: e.target.value })}
@@ -1074,8 +1223,9 @@ function DebtsContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-foreground">Kategori</label>
+              <label htmlFor="edit-debt-category" className="text-xs font-semibold text-foreground">Kategori</label>
               <Input
+                id="edit-debt-category"
                 required
                 value={rowForm.category}
                 onChange={(e) => setRowForm({ ...rowForm, category: e.target.value })}
@@ -1085,8 +1235,9 @@ function DebtsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">Açıklama</label>
+            <label htmlFor="edit-debt-description" className="text-xs font-semibold text-foreground">Açıklama</label>
             <Input
+              id="edit-debt-description"
               required
               value={rowForm.description}
               onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
@@ -1095,8 +1246,9 @@ function DebtsContent() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
+            <label htmlFor="edit-debt-past-payments" className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
             <Input
+              id="edit-debt-past-payments"
               type="number"
               step="0.01"
               prefix="₺"
@@ -1117,6 +1269,18 @@ function DebtsContent() {
         </form>
       </Modal>
 
+      {/* Delete Debt Confirmation */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteTargetDebt)}
+        onClose={() => setDeleteTargetDebt(null)}
+        onConfirm={confirmDeleteDebt}
+        title="Kaydı Sil"
+        description={`"${deleteTargetDebt?.person_or_entity} — ${deleteTargetDebt?.description || deleteTargetDebt?.category}" satırını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmLabel="Kaydı Sil"
+        cancelLabel="Vazgeç"
+        isLoading={isDeletingDebt}
+        variant="destructive"
+      />
     </div>
   )
 }

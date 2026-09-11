@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import {
@@ -67,6 +69,7 @@ function VaultPageContent() {
   const [validationResult, setValidationResult] = useState<any>(null)
   const [restoreMode, setRestoreMode] = useState<'merge' | 'replace'>('merge')
   const [isRestoring, setIsRestoring] = useState(false)
+  const [isConfirmRestoreOpen, setIsConfirmRestoreOpen] = useState(false)
   const [restoreProgress, setRestoreProgress] = useState<string | null>(null)
   const [restoreSuccessMsg, setRestoreSuccessMsg] = useState<string | null>(null)
   const [restoreErrorMsg, setRestoreErrorMsg] = useState<string | null>(null)
@@ -265,14 +268,14 @@ function VaultPageContent() {
     }
   }
 
-  async function handleExecuteRestore() {
+  function handleExecuteRestore() {
     if (!validationResult?.isValid || !validationResult.payload) return
-    if (!confirm(
-      restoreMode === 'replace'
-        ? 'DİKKAT: Temiz kurulum mevcut verilerin üzerine yazacaktır. Devam etmek istiyor musunuz?'
-        : 'Yedekteki veriler mevcut verilerinizle birleştirilecektir. Devam edilsin mi?'
-    )) return
+    setIsConfirmRestoreOpen(true)
+  }
 
+  async function confirmAndExecuteRestore() {
+    if (!validationResult?.isValid || !validationResult.payload) return
+    setIsConfirmRestoreOpen(false)
     setIsRestoring(true)
     setRestoreProgress('Veriler hazırlanıyor...')
 
@@ -341,25 +344,33 @@ function VaultPageContent() {
     ? calculateMergeDiff(vaultData, validationResult.payload.data)
     : []
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-10 w-48 bg-muted/60 rounded-lg" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 bg-muted/30 rounded-xl border border-border/40" />
+          ))}
+        </div>
+        <div className="h-96 bg-muted/20 rounded-xl border border-border/40" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* 1. Üst Başlık ve Rozet */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageHeader
-          title="Veri ve Yedekleme"
-          description="Tüm finansal hareketlerinizi, projelerinizi ve sistem kayıtlarınızı tek dosyada yedekleyin veya geri yükleyin."
-        />
-
-        <div className="flex items-center gap-2">
-          <Badge
-            variant="outline"
-            className="border-border text-foreground gap-1.5 text-xs py-1 px-3 shadow-sm"
-          >
+      <PageHeader
+        title="Veri ve Yedekleme"
+        description="Tüm finansal hareketlerinizi, projelerinizi ve sistem kayıtlarınızı tek dosyada yedekleyin veya geri yükleyin."
+        badge={
+          <span className="flex items-center gap-1.5 text-xs text-foreground">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
             <span>İstemci Tarafı Şifreleme</span>
-          </Badge>
-        </div>
-      </div>
+          </span>
+        }
+      />
 
       {/* 2. Unified Segmented Metric Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -405,9 +416,11 @@ function VaultPageContent() {
       </div>
 
       {/* 3. Sekme Navigasyonu */}
-      <div className="flex items-center gap-2 border-b border-border pb-2">
+      <div role="tablist" aria-label="Kasa İşlemleri" className="flex items-center gap-2 border-b border-border pb-2">
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'export'}
           onClick={() => setActiveTab('export')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'export'
@@ -421,6 +434,8 @@ function VaultPageContent() {
 
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'restore'}
           onClick={() => setActiveTab('restore')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'restore'
@@ -434,6 +449,8 @@ function VaultPageContent() {
 
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'diagnostics'}
           onClick={() => setActiveTab('diagnostics')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'diagnostics'
@@ -486,14 +503,17 @@ function VaultPageContent() {
 
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={isEncrypted}
+                      aria-label="Şifreli Kasa Yedeğini Aç/Kapat"
                       onClick={() => setIsEncrypted(!isEncrypted)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out p-0.5 ${
                         isEncrypted ? 'bg-primary' : 'bg-muted-foreground/30'
                       }`}
                     >
                       <span
                         className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-background shadow ring-0 transition duration-200 ease-in-out ${
-                          isEncrypted ? 'translate-x-4' : 'translate-x-0'
+                          isEncrypted ? 'translate-x-5' : 'translate-x-0'
                         }`}
                       />
                     </button>
@@ -502,8 +522,9 @@ function VaultPageContent() {
                   {isEncrypted && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border/50 animate-in fade-in">
                       <div>
-                        <label className="text-[11px] font-semibold block mb-1">Kasa Parolası</label>
+                        <label htmlFor="vault-export-pwd" className="text-[11px] font-semibold block mb-1">Kasa Parolası</label>
                         <Input
+                          id="vault-export-pwd"
                           type="password"
                           value={exportPassword}
                           onChange={(e) => setExportPassword(e.target.value)}
@@ -512,8 +533,9 @@ function VaultPageContent() {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-semibold block mb-1">Parolayı Onayla</label>
+                        <label htmlFor="vault-export-pwd-confirm" className="text-[11px] font-semibold block mb-1">Parolayı Onayla</label>
                         <Input
+                          id="vault-export-pwd-confirm"
                           type="password"
                           value={exportPasswordConfirm}
                           onChange={(e) => setExportPasswordConfirm(e.target.value)}
@@ -570,7 +592,7 @@ function VaultPageContent() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-foreground">{info.label}</span>
                       </div>
-                      <Badge variant="outline" className="text-[10px] tabular-nums">
+                      <Badge variant="outline" className="text-[11px] tabular-nums">
                         {count} kayıt
                       </Badge>
                     </div>
@@ -661,7 +683,9 @@ function VaultPageContent() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Input
+                      id="vault-restore-pwd"
                       type="password"
+                      aria-label="Kasa parolanız"
                       value={restorePassword}
                       onChange={(e) => setRestorePassword(e.target.value)}
                       placeholder="Kasa parolanız..."
@@ -721,7 +745,7 @@ function VaultPageContent() {
                         <span className="truncate">
                           {diff.icon} {diff.tableName}
                         </span>
-                        <Badge variant="outline" className="text-[10px] font-mono">
+                        <Badge variant="outline" className="text-[11px] font-mono">
                           +{diff.newItemsCount} yeni
                         </Badge>
                       </div>
@@ -735,6 +759,7 @@ function VaultPageContent() {
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <label
+                        htmlFor="vault-restore-mode-merge"
                         className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
                           restoreMode === 'merge'
                             ? 'border-primary bg-primary/5 text-foreground'
@@ -743,6 +768,7 @@ function VaultPageContent() {
                       >
                         <input
                           type="radio"
+                          id="vault-restore-mode-merge"
                           name="restoreMode"
                           checked={restoreMode === 'merge'}
                           onChange={() => setRestoreMode('merge')}
@@ -757,6 +783,7 @@ function VaultPageContent() {
                       </label>
 
                       <label
+                        htmlFor="vault-restore-mode-replace"
                         className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
                           restoreMode === 'replace'
                             ? 'border-destructive bg-destructive/5 text-foreground'
@@ -765,6 +792,7 @@ function VaultPageContent() {
                       >
                         <input
                           type="radio"
+                          id="vault-restore-mode-replace"
                           name="restoreMode"
                           checked={restoreMode === 'replace'}
                           onChange={() => setRestoreMode('replace')}
@@ -816,7 +844,7 @@ function VaultPageContent() {
                     <div key={key} className="py-2.5 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-medium text-foreground">{meta.label}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">public.{key}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">public.{key}</div>
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -835,6 +863,22 @@ function VaultPageContent() {
           </Card>
         </div>
       )}
+
+      {/* Geri Yükleme Onay Modalı */}
+      <ConfirmDialog
+        isOpen={isConfirmRestoreOpen}
+        onClose={() => setIsConfirmRestoreOpen(false)}
+        onConfirm={confirmAndExecuteRestore}
+        title={restoreMode === 'replace' ? 'Temiz Kurulumu Onayla' : 'Veri Birleştirmeyi Onayla'}
+        description={
+          restoreMode === 'replace'
+            ? 'DİKKAT: Temiz kurulum mevcut yerel ve bulut verilerinizin üzerine yazacaktır. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?'
+            : 'Yedekteki veriler mevcut verilerinizle akıllıca birleştirilecektir. Devam etmek istiyor musunuz?'
+        }
+        confirmLabel={restoreMode === 'replace' ? 'Üzerine Yaz ve Geri Yükle' : 'Birleştir ve Geri Yükle'}
+        variant={restoreMode === 'replace' ? 'destructive' : 'default'}
+        isLoading={isRestoring}
+      />
     </div>
   )
 }

@@ -57,10 +57,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      {/* Toast Render Alanı (Sağ Alt Köşe) */}
+      {/* Toast Render Alanı (Mobilde Bottom Nav Üstü, Masaüstünde Sağ Alt) */}
       <div
-        aria-live="assertive"
-        className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full"
+        className="fixed bottom-24 left-4 right-4 sm:bottom-4 sm:right-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none sm:max-w-sm w-auto"
       >
         {toasts.map((t) => {
           const Icon =
@@ -74,25 +73,27 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
           const colorClasses =
             t.type === 'success'
-              ? 'border-emerald-500/30 bg-[#061e14]/95 text-emerald-100 shadow-emerald-950/40'
+              ? 'border-success/30 bg-[#061e14]/95 text-emerald-100 shadow-emerald-950/40'
               : t.type === 'error'
-              ? 'border-rose-500/30 bg-[#20080d]/95 text-rose-100 shadow-rose-950/40'
+              ? 'border-destructive/30 bg-[#20080d]/95 text-rose-100 shadow-rose-950/40'
               : t.type === 'warning'
-              ? 'border-amber-500/30 bg-[#241705]/95 text-amber-100 shadow-amber-950/40'
-              : 'border-sky-500/30 bg-[#071927]/95 text-sky-100 shadow-sky-950/40'
+              ? 'border-warning/30 bg-[#241705]/95 text-amber-100 shadow-amber-950/40'
+              : 'border-primary/30 bg-[#071927]/95 text-sky-100 shadow-sky-950/40'
 
           const iconColors =
             t.type === 'success'
-              ? 'text-emerald-400'
+              ? 'text-success'
               : t.type === 'error'
-              ? 'text-rose-400'
+              ? 'text-destructive'
               : t.type === 'warning'
-              ? 'text-amber-400'
-              : 'text-sky-400'
+              ? 'text-warning'
+              : 'text-primary'
 
           return (
             <div
               key={t.id}
+              role={t.type === 'error' ? 'alert' : 'status'}
+              aria-live={t.type === 'error' ? 'assertive' : 'polite'}
               className={cn(
                 'pointer-events-auto flex items-start gap-3 rounded-xl border p-3.5 shadow-xl backdrop-blur-md transition-all animate-in slide-in-from-bottom-5 duration-200',
                 colorClasses
@@ -105,7 +106,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => removeToast(t.id)}
-                className="shrink-0 p-1 rounded-md opacity-60 hover:opacity-100 hover:bg-white/10 transition-all text-foreground"
+                className="shrink-0 h-7 w-7 sm:h-6 sm:w-6 flex items-center justify-center rounded-md opacity-60 hover:opacity-100 hover:bg-white/10 transition-all text-foreground"
                 aria-label="Kapat"
               >
                 <X className="h-3.5 w-3.5" />

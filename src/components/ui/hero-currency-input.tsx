@@ -4,6 +4,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 export interface HeroCurrencyInputProps {
+  id?: string
   value: string | number
   onChange: (val: string) => void
   type?: 'expense' | 'income' | 'neutral'
@@ -16,6 +17,7 @@ export interface HeroCurrencyInputProps {
 }
 
 export function HeroCurrencyInput({
+  id,
   value,
   onChange,
   type = 'expense',
@@ -26,17 +28,19 @@ export function HeroCurrencyInput({
   className,
   presets = [50, 100, 500, 1000, 5000],
 }: HeroCurrencyInputProps) {
+  const generatedId = React.useId()
+  const inputId = id || generatedId
   const strValue = value === 0 || value === '0' ? '' : value?.toString() || ''
 
   const accentStyles = {
-    expense: 'focus-within:border-rose-500/40 focus-within:ring-rose-500/20',
-    income: 'focus-within:border-emerald-500/40 focus-within:ring-emerald-500/20',
-    neutral: 'focus-within:border-primary/40 focus-within:ring-primary/20',
+    expense: 'focus-within:border-destructive/60 focus-within:ring-destructive/30',
+    income: 'focus-within:border-success/60 focus-within:ring-success/30',
+    neutral: 'focus-within:border-primary/60 focus-within:ring-primary/30',
   }
 
   const badgeStyles = {
-    expense: 'bg-rose-500/10 text-rose-400 border-rose-500/25',
-    income: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
+    expense: 'bg-destructive/10 text-destructive border-destructive/25',
+    income: 'bg-success/10 text-success border-success/25',
     neutral: 'bg-primary/10 text-primary border-primary/25',
   }
 
@@ -50,8 +54,8 @@ export function HeroCurrencyInput({
     <div className={cn('space-y-2', className)}>
       {label && (
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-muted-foreground">{label}</label>
-          <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-semibold border', badgeStyles[type])}>
+          <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground cursor-pointer">{label}</label>
+          <span className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold border', badgeStyles[type])}>
             {typeLabels[type]}
           </span>
         </div>
@@ -68,6 +72,7 @@ export function HeroCurrencyInput({
             {currencySymbol}
           </span>
           <input
+            id={inputId}
             type="number"
             inputMode="decimal"
             step="any"
@@ -80,7 +85,7 @@ export function HeroCurrencyInput({
         </div>
 
         {!label && (
-          <div className={cn('px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border shrink-0', badgeStyles[type])}>
+          <div className={cn('px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border shrink-0', badgeStyles[type])}>
             {typeLabels[type]}
           </div>
         )}
