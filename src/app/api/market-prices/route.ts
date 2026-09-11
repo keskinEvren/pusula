@@ -6,6 +6,7 @@ interface PriceResult {
   currency: string
   name?: string
   lastUpdated: string
+  isStale?: boolean
 }
 
 // In-memory cache for market rates (60 seconds TTL)
@@ -18,26 +19,34 @@ let cache: {
 }
 
 const CACHE_TTL_MS = 60 * 1000 // 1 minute
+const MAX_BATCH_SIZE = 50
 
-async function fetchJson(url: string) {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
-    },
-    next: { revalidate: 60 },
-  })
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${url}: ${res.statusText}`)
+async function fetchJson(url: string, timeoutMs = 5000) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) {
+      throw new Error(`Failed to fetch ${url}: ${res.statusText}`)
+    }
+    return await res.json()
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return res.json()
 }
 
-// Fetch base Gold & FX rates
-async function getBaseMarketRates(): Promise<Record<string, number>> {
+// Fetch base Gold & FX rates without returning fake fabricated prices
+async function getBaseMarketRates(): Promise<{ rates: Record<string, number>; isStale: boolean }> {
   const now = Date.now()
   if (now - cache.timestamp < CACHE_TTL_MS && Object.keys(cache.rates).length > 0) {
-    return cache.rates
+    return { rates: cache.rates, isStale: false }
   }
 
   const rates: Record<string, number> = {}
@@ -49,44 +58,55 @@ async function getBaseMarketRates(): Promise<Record<string, number>> {
       fetchJson('https://query1.finance.yahoo.com/v8/finance/chart/EURTRY=X?interval=1d&range=1d'),
     ])
 
-    let goldOz = 2700
-    let usdTry = 34.5
-    let eurTry = 37.5
+    let goldOz: number | null = null
+    let usdTry: number | null = null
+    let eurTry: number | null = null
 
     if (goldData.status === 'fulfilled') {
-      const p = goldData.value.chart?.result?.[0]?.meta?.regularMarketPrice
-      if (p) goldOz = p
+      const p = goldData.value?.chart?.result?.[0]?.meta?.regularMarketPrice
+      if (typeof p === 'number' && p > 0) goldOz = p
     }
     if (usdData.status === 'fulfilled') {
-      const p = usdData.value.chart?.result?.[0]?.meta?.regularMarketPrice
-      if (p) usdTry = p
+      const p = usdData.value?.chart?.result?.[0]?.meta?.regularMarketPrice
+      if (typeof p === 'number' && p > 0) usdTry = p
     }
     if (eurData.status === 'fulfilled') {
-      const p = eurData.value.chart?.result?.[0]?.meta?.regularMarketPrice
-      if (p) eurTry = p
+      const p = eurData.value?.chart?.result?.[0]?.meta?.regularMarketPrice
+      if (typeof p === 'number' && p > 0) eurTry = p
     }
 
-    rates['USD'] = Math.round(usdTry * 100) / 100
-    rates['EUR'] = Math.round(eurTry * 100) / 100
-    rates['ONS_GOLD_USD'] = Math.round(goldOz * 100) / 100
+    if (usdTry) rates['USD'] = Math.round(usdTry * 100) / 100
+    if (eurTry) rates['EUR'] = Math.round(eurTry * 100) / 100
+    if (goldOz) rates['ONS_GOLD_USD'] = Math.round(goldOz * 100) / 100
 
     // Gold calculations
-    const gramAltin = (goldOz / 31.1034768) * usdTry
-    rates['GRAM_ALTIN'] = Math.round(gramAltin * 100) / 100
-    rates['CEYREK_ALTIN'] = Math.round(gramAltin * 1.635 * 100) / 100
-    rates['YARIM_ALTIN'] = Math.round(gramAltin * 3.27 * 100) / 100
-    rates['TAM_ALTIN'] = Math.round(gramAltin * 6.54 * 100) / 100
-    rates['CUMHURIYET_ALTIN'] = Math.round(gramAltin * 6.6 * 100) / 100
+    if (goldOz && usdTry) {
+      const gramAltin = (goldOz / 31.1034768) * usdTry
+      rates['GRAM_ALTIN'] = Math.round(gramAltin * 100) / 100
+      rates['CEYREK_ALTIN'] = Math.round(gramAltin * 1.635 * 100) / 100
+      rates['YARIM_ALTIN'] = Math.round(gramAltin * 3.27 * 100) / 100
+      rates['TAM_ALTIN'] = Math.round(gramAltin * 6.54 * 100) / 100
+      rates['CUMHURIYET_ALTIN'] = Math.round(gramAltin * 6.6 * 100) / 100
+    }
 
-    cache = {
-      timestamp: now,
-      rates,
+    if (Object.keys(rates).length > 0) {
+      const mergedRates = { ...cache.rates, ...rates }
+      cache = {
+        timestamp: now,
+        rates: mergedRates,
+      }
+      return { rates: mergedRates, isStale: false }
     }
   } catch (err) {
     console.error('Error fetching base market rates:', err)
   }
 
-  return rates
+  // If live fetch failed, check if previous cache exists
+  if (Object.keys(cache.rates).length > 0) {
+    return { rates: cache.rates, isStale: true }
+  }
+
+  return { rates: {}, isStale: true }
 }
 
 // Fetch single BIST stock price
@@ -146,34 +166,33 @@ async function resolveAssetPrice(
 
   // 1. Emtia & Altın
   if (cat.includes('Altın') || cat.includes('Emtia') || sym.includes('ALTIN')) {
+    let p = baseRates['GRAM_ALTIN']
     if (sym.includes('CEYREK') || sym.includes('ÇEYREK')) {
-      return { price: baseRates['CEYREK_ALTIN'] || 0, currency: 'TRY' }
+      p = baseRates['CEYREK_ALTIN']
+    } else if (sym.includes('YARIM')) {
+      p = baseRates['YARIM_ALTIN']
+    } else if (sym.includes('TAM')) {
+      p = baseRates['TAM_ALTIN']
+    } else if (sym.includes('CUMHURIYET')) {
+      p = baseRates['CUMHURIYET_ALTIN']
     }
-    if (sym.includes('YARIM')) {
-      return { price: baseRates['YARIM_ALTIN'] || 0, currency: 'TRY' }
-    }
-    if (sym.includes('TAM')) {
-      return { price: baseRates['TAM_ALTIN'] || 0, currency: 'TRY' }
-    }
-    if (sym.includes('CUMHURIYET')) {
-      return { price: baseRates['CUMHURIYET_ALTIN'] || 0, currency: 'TRY' }
-    }
-    // Default Gold is Gram Altın
-    return { price: baseRates['GRAM_ALTIN'] || 0, currency: 'TRY' }
+
+    if (p && p > 0) return { price: p, currency: 'TRY' }
+    return null
   }
 
   // 2. Döviz
   if (cat.includes('Döviz') || sym === 'USD' || sym === 'EUR' || sym === 'DOLAR' || sym === 'EURO') {
-    if (sym === 'EUR' || sym === 'EURO') {
-      return { price: baseRates['EUR'] || 0, currency: 'TRY' }
-    }
-    return { price: baseRates['USD'] || 0, currency: 'TRY' }
+    const isEur = sym === 'EUR' || sym === 'EURO'
+    const p = isEur ? baseRates['EUR'] : baseRates['USD']
+    if (p && p > 0) return { price: p, currency: 'TRY' }
+    return null
   }
 
   // 3. Kripto Para
   if (cat.includes('Kripto') || ['BTC', 'ETH', 'SOL', 'USDT', 'AVAX', 'XRP'].includes(sym)) {
     const cryptoPrice = await getCryptoPrice(sym)
-    if (cryptoPrice !== null) {
+    if (cryptoPrice !== null && cryptoPrice > 0) {
       return { price: cryptoPrice, currency: 'TRY' }
     }
   }
@@ -181,7 +200,7 @@ async function resolveAssetPrice(
   // 4. Hisse Senedi (BIST)
   if (cat.includes('Hisse') || cat.includes('BIST')) {
     const bistPrice = await getBistPrice(sym)
-    if (bistPrice !== null) {
+    if (bistPrice !== null && bistPrice > 0) {
       return { price: bistPrice, currency: 'TRY' }
     }
   }
@@ -195,12 +214,25 @@ export async function GET(request: Request) {
   const symbol = searchParams.get('symbol')
   const category = searchParams.get('category') || ''
 
-  const baseRates = await getBaseMarketRates()
+  const { rates: baseRates, isStale } = await getBaseMarketRates()
 
   if (!symbol) {
-    // Return all base rates
+    const hasRates = Object.keys(baseRates).length > 0
+    if (!hasRates) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Piyasa kurları şu an alınamıyor.',
+          timestamp: new Date().toISOString(),
+          baseRates: {},
+        },
+        { status: 503 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
+      isStale,
       timestamp: new Date().toISOString(),
       baseRates,
     })
@@ -217,6 +249,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     success: true,
+    isStale,
     symbol: symbol.toUpperCase(),
     price: result.price,
     currency: result.currency,
@@ -228,10 +261,21 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const items: Array<{ id?: string; symbol?: string; name?: string; category?: string }> =
+    const rawItems: Array<{ id?: string; symbol?: string; name?: string; category?: string }> =
       body.items || []
 
-    const baseRates = await getBaseMarketRates()
+    // Batch bound & deduplication (F12)
+    const seen = new Set<string>()
+    const items = rawItems
+      .filter((item) => {
+        const key = item.id || item.symbol || item.name || ''
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .slice(0, MAX_BATCH_SIZE)
+
+    const { rates: baseRates, isStale } = await getBaseMarketRates()
     const results: Record<string, PriceResult> = {}
 
     // Process items in parallel batches
@@ -248,13 +292,17 @@ export async function POST(request: Request) {
             price: resolved.price,
             currency: resolved.currency,
             lastUpdated: new Date().toISOString(),
+            isStale,
           }
         }
       })
     )
 
+    const hasAnyResults = Object.keys(results).length > 0 || Object.keys(baseRates).length > 0
+
     return NextResponse.json({
-      success: true,
+      success: hasAnyResults,
+      isStale,
       timestamp: new Date().toISOString(),
       baseRates,
       results,

@@ -134,18 +134,18 @@ function TransactionsContent() {
     setImportFilter('ALL')
   }
 
-  // Sync with URL Search Params
+  // Sync with URL Search Params (F15: handle param removal as reset)
   useEffect(() => {
     const month = searchParams.get('month')
-    if (month) setMonthFilter(month)
+    setMonthFilter(month || 'ALL')
     const group = searchParams.get('group')
-    if (group) setGroupFilter(group)
+    setGroupFilter(group || 'ALL')
     const projectId = searchParams.get('project_id')
-    if (projectId) setProjectFilter(projectId)
+    setProjectFilter(projectId || 'ALL')
     const search = searchParams.get('search')
-    if (search) setSearchTerm(search)
+    setSearchTerm(search || '')
     const importId = searchParams.get('import_id')
-    if (importId) setImportFilter(importId)
+    setImportFilter(importId || 'ALL')
     const isNew = searchParams.get('new')
     if (isNew === 'true') setIsAddModalOpen(true)
   }, [searchParams])
@@ -261,6 +261,14 @@ function TransactionsContent() {
 
   useEffect(() => {
     loadTransactions()
+
+    const handleTxCreated = () => {
+      loadTransactions()
+    }
+    window.addEventListener('pusula:transaction-created', handleTxCreated)
+    return () => {
+      window.removeEventListener('pusula:transaction-created', handleTxCreated)
+    }
   }, [])
 
   async function loadTransactions() {

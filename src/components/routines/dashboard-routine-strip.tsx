@@ -99,7 +99,7 @@ export function DashboardRoutineStrip() {
       } catch {}
     } else {
       const newLog: RoutineLog = {
-        id: `log-${Date.now()}`,
+        id: crypto.randomUUID(),
         user_id: 'local',
         routine_id: routineId,
         log_date: todayStr,

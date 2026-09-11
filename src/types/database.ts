@@ -176,6 +176,8 @@ export interface Database {
           prev_debt: number | null
           change_amount: number | null
           change_pct: number | null
+          import_id: string | null
+          user_id?: string | null
           created_at: string
         }
         Insert: {
@@ -192,6 +194,8 @@ export interface Database {
           prev_debt?: number | null
           change_amount?: number | null
           change_pct?: number | null
+          import_id?: string | null
+          user_id?: string | null
           created_at?: string
         }
         Update: {
@@ -208,6 +212,9 @@ export interface Database {
           prev_debt?: number | null
           change_amount?: number | null
           change_pct?: number | null
+          import_id?: string | null
+          user_id?: string | null
+          created_at?: string
         }
         Relationships: []
       }
@@ -327,10 +334,15 @@ export interface Database {
           file_name: string
           bank: string | null
           card_id: string | null
+          account_id: string | null
           statement_date: string | null
           due_date: string | null
           total_transactions: number
           total_amount: number
+          file_hash: string | null
+          status: 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
+          import_type: 'credit_card' | 'bank_account' | null
+          snapshot_data: Json | null
           raw_text: string | null
           created_at: string
         }
@@ -340,10 +352,15 @@ export interface Database {
           file_name: string
           bank?: string | null
           card_id?: string | null
+          account_id?: string | null
           statement_date?: string | null
           due_date?: string | null
           total_transactions?: number
           total_amount?: number
+          file_hash?: string | null
+          status?: 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
+          import_type?: 'credit_card' | 'bank_account' | null
+          snapshot_data?: Json | null
           raw_text?: string | null
           created_at?: string
         }
@@ -353,10 +370,15 @@ export interface Database {
           file_name?: string
           bank?: string | null
           card_id?: string | null
+          account_id?: string | null
           statement_date?: string | null
           due_date?: string | null
           total_transactions?: number
           total_amount?: number
+          file_hash?: string | null
+          status?: 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
+          import_type?: 'credit_card' | 'bank_account' | null
+          snapshot_data?: Json | null
           raw_text?: string | null
         }
         Relationships: []
@@ -781,7 +803,69 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      rollback_statement_import: {
+        Args: {
+          p_import_id: string
+          p_user_id?: string
+        }
+        Returns: Json
+      }
+      fn_record_expense_atomic: {
+        Args: {
+          p_user_id: string
+          p_date: string
+          p_amount: number
+          p_description: string
+          p_account_id?: string | null
+          p_card_id?: string | null
+          p_project_id?: string | null
+          p_merchant?: string | null
+          p_analysis_group?: string | null
+          p_recurrence?: string | null
+          p_statement_date?: string | null
+          p_import_id?: string | null
+        }
+        Returns: Json
+      }
+      fn_record_income_atomic: {
+        Args: {
+          p_user_id: string
+          p_date: string
+          p_amount: number
+          p_description: string
+          p_account_id: string
+          p_project_id?: string | null
+          p_merchant?: string | null
+          p_analysis_group?: string | null
+        }
+        Returns: Json
+      }
+      fn_record_transfer_atomic: {
+        Args: {
+          p_user_id: string
+          p_date: string
+          p_amount: number
+          p_description: string
+          p_source_account_id: string
+          p_target_account_id: string
+        }
+        Returns: Json
+      }
+      fn_delete_transaction_atomic: {
+        Args: {
+          p_transaction_id: string
+          p_user_id?: string
+        }
+        Returns: Json
+      }
+      fn_link_transaction_to_debt_atomic: {
+        Args: {
+          p_transaction_id: string
+          p_debt_id: string
+          p_user_id?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
