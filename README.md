@@ -13,6 +13,7 @@ Projenin tüm vizyon, veri modeli ve sistem dinamikleri `docs/` klasöründe det
 3. ⚡ [**Sistem Dinamikleri & Olay Akışları** (`docs/SYSTEM_DYNAMICS.md`)](docs/SYSTEM_DYNAMICS.md) — Bir olay gerçekleştiğinde sistemin nasıl zincirleme tepki verdiği.
 4. 📄 [**Ekstre Ayrıştırma Spesifikasyonu** (`docs/SPEC_PARSER.md`)](docs/SPEC_PARSER.md) — PDF/CSV parser, font onarım motoru ve onay ekranı kuralları.
 5. 🗺️ [**Geliştirme Yol Haritası** (`docs/ROADMAP.md`)](docs/ROADMAP.md) — Aşama aşama geliştirme planı.
+6. 🧩 [**Feature Öncelikleri** (`docs/FEATURE_PRIORITIES.md`)](docs/FEATURE_PRIORITIES.md) — Kişisel kullanımdan portfolyo sunumuna uzanan, öneri sırasına göre gruplandırılmış kademeli ürün yol haritası.
 
 ---
 
