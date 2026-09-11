@@ -82,6 +82,17 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
+    // F14: Clear cached user data in localStorage on sign out
+    if (typeof window !== 'undefined') {
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (key.startsWith('pusula_') || key.startsWith('pusula:'))) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k))
+    }
     router.push('/login')
     router.refresh()
   }

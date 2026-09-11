@@ -25,9 +25,11 @@ import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToast } from '@/lib/toast-context'
 import type { Account, Transaction } from '@/types/database'
 
 export default function AccountsPage() {
+  const { toast } = useToast()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all')
@@ -45,6 +47,14 @@ export default function AccountsPage() {
 
   useEffect(() => {
     loadData()
+
+    const handleTxCreated = () => {
+      loadData()
+    }
+    window.addEventListener('pusula:transaction-created', handleTxCreated)
+    return () => {
+      window.removeEventListener('pusula:transaction-created', handleTxCreated)
+    }
   }, [])
 
   async function loadData() {
@@ -79,36 +89,50 @@ export default function AccountsPage() {
   const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-    if (!user) return
+      if (!user) {
+        toast.error('Oturum bilgisi bulunamadı.')
+        return
+      }
 
-    const numericBalance = parseFloat(balance.replace(',', '.')) || 0
+      const numericBalance = parseFloat(balance.replace(',', '.')) || 0
 
-    if (editingAccount) {
-      await supabase
-        .from('accounts')
-        .update({
+      if (editingAccount) {
+        const { error } = await supabase
+          .from('accounts')
+          .update({
+            name,
+            type,
+            balance: numericBalance,
+          })
+          .eq('id', editingAccount.id)
+
+        if (error) throw error
+        toast.success('Hesap başarıyla güncellendi.')
+      } else {
+        const { error } = await supabase.from('accounts').insert({
+          user_id: user.id,
           name,
           type,
           balance: numericBalance,
         })
-        .eq('id', editingAccount.id)
-    } else {
-      await supabase.from('accounts').insert({
-        user_id: user.id,
-        name,
-        type,
-        balance: numericBalance,
-      })
-    }
 
-    setSaving(false)
-    setIsModalOpen(false)
-    loadData()
+        if (error) throw error
+        toast.success('Hesap başarıyla eklendi.')
+      }
+
+      setIsModalOpen(false)
+      loadData()
+    } catch (err: any) {
+      toast.error(err?.message || 'Hesap kaydedilirken bir hata oluştu.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const confirmDeleteAccount = async () => {
@@ -116,9 +140,13 @@ export default function AccountsPage() {
     setIsDeleting(true)
     try {
       const supabase = createClient()
-      await supabase.from('accounts').delete().eq('id', deleteTargetAccount.id)
+      const { error } = await supabase.from('accounts').delete().eq('id', deleteTargetAccount.id)
+      if (error) throw error
+      toast.success('Hesap silindi.')
       setDeleteTargetAccount(null)
       loadData()
+    } catch (err: any) {
+      toast.error(err?.message || 'Hesap silinirken bir hata oluştu.')
     } finally {
       setIsDeleting(false)
     }

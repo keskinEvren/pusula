@@ -2,12 +2,17 @@ import { createClient } from '@supabase/supabase-js'
 import * as fs from 'fs'
 import * as path from 'path'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://***REDACTED_SUPABASE_HOST***'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '***REDACTED_SERVICE_ROLE_KEY***'
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const USER_ID = process.env.TARGET_USER_ID || process.env.USER_ID
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN
 
-const USER_ID = 'c74d8741-b8fb-4f79-83eb-f2fa9e12073f' // evrenkeskin0998@gmail.com
-const GITHUB_TOKEN = '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'
+if (!supabaseUrl || !supabaseServiceKey || !USER_ID) {
+  console.error('❌ HATA: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY ve TARGET_USER_ID ortam değişkenleri tanımlı olmalıdır.')
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 async function fetchGitHubReadme(repoName: string): Promise<string> {
   try {

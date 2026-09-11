@@ -248,7 +248,7 @@ function RoutinesPageContent() {
     } else {
       // Yeni tamamlama kaydı oluştur
       const newLog: RoutineLog = {
-        id: `log-${Date.now()}`,
+        id: crypto.randomUUID(),
         user_id: 'local',
         routine_id: routineId,
         log_date: selectedDate,
@@ -266,7 +266,8 @@ function RoutinesPageContent() {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           newLog.user_id = user.id
-          await supabase.from('routine_logs').insert([newLog])
+          const { error: insErr } = await supabase.from('routine_logs').insert([newLog])
+          if (insErr) console.error('Insert routine log error:', insErr)
         }
       } catch (err) {
         console.error('Insert routine log error:', err)
@@ -381,7 +382,7 @@ function RoutinesPageContent() {
       } catch {}
     } else {
       const newRoutine: Routine = {
-        id: `routine-${Date.now()}`,
+        id: crypto.randomUUID(),
         user_id: userId,
         title: formData.title,
         icon: formData.icon,
@@ -403,9 +404,12 @@ function RoutinesPageContent() {
 
       try {
         if (user) {
-          await supabase.from('routines').insert([newRoutine])
+          const { error: insErr } = await supabase.from('routines').insert([newRoutine])
+          if (insErr) console.error('Insert routine error:', insErr)
         }
-      } catch {}
+      } catch (err) {
+        console.error('Insert routine error:', err)
+      }
     }
 
     toast.success(editingRoutine ? 'Rutin başarıyla güncellendi!' : 'Yeni rutin başarıyla eklendi!')

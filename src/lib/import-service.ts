@@ -23,6 +23,12 @@ export interface ImportBatchSnapshot {
   created_subscription_ids?: string[]
   created_card_statement_id?: string
   created_transaction_ids?: string[]
+  previous_debt_states?: Array<{
+    debt_id: string
+    remaining: number
+    past_payments: number
+    status: string
+  }>
 }
 
 export interface ImportBatchMeta {
@@ -33,7 +39,7 @@ export interface ImportBatchMeta {
   snapshot_data?: ImportBatchSnapshot
 }
 
-export interface EnrichedImportBatch extends StatementImport {
+export interface EnrichedImportBatch extends Omit<StatementImport, 'snapshot_data'> {
   batch_status: ImportBatchStatus
   file_hash: string | null
   import_type: 'credit_card' | 'bank_account'
@@ -70,9 +76,22 @@ export function sanitizeTransactionType(type: string | undefined, defaultType: s
 }
 
 /**
- * Parses batch metadata from raw_text column or fallback values.
+ * Parses batch metadata from SQL columns or raw_text fallback.
  */
-export function parseBatchMeta(rawText: string | null, fallbackStatus: ImportBatchStatus = 'COMPLETED'): ImportBatchMeta {
+export function parseBatchMeta(rawTextOrRow: any, fallbackStatus: ImportBatchStatus = 'COMPLETED'): ImportBatchMeta {
+  if (rawTextOrRow && typeof rawTextOrRow === 'object') {
+    if ('status' in rawTextOrRow && rawTextOrRow.status) {
+      return {
+        status: rawTextOrRow.status || fallbackStatus,
+        import_type: rawTextOrRow.import_type || 'credit_card',
+        file_hash: rawTextOrRow.file_hash || null,
+        rolled_back_at: rawTextOrRow.rolled_back_at || null,
+        snapshot_data: rawTextOrRow.snapshot_data || {},
+      }
+    }
+  }
+
+  const rawText = typeof rawTextOrRow === 'string' ? rawTextOrRow : rawTextOrRow?.raw_text
   if (!rawText) {
     return {
       status: fallbackStatus,
@@ -229,6 +248,34 @@ export async function rollbackImportBatch(
   importId: string,
   userId: string
 ): Promise<RollbackResult> {
+  // 1. Primary: Atomic PostgreSQL RPC
+  try {
+    const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rollback_statement_import', {
+      p_import_id: importId,
+      p_user_id: userId,
+    })
+
+    if (!rpcErr && rpcRes) {
+      if (!rpcRes.success) {
+        return {
+          success: false,
+          error: rpcRes.error || 'Ekstre geri alınamadı.',
+          importId,
+          deletedTransactions: 0,
+          deletedStatements: 0,
+        }
+      }
+      return {
+        success: true,
+        importId,
+        deletedTransactions: rpcRes.deleted_transactions || 0,
+        deletedStatements: rpcRes.deleted_statements || 0,
+      }
+    }
+  } catch {
+    // Fallback below
+  }
+
   // 1. Fetch import batch
   const { data: imp, error: impError } = await supabase
     .from('statement_imports')
@@ -247,7 +294,7 @@ export async function rollbackImportBatch(
     }
   }
 
-  const meta = parseBatchMeta(imp.raw_text)
+  const meta = parseBatchMeta(imp)
   if (meta.status === 'ROLLED_BACK') {
     return {
       success: false,
@@ -313,7 +360,22 @@ export async function rollbackImportBatch(
       .eq('user_id', userId)
   }
 
-  // 5. Delete all transactions belonging to this import
+  // 5. Revert debts modified during bank account import
+  if (snapshot.previous_debt_states && snapshot.previous_debt_states.length > 0) {
+    for (const d of snapshot.previous_debt_states) {
+      await supabase
+        .from('debts')
+        .update({
+          remaining: d.remaining,
+          past_payments: d.past_payments,
+          status: d.status,
+        })
+        .eq('id', d.debt_id)
+        .eq('user_id', userId)
+    }
+  }
+
+  // 6. Delete all transactions belonging to this import
   const { count: deletedTxs, error: delErr } = await supabase
     .from('transactions')
     .delete({ count: 'exact' })
@@ -330,7 +392,7 @@ export async function rollbackImportBatch(
     }
   }
 
-  // 6. Update statement_imports status to ROLLED_BACK
+  // 7. Update statement_imports status to ROLLED_BACK
   const updatedMeta: ImportBatchMeta = {
     ...meta,
     status: 'ROLLED_BACK',
@@ -340,6 +402,8 @@ export async function rollbackImportBatch(
   await supabase
     .from('statement_imports')
     .update({
+      status: 'ROLLED_BACK',
+      rolled_back_at: updatedMeta.rolled_back_at,
       raw_text: serializeBatchMeta(updatedMeta),
     })
     .eq('id', importId)
@@ -655,6 +719,10 @@ export async function commitStatementBatch(
         .insert({
           user_id: userId,
           file_name: fileName || 'ekstre.pdf',
+          file_hash: fileHash,
+          status: 'COMPLETED',
+          import_type: 'credit_card',
+          snapshot_data: snapshotData,
           bank: detectedBankName,
           card_id: resolvedCardId || null,
           statement_date: parseResult?.statement_date || null,
@@ -674,7 +742,9 @@ export async function commitStatementBatch(
         const prevDebt = parseResult?.prev_debt || null
         const { changeAmount, changePct } = calculateStatementChange(statementDebtValue, prevDebt)
         await supabase.from('card_statements').insert({
+          user_id: userId,
           card_id: resolvedCardId,
+          import_id: importRecord.id,
           statement_date: parseResult.statement_date,
           period_debt: statementDebtValue,
           minimum: minPaymentValue,
@@ -790,6 +860,10 @@ export async function commitStatementBatch(
       .insert({
         user_id: userId,
         file_name: fileName || 'hesap_dokumu.pdf',
+        file_hash: fileHash,
+        status: 'COMPLETED',
+        import_type: 'bank_account',
+        snapshot_data: snapshotData,
         bank: detectedBankName,
         total_transactions: selectedTxs.length,
         total_amount: totalSelectedAmount,
@@ -824,17 +898,31 @@ export async function commitStatementBatch(
         runningAccountBalance -= t.amount
       }
 
-      // Receivable collection
+      // Receivable collection (F17: Cumulative calculation & snapshot tracking)
       if (t.action === 'COLLECT_RECEIVABLE' && t.target_debt_id) {
         const targetDebt = debts.find((d) => d.id === t.target_debt_id)
         if (targetDebt) {
+          if (!snapshotData.previous_debt_states) snapshotData.previous_debt_states = []
+          if (!snapshotData.previous_debt_states.some((s) => s.debt_id === targetDebt.id)) {
+            snapshotData.previous_debt_states.push({
+              debt_id: targetDebt.id,
+              remaining: targetDebt.remaining,
+              past_payments: targetDebt.past_payments,
+              status: targetDebt.status,
+            })
+          }
+          const newPast = targetDebt.past_payments + t.amount
           const newRem = Math.max(0, targetDebt.remaining - t.amount)
+          targetDebt.past_payments = newPast
+          targetDebt.remaining = newRem
+          targetDebt.status = newRem <= 0 ? 'Kapatıldı' : 'Açık'
+
           await supabase
             .from('debts')
             .update({
-              past_payments: targetDebt.past_payments + t.amount,
+              past_payments: newPast,
               remaining: newRem,
-              status: newRem <= 0 ? 'Kapatıldı' : 'Açık',
+              status: targetDebt.status,
             })
             .eq('id', targetDebt.id)
         }
@@ -907,21 +995,47 @@ export async function commitStatementBatch(
         }
       }
 
-      // Personal debt repayment
+      // Personal debt repayment (F17: Cumulative calculation & snapshot tracking)
       if (t.action === 'PAY_DEBT' && t.target_debt_id) {
         const targetDebt = debts.find((d) => d.id === t.target_debt_id)
         if (targetDebt) {
+          if (!snapshotData.previous_debt_states) snapshotData.previous_debt_states = []
+          if (!snapshotData.previous_debt_states.some((s) => s.debt_id === targetDebt.id)) {
+            snapshotData.previous_debt_states.push({
+              debt_id: targetDebt.id,
+              remaining: targetDebt.remaining,
+              past_payments: targetDebt.past_payments,
+              status: targetDebt.status,
+            })
+          }
+          const newPast = targetDebt.past_payments + t.amount
           const newRem = Math.max(0, targetDebt.remaining - t.amount)
+          targetDebt.past_payments = newPast
+          targetDebt.remaining = newRem
+          targetDebt.status = newRem <= 0 ? 'Kapatıldı' : 'Açık'
+
           await supabase
             .from('debts')
             .update({
-              past_payments: targetDebt.past_payments + t.amount,
+              past_payments: newPast,
               remaining: newRem,
-              status: newRem <= 0 ? 'Kapatıldı' : 'Açık',
+              status: targetDebt.status,
             })
             .eq('id', targetDebt.id)
         }
       }
+    }
+
+    // Persist snapshot with previous debt states if any debt was affected
+    if (snapshotData.previous_debt_states && snapshotData.previous_debt_states.length > 0) {
+      batchMeta.snapshot_data = snapshotData
+      await supabase
+        .from('statement_imports')
+        .update({
+          snapshot_data: snapshotData,
+          raw_text: serializeBatchMeta(batchMeta),
+        })
+        .eq('id', importRecord.id)
     }
 
     // Update account balance

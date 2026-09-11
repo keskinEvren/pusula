@@ -94,26 +94,7 @@ export default function CardsPage() {
         supabase.from('credit_cards').select('*').order('created_at', { ascending: false }),
         supabase.from('card_statements').select('*').order('statement_date', { ascending: false }),
       ])
-      if (cData) {
-        const healed = await Promise.all(
-          cData.map(async (c) => {
-            if (c.bank === 'Diğer Banka' && (c.last_four === '0887' || c.last_four === '6745')) {
-              const updated = {
-                ...c,
-                bank: 'Ziraat Bankası',
-                card_name: `Bankkart • ${c.last_four}`,
-              }
-              await supabase
-                .from('credit_cards')
-                .update({ bank: 'Ziraat Bankası', card_name: `Bankkart • ${c.last_four}` })
-                .eq('id', c.id)
-              return updated
-            }
-            return c
-          })
-        )
-        setCards(healed)
-      }
+      if (cData) setCards(cData)
       if (sData) setStatements(sData)
     } catch (err) {
       console.error('Error loading cards:', err)
