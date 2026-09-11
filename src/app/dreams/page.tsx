@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { Dream } from '@/types/database'
@@ -252,6 +253,9 @@ function DreamsContent() {
   const [formTargetYear, setFormTargetYear] = useState('')
   const [showWallpaperPicker, setShowWallpaperPicker] = useState(false)
 
+  // Deletion State
+  const [dreamToDelete, setDreamToDelete] = useState<{ id: string; title: string } | null>(null)
+
   useEffect(() => {
     loadDreams()
     if (searchParams.get('new') === 'true') {
@@ -415,8 +419,9 @@ function DreamsContent() {
   }
 
   // Delete Dream
-  const handleDeleteDream = async (id: string) => {
-    if (!confirm('Bu hayal kaydını silmek istediğinize emin misiniz?')) return
+  const confirmDeleteDream = async () => {
+    if (!dreamToDelete) return
+    const id = dreamToDelete.id
     if (!isDbFallback) {
       const supabase = createClient()
       await supabase.from('dreams').delete().eq('id', id)
@@ -425,6 +430,7 @@ function DreamsContent() {
       syncLocal(dreams.filter((d) => d.id !== id))
     }
     toast.success('Hedef silindi.')
+    setDreamToDelete(null)
   }
 
   // Open Celebration Modal (Mark as Achieved)
@@ -496,6 +502,22 @@ function DreamsContent() {
   const achievedDreams = filterDreamsByStatus(dreams, 'achieved')
 
   const displayedActiveDreams = filterDreamsByHorizon(activeDreams, selectedHorizon)
+
+  // Keyboard navigation for Zen Mode (Escape to close, Arrow keys to slide)
+  useEffect(() => {
+    if (!isZenModeOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsZenModeOpen(false)
+      } else if (e.key === 'ArrowLeft') {
+        setZenIndex((prev) => (prev - 1 + activeDreams.length) % (activeDreams.length || 1))
+      } else if (e.key === 'ArrowRight') {
+        setZenIndex((prev) => (prev + 1) % (activeDreams.length || 1))
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isZenModeOpen, activeDreams.length])
 
   // Open Zen Mode
   const handleOpenZenMode = () => {
@@ -683,7 +705,7 @@ function DreamsContent() {
                     <img
                       src={dream.cover_image_url || getDefaultVisionWallpaper(dream.category)}
                       alt={dream.title}
-                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                      className="h-full w-full object-cover motion-safe:group-hover:scale-105 motion-safe:transition-transform duration-500 ease-out"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-transparent" />
 
@@ -691,13 +713,13 @@ function DreamsContent() {
                     <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-1.5">
                       <Badge
                         variant="outline"
-                        className="bg-background/80 backdrop-blur-md text-[10px] font-semibold border-border/80 text-foreground"
+                        className="bg-background/80 backdrop-blur-md text-[11px] font-semibold border-border/80 text-foreground"
                       >
                         {formatHorizonLabel(dream.horizon)}
                       </Badge>
                       <Badge
                         variant="outline"
-                        className="bg-background/80 backdrop-blur-md text-[10px] border-border/80 text-muted-foreground"
+                        className="bg-background/80 backdrop-blur-md text-[11px] border-border/80 text-muted-foreground"
                       >
                         {dream.category}
                       </Badge>
@@ -758,9 +780,9 @@ function DreamsContent() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenCelebration(dream)}
-                          className="h-7 px-2.5 text-[11px] font-medium gap-1 text-foreground border-border hover:bg-muted"
+                          className="h-8 px-2.5 text-[11px] font-medium gap-1 text-foreground border-border hover:bg-muted min-h-[32px]"
                         >
-                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                           <span>Tamamla</span>
                         </Button>
 
@@ -769,28 +791,31 @@ function DreamsContent() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDemoteToIncubating(dream)}
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            aria-label={`"${dream.title}" hedefini bekleyenlere taşı`}
                             title="Bekleyenlere taşı"
                           >
-                            <Clock className="h-3.5 w-3.5" />
+                            <Clock className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenEditModal(dream)}
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            aria-label={`"${dream.title}" hedefini düzenle`}
                             title="Düzenle"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Edit2 className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteDream(dream.id)}
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDreamToDelete({ id: dream.id, title: dream.title })}
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            aria-label={`"${dream.title}" hedefini sil`}
                             title="Sil"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -840,11 +865,11 @@ function DreamsContent() {
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-1">
-                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      <Badge variant="outline" className="text-[11px] text-muted-foreground">
                         {dream.category}
                       </Badge>
                       {dream.target_year && (
-                        <span className="text-[10px] font-medium text-muted-foreground">
+                        <span className="text-[11px] font-medium text-muted-foreground">
                           {dream.target_year}
                         </span>
                       )}
@@ -863,9 +888,10 @@ function DreamsContent() {
                       variant="outline"
                       size="sm"
                       onClick={() => handlePromoteToActive(dream)}
-                      className="h-7 px-2.5 text-[11px] font-medium gap-1 text-foreground hover:bg-muted"
+                      className="h-8 px-2.5 text-[11px] font-medium gap-1 text-foreground hover:bg-muted min-h-[32px]"
+                      aria-label={`"${dream.title}" hedefini aktif hedeflere al`}
                     >
-                      <Target className="h-3 w-3 text-primary" />
+                      <Target className="h-3.5 w-3.5 text-primary" />
                       <span>Aktif Hedeflere Al</span>
                     </Button>
                     <div className="flex items-center gap-1">
@@ -873,17 +899,21 @@ function DreamsContent() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleOpenEditModal(dream)}
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        aria-label={`"${dream.title}" hedefini düzenle`}
+                        title="Düzenle"
                       >
-                        <Edit2 className="h-3 w-3" />
+                        <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDeleteDream(dream.id)}
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDreamToDelete({ id: dream.id, title: dream.title })}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        aria-label={`"${dream.title}" hedefini sil`}
+                        title="Sil"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -934,13 +964,13 @@ function DreamsContent() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
                     <div className="absolute top-3 right-3">
-                      <Badge variant="outline" className="bg-background/80 backdrop-blur-md text-[10px] font-medium border-border gap-1">
+                      <Badge variant="outline" className="bg-background/80 backdrop-blur-md text-[11px] font-medium border-border gap-1">
                         <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                         <span>Tamamlandı</span>
                       </Badge>
                     </div>
                     {dream.achieved_at && (
-                      <div className="absolute bottom-2 left-3 text-[10px] text-muted-foreground bg-background/80 px-2 py-0.5 rounded-md backdrop-blur-sm border border-border/60">
+                      <div className="absolute bottom-2 left-3 text-[11px] text-muted-foreground bg-background/80 px-2 py-0.5 rounded-md backdrop-blur-sm border border-border/60">
                         {new Date(dream.achieved_at).toLocaleDateString('tr-TR')}
                       </div>
                     )}
@@ -966,17 +996,21 @@ function DreamsContent() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleOpenEditModal(dream)}
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        aria-label={`"${dream.title}" hedefini düzenle`}
+                        title="Düzenle"
                       >
-                        <Edit2 className="h-3 w-3" />
+                        <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDeleteDream(dream.id)}
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDreamToDelete({ id: dream.id, title: dream.title })}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        aria-label={`"${dream.title}" hedefini sil`}
+                        title="Sil"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -997,8 +1031,9 @@ function DreamsContent() {
         <form onSubmit={handleSaveDream} className="space-y-4">
           {/* Title */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">Hedef / Vizyon Başlığı</label>
+            <label htmlFor="dream-input-title" className="text-xs font-semibold text-foreground">Hedef / Vizyon Başlığı</label>
             <Input
+              id="dream-input-title"
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
               placeholder="Örn: Toskana'da Taş Evde 1 Ay Çalışmak, 10km Koşmak..."
@@ -1008,10 +1043,11 @@ function DreamsContent() {
           </div>
 
           {/* Horizon & Category */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Yaşam Ufku (Zaman Tüneli)</label>
+              <label htmlFor="dream-input-horizon" className="text-xs font-semibold text-foreground">Yaşam Ufku (Zaman Tüneli)</label>
               <Select
+                id="dream-input-horizon"
                 value={formHorizon}
                 onChange={(e) => setFormHorizon(e.target.value as DreamHorizon)}
               >
@@ -1023,8 +1059,12 @@ function DreamsContent() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Kategori</label>
-              <Select value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
+              <label htmlFor="dream-input-category" className="text-xs font-semibold text-foreground">Kategori</label>
+              <Select
+                id="dream-input-category"
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+              >
                 {DREAM_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -1035,20 +1075,22 @@ function DreamsContent() {
           </div>
 
           {/* Identity & Target Year */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 space-y-1.5">
+              <label htmlFor="dream-input-persona" className="text-xs font-semibold text-foreground">
                 Kimlik / Persona <span className="text-muted-foreground font-normal">(Bu hayal kime ait?)</span>
               </label>
               <Input
+                id="dream-input-persona"
                 value={formIdentityPersona}
                 onChange={(e) => setFormIdentityPersona(e.target.value)}
                 placeholder="Örn: Özgür Kaşif, Bağımsız Üretici, Disiplinli Sporcu..."
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Hedef Yıl / Dönem</label>
+              <label htmlFor="dream-input-year" className="text-xs font-semibold text-foreground">Hedef Yıl / Dönem</label>
               <Input
+                id="dream-input-year"
                 value={formTargetYear}
                 onChange={(e) => setFormTargetYear(e.target.value)}
                 placeholder="2027, 2028 Yazı"
@@ -1058,10 +1100,11 @@ function DreamsContent() {
 
           {/* Motivation Why */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
+            <label htmlFor="dream-input-why" className="text-xs font-semibold text-foreground">
               Neden İstiyorum? <span className="text-muted-foreground font-normal">(İçsel motivasyonun)</span>
             </label>
             <Textarea
+              id="dream-input-why"
               value={formMotivationWhy}
               onChange={(e) => setFormMotivationWhy(e.target.value)}
               placeholder="Örn: Dünyayı deneyimlemek ve zihnimi bağımsız üretmeye açmak için..."
@@ -1072,10 +1115,11 @@ function DreamsContent() {
 
           {/* Next Focus Note */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
+            <label htmlFor="dream-input-focus" className="text-xs font-semibold text-foreground">
               Sıradaki Odak Notu <span className="text-muted-foreground font-normal">(Aklındaki basit hatırlatıcı)</span>
             </label>
             <Input
+              id="dream-input-focus"
               value={formNextFocusNote}
               onChange={(e) => setFormNextFocusNote(e.target.value)}
               placeholder="Örn: Pasaport randevusu al, inceleme videosu izle..."
@@ -1084,8 +1128,9 @@ function DreamsContent() {
 
           {/* Detailed Description */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">Detaylı Açıklama (İsteğe Bağlı)</label>
+            <label htmlFor="dream-input-desc" className="text-xs font-semibold text-foreground">Detaylı Açıklama (İsteğe Bağlı)</label>
             <Textarea
+              id="dream-input-desc"
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               placeholder="Hayalinle ilgili aklındaki özel detaylar, hisler..."
@@ -1097,7 +1142,7 @@ function DreamsContent() {
           {/* Cover Image & Presets Picker */}
           <div className="space-y-2 pt-1 border-t border-border/60">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <label htmlFor="dream-input-cover" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5 text-primary" />
                 <span>Kapak / İlham Görseli</span>
               </label>
@@ -1126,7 +1171,7 @@ function DreamsContent() {
                     }`}
                   >
                     <img src={wp.thumbnailUrl} alt={wp.title} className="h-full w-full object-cover" />
-                    <span className="absolute inset-0 bg-black/40 flex items-center justify-center text-[9px] text-white font-medium text-center p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="absolute inset-0 bg-black/40 flex items-center justify-center text-[11px] text-white font-medium text-center p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {wp.title}
                     </span>
                   </button>
@@ -1135,6 +1180,7 @@ function DreamsContent() {
             )}
 
             <Input
+              id="dream-input-cover"
               value={formCoverImageUrl}
               onChange={(e) => setFormCoverImageUrl(e.target.value)}
               placeholder="https://images.unsplash.com/..."
@@ -1173,10 +1219,11 @@ function DreamsContent() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+              <label htmlFor="celebration-note-input" className="text-xs font-semibold text-foreground">
                 Tamamlama Notu:
               </label>
               <textarea
+                id="celebration-note-input"
                 value={achievedNoteInput}
                 onChange={(e) => setAchievedNoteInput(e.target.value)}
                 placeholder="Bu hedefi gerçekleştirirken edindiğiniz tecrübeler ve hisleriniz..."
@@ -1187,10 +1234,11 @@ function DreamsContent() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+              <label htmlFor="celebration-image-input" className="text-xs font-semibold text-foreground">
                 Anı / Fotoğraf Görseli (İsteğe Bağlı URL):
               </label>
               <Input
+                id="celebration-image-input"
                 value={achievedImageInput}
                 onChange={(e) => setAchievedImageInput(e.target.value)}
                 placeholder="https://..."
@@ -1214,7 +1262,12 @@ function DreamsContent() {
       {isZenModeOpen && activeDreams.length > 0 && (() => {
         const currentDream = activeDreams[zenIndex % activeDreams.length]
         return (
-          <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-xl flex flex-col justify-between p-6 sm:p-12 animate-in fade-in duration-300">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Odak Görünümü"
+            className="fixed inset-0 z-50 bg-background/95 backdrop-blur-xl flex flex-col justify-between p-6 sm:p-12 animate-in fade-in duration-300"
+          >
             {/* Zen Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1228,6 +1281,7 @@ function DreamsContent() {
                 size="icon"
                 onClick={() => setIsZenModeOpen(false)}
                 className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                aria-label="Odak görünümünü kapat (Esc)"
               >
                 <X className="h-5 w-5" />
               </Button>
@@ -1297,7 +1351,8 @@ function DreamsContent() {
                 onClick={() =>
                   setZenIndex((prev) => (prev - 1 + activeDreams.length) % activeDreams.length)
                 }
-                className="gap-1.5"
+                className="gap-1.5 min-h-[36px]"
+                aria-label="Önceki slayt (Sol ok)"
               >
                 <ChevronLeft className="h-4 w-4" />
                 <span>Önceki</span>
@@ -1308,6 +1363,7 @@ function DreamsContent() {
                   <button
                     key={idx}
                     onClick={() => setZenIndex(idx)}
+                    aria-label={`Slayt ${idx + 1}`}
                     className={`h-2 rounded-full transition-all ${
                       idx === zenIndex % activeDreams.length ? 'w-6 bg-primary' : 'w-2 bg-muted-foreground/40'
                     }`}
@@ -1319,7 +1375,8 @@ function DreamsContent() {
                 variant="outline"
                 size="sm"
                 onClick={() => setZenIndex((prev) => (prev + 1) % activeDreams.length)}
-                className="gap-1.5"
+                className="gap-1.5 min-h-[36px]"
+                aria-label="Sonraki slayt (Sağ ok)"
               >
                 <span>Sonraki</span>
                 <ChevronRight className="h-4 w-4" />
@@ -1328,6 +1385,17 @@ function DreamsContent() {
           </div>
         )
       })()}
+
+      {/* Dream Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!dreamToDelete}
+        onClose={() => setDreamToDelete(null)}
+        onConfirm={confirmDeleteDream}
+        title="Hedefi Sil"
+        description={`"${dreamToDelete?.title}" hedefini vizyon panonuzdan silmek istediğinizden emin misiniz?`}
+        confirmLabel="Sil"
+        variant="destructive"
+      />
     </div>
   )
 }

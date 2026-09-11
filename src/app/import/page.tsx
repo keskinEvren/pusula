@@ -36,6 +36,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { ExtractedTransaction, ParseResult, ReconciliationActionType } from '@/lib/parser/types'
@@ -63,6 +64,33 @@ export default function ImportPage() {
 
   // Mode: credit_card vs bank_account
   const [activeMode, setActiveMode] = useState<'credit_card' | 'bank_account'>('credit_card')
+  const [switchModeTarget, setSwitchModeTarget] = useState<'credit_card' | 'bank_account' | null>(null)
+  const [isClearingQueue, setIsClearingQueue] = useState(false)
+
+  const handleSwitchMode = (targetMode: 'credit_card' | 'bank_account') => {
+    if (targetMode === activeMode) return
+    if (queuedFiles.length > 0) {
+      setSwitchModeTarget(targetMode)
+    } else {
+      setActiveMode(targetMode)
+      setError(null)
+      setSuccessSummary(null)
+    }
+  }
+
+  const confirmSwitchMode = () => {
+    if (!switchModeTarget) return
+    setActiveMode(switchModeTarget)
+    setQueuedFiles([])
+    setError(null)
+    setSuccessSummary(null)
+    setSwitchModeTarget(null)
+  }
+
+  const confirmClearQueue = () => {
+    setQueuedFiles([])
+    setIsClearingQueue(false)
+  }
 
   const [isDragging, setIsDragging] = useState(false)
   const [queuedFiles, setQueuedFiles] = useState<QueuedStatementFile[]>([])
@@ -535,22 +563,13 @@ export default function ImportPage() {
       />
 
       {/* Mode Selector Tabs */}
-      <div className="flex gap-3 border-b border-border pb-3">
+      <div role="tablist" aria-label="Ekstre yükleme modu" className="flex gap-3 border-b border-border pb-3">
         <button
           type="button"
-          onClick={() => {
-            if (queuedFiles.length > 0) {
-              const confirmSwitch = window.confirm(
-                'Mod değiştirdiğinizde kuyruktaki mevcut dosyalar temizlenir. Devam etmek istiyor musunuz?'
-              )
-              if (!confirmSwitch) return
-            }
-            setActiveMode('credit_card')
-            setQueuedFiles([])
-            setError(null)
-            setSuccessSummary(null)
-          }}
-          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+          role="tab"
+          aria-selected={activeMode === 'credit_card'}
+          onClick={() => handleSwitchMode('credit_card')}
+          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 min-h-[44px] sm:min-h-[40px] text-sm font-semibold transition-all ${
             activeMode === 'credit_card'
               ? 'bg-primary text-primary-foreground shadow-md'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -562,21 +581,12 @@ export default function ImportPage() {
 
         <button
           type="button"
-          onClick={() => {
-            if (queuedFiles.length > 0) {
-              const confirmSwitch = window.confirm(
-                'Mod değiştirdiğinizde kuyruktaki mevcut dosyalar temizlenir. Devam etmek istiyor musunuz?'
-              )
-              if (!confirmSwitch) return
-            }
-            setActiveMode('bank_account')
-            setQueuedFiles([])
-            setError(null)
-            setSuccessSummary(null)
-          }}
-          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+          role="tab"
+          aria-selected={activeMode === 'bank_account'}
+          onClick={() => handleSwitchMode('bank_account')}
+          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 min-h-[44px] sm:min-h-[40px] text-sm font-semibold transition-all ${
             activeMode === 'bank_account'
-              ? 'bg-purple-600 text-white shadow-md'
+              ? 'bg-primary text-primary-foreground shadow-md'
               : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
@@ -798,11 +808,7 @@ export default function ImportPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    if (window.confirm('Kuyruktaki tüm dosyalar kaldırılacak. Emin misiniz?')) {
-                      setQueuedFiles([])
-                    }
-                  }}
+                  onClick={() => setIsClearingQueue(true)}
                   disabled={saving}
                   className="text-xs text-muted-foreground hover:text-destructive"
                 >
@@ -1060,13 +1066,13 @@ export default function ImportPage() {
                   {/* Expanded Transaction Review Table */}
                   {item.expanded && item.transactions.length > 0 && (
                     <div className="border-t border-border">
-                      <div className="p-3 bg-muted/20 flex items-center justify-between">
+                      <div className="p-3 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleFileSelectAll(item.id, true)}
-                            className="text-xs h-7"
+                            className="text-xs h-8 min-h-[36px]"
                           >
                             Tümünü Seç
                           </Button>
@@ -1074,7 +1080,7 @@ export default function ImportPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleFileSelectAll(item.id, false)}
-                            className="text-xs h-7"
+                            className="text-xs h-8 min-h-[36px]"
                           >
                             Seçimi Kaldır
                           </Button>
@@ -1085,20 +1091,194 @@ export default function ImportPage() {
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto max-h-96">
+                      {/* Mobile Review Cards (<md) */}
+                      <div className="md:hidden divide-y divide-border/50 max-h-96 overflow-y-auto font-sans">
+                        {item.transactions.map((tx) => (
+                          <div
+                            key={tx.id}
+                            className={`p-3 space-y-2.5 text-xs ${
+                              tx.selected === false ? 'opacity-40 bg-muted/10' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="flex items-center gap-2 cursor-pointer min-h-[36px]">
+                                <input
+                                  type="checkbox"
+                                  checked={tx.selected !== false}
+                                  onChange={(e) =>
+                                    handleRowFieldChange(
+                                      item.id,
+                                      tx.id,
+                                      'selected',
+                                      e.target.checked
+                                    )
+                                  }
+                                  className="rounded border-border h-4 w-4"
+                                />
+                                <span className="text-muted-foreground font-mono">{tx.date}</span>
+                              </label>
+                              <span
+                                className={`font-bold font-mono ${
+                                  tx.direction === 'inflow' || tx.analysis_group === 'Gelir'
+                                    ? 'text-success'
+                                    : tx.analysis_group === 'Hariç'
+                                    ? 'text-muted-foreground'
+                                    : 'text-foreground'
+                                }`}
+                              >
+                                {tx.direction === 'inflow' ? '+' : '-'} {formatCurrency(tx.amount)}
+                              </span>
+                            </div>
+
+                            <div className="text-muted-foreground text-[11px] truncate" title={tx.raw_description}>
+                              {tx.raw_description}
+                            </div>
+
+                            <div className="space-y-1">
+                              <Input
+                                value={tx.merchant}
+                                onChange={(e) =>
+                                  handleRowFieldChange(
+                                    item.id,
+                                    tx.id,
+                                    'merchant',
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="İşlem adı..."
+                                className="h-8 text-xs font-medium"
+                              />
+                            </div>
+
+                            {activeMode === 'bank_account' && (
+                              <div className="space-y-1.5">
+                                <Select
+                                  value={tx.action || 'DIRECT_EXPENSE'}
+                                  onChange={(e) =>
+                                    handleActionChange(
+                                      item.id,
+                                      tx.id,
+                                      e.target.value as ReconciliationActionType
+                                    )
+                                  }
+                                  className="h-8 text-xs font-semibold"
+                                >
+                                  <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
+                                  <option value="INVESTMENT_TRANSFER">📈 Yatırım Transferi (Hariç)</option>
+                                  <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
+                                  <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
+                                  <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
+                                  <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
+                                  <option value="FREE_INCOME">💵 Serbest Gelir</option>
+                                  <option value="INTERNAL_TRANSFER">🔄 Transfer</option>
+                                </Select>
+
+                                {(tx.action === 'COLLECT_RECEIVABLE' || tx.action === 'PAY_DEBT') && (
+                                  <Select
+                                    value={tx.target_debt_id || ''}
+                                    onChange={(e) =>
+                                      handleRowFieldChange(
+                                        item.id,
+                                        tx.id,
+                                        'target_debt_id',
+                                        e.target.value
+                                      )
+                                    }
+                                    className="h-8 text-xs border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-medium"
+                                  >
+                                    <option value="">🎯 (Borç/Alacak Seçin)</option>
+                                    {debts
+                                      .filter((d) => (tx.action === 'COLLECT_RECEIVABLE' ? d.type === 'Alacak' : d.type === 'Borç'))
+                                      .map((d) => (
+                                        <option key={d.id} value={d.id}>
+                                          {d.person_or_entity} ({formatCurrency(d.remaining)})
+                                        </option>
+                                      ))}
+                                  </Select>
+                                )}
+
+                                {(tx.action === 'CARD_PAYMENT' || tx.action === 'CASH_ADVANCE') && (
+                                  <Select
+                                    value={tx.target_card_id || ''}
+                                    onChange={(e) =>
+                                      handleRowFieldChange(
+                                        item.id,
+                                        tx.id,
+                                        'target_card_id',
+                                        e.target.value
+                                      )
+                                    }
+                                    className="h-8 text-xs border-primary/50 bg-primary/10 text-primary font-medium"
+                                  >
+                                    <option value="">💳 (Kart Seçin)</option>
+                                    {cards.map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.bank} {c.card_name}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <Select
+                                value={tx.analysis_group}
+                                onChange={(e) =>
+                                  handleRowFieldChange(
+                                    item.id,
+                                    tx.id,
+                                    'analysis_group',
+                                    e.target.value
+                                  )
+                                }
+                                className="h-8 text-xs"
+                              >
+                                <option value="Kişisel">Kişisel</option>
+                                <option value="İş">İş</option>
+                                <option value="Finansman">Finansman</option>
+                                <option value="Hariç">Hariç</option>
+                              </Select>
+
+                              <Select
+                                value={tx.project_id || ''}
+                                onChange={(e) =>
+                                  handleRowFieldChange(
+                                    item.id,
+                                    tx.id,
+                                    'project_id',
+                                    e.target.value || undefined
+                                  )
+                                }
+                                className="h-8 text-xs font-sans"
+                              >
+                                <option value="">(Proje Yok)</option>
+                                {projects.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Desktop Review Table (md+) */}
+                      <div className="hidden md:block overflow-x-auto max-h-96">
                         <table className="w-full text-left text-xs">
                           <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground sticky top-0">
                             <tr>
-                              <th className="p-2.5 w-8"></th>
-                              <th className="p-2.5">Tarih</th>
-                              <th className="p-2.5">Açıklama</th>
-                              <th className="p-2.5">İşlem Adı</th>
+                              <th scope="col" className="p-2.5 w-8"></th>
+                              <th scope="col" className="p-2.5">Tarih</th>
+                              <th scope="col" className="p-2.5">Açıklama</th>
+                              <th scope="col" className="p-2.5">İşlem Adı</th>
                               {activeMode === 'bank_account' && (
-                                <th className="p-2.5">Uzlaştırma Aksiyonu</th>
+                                <th scope="col" className="p-2.5">Uzlaştırma Aksiyonu</th>
                               )}
-                              <th className="p-2.5">Grup</th>
-                              <th className="p-2.5">Proje</th>
-                              <th className="p-2.5 text-right">Tutar</th>
+                              <th scope="col" className="p-2.5">Grup</th>
+                              <th scope="col" className="p-2.5">Proje</th>
+                              <th scope="col" className="p-2.5 text-right">Tutar</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border/40 font-mono">
@@ -1289,6 +1469,30 @@ export default function ImportPage() {
           </div>
         </div>
       )}
+
+      {/* ConfirmDialog for Mode Switch */}
+      <ConfirmDialog
+        isOpen={Boolean(switchModeTarget)}
+        onClose={() => setSwitchModeTarget(null)}
+        onConfirm={confirmSwitchMode}
+        title="Mod Değiştir"
+        description="Mod değiştirdiğinizde kuyruktaki mevcut yüklenmemiş dosyalar temizlenir. Devam etmek istiyor musunuz?"
+        confirmLabel="Modu Değiştir"
+        cancelLabel="Vazgeç"
+        variant="warning"
+      />
+
+      {/* ConfirmDialog for Clear Queue */}
+      <ConfirmDialog
+        isOpen={isClearingQueue}
+        onClose={() => setIsClearingQueue(false)}
+        onConfirm={confirmClearQueue}
+        title="Kuyruğu Temizle"
+        description="Kuyruktaki tüm dosyalar kaldırılacak. Emin misiniz?"
+        confirmLabel="Kuyruğu Temizle"
+        cancelLabel="Vazgeç"
+        variant="destructive"
+      />
     </div>
   )
 }

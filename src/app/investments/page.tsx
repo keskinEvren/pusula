@@ -23,7 +23,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, cn } from '@/lib/utils'
 import { calculatePortfolioMetrics, calculateDcaAverageCost, round2 } from '@/lib/finance-engine'
 import { searchAssetCatalog, type CatalogAsset } from '@/lib/market/assets-catalog'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { Investment } from '@/types/database'
@@ -99,6 +100,10 @@ function InvestmentsContent() {
   const [selectedCategory, setSelectedCategory] = useState<string>('Tümü')
   const [searchQuery, setSearchQuery] = useState('')
   const [isDbFallback, setIsDbFallback] = useState(false)
+
+  // Deletion State
+  const [deleteTargetItem, setDeleteTargetItem] = useState<Investment | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -514,16 +519,24 @@ function InvestmentsContent() {
     setIsModalOpen(false)
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bu yatırım kaydını silmek istediğinize emin misiniz?')) return
-    if (!isDbFallback) {
-      const supabase = createClient()
-      await supabase.from('investments').delete().eq('id', id)
-      loadInvestments()
-    } else {
-      syncLocal(investments.filter((i) => i.id !== id))
+  const confirmDeleteItem = async () => {
+    if (!deleteTargetItem) return
+    setIsDeleting(true)
+    try {
+      if (!isDbFallback) {
+        const supabase = createClient()
+        await supabase.from('investments').delete().eq('id', deleteTargetItem.id)
+        await loadInvestments()
+      } else {
+        syncLocal(investments.filter((i) => i.id !== deleteTargetItem.id))
+      }
+      toast.success('Yatırım kaydı silindi.')
+      setDeleteTargetItem(null)
+    } catch (err: any) {
+      toast.error(err.message || 'Silinemedi')
+    } finally {
+      setIsDeleting(false)
     }
-    toast.success('Yatırım kaydı silindi.')
   }
 
   const handleSaveQuickPrice = async (e: React.FormEvent) => {
@@ -574,6 +587,21 @@ function InvestmentsContent() {
 
   // Calculate Metrics
   const metrics = calculatePortfolioMetrics(investments)
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-20 animate-pulse rounded-xl border border-border bg-card/60 p-6" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+        </div>
+        <div className="h-96 animate-pulse rounded-xl border border-border bg-card/60" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -645,7 +673,7 @@ function InvestmentsContent() {
           <div className="flex items-center gap-1.5 text-xs">
             <Badge
               variant={metrics.totalProfitLoss >= 0 ? 'success' : 'destructive'}
-              className="text-[10px] tabular-nums px-1.5 py-0"
+              className="text-[11px] tabular-nums px-1.5 py-0"
             >
               {metrics.totalProfitLossPct >= 0 ? '+' : ''}
               %{metrics.totalProfitLossPct.toFixed(2)}
@@ -692,12 +720,15 @@ function InvestmentsContent() {
       {/* Filter Tabs & Search Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Category Scrollable Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full no-scrollbar">
+        <div role="tablist" aria-label="Yatırım kategorileri" className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full no-scrollbar">
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
+              type="button"
+              role="tab"
+              aria-selected={selectedCategory === cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold whitespace-nowrap transition-all ${
                 selectedCategory === cat
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -720,20 +751,157 @@ function InvestmentsContent() {
         </div>
       </div>
 
-      {/* Asset Table */}
+      {/* Asset Table & Mobile Cards */}
       <Card className="border-border bg-card shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Asset Cards (<md) */}
+        <div className="md:hidden divide-y divide-border/60">
+          {filteredInvestments.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground font-sans">
+              <p className="text-sm font-semibold text-foreground">Henüz yatırım kaydı bulunmuyor.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Sağ üstteki <strong>"+ Varlık Ekle"</strong> butonunu kullanarak portföyünüzü oluşturun.
+              </p>
+            </div>
+          ) : (
+            filteredInvestments.map((inv) => {
+              const val = round2(inv.quantity * inv.current_price)
+              const cost = round2(inv.quantity * inv.unit_cost)
+              const pnl = round2(val - cost)
+              const pnlPct = cost > 0 ? round2((pnl / cost) * 100) : 0
+              const freshness = getPriceFreshness(inv.last_price_updated_at)
+
+              return (
+                <div key={inv.id} className="p-4 space-y-3 font-sans">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground text-sm flex items-center gap-1.5 flex-wrap">
+                        <span>{inv.name}</span>
+                        {inv.symbol && (
+                          <Badge variant="outline" className="font-mono text-[11px] px-1 py-0">
+                            {inv.symbol}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1 flex-wrap">
+                        <Badge variant="outline" className="text-[11px]">
+                          {inv.category}
+                        </Badge>
+                        {inv.institution && <span>• {inv.institution}</span>}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold text-foreground tabular-nums">
+                        {formatCurrency(val)}
+                      </div>
+                      <div
+                        className={cn(
+                          'text-xs font-semibold tabular-nums',
+                          pnl >= 0 ? 'text-success' : 'text-destructive'
+                        )}
+                      >
+                        {pnl >= 0 ? '+' : ''}
+                        {formatCurrency(pnl)} ({pnl >= 0 ? '+' : ''}%{pnlPct.toFixed(2)})
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted/40 p-2.5 text-xs">
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block">Miktar</span>
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {inv.quantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block">Alış Fiyatı</span>
+                      <span className="text-muted-foreground tabular-nums">{formatCurrency(inv.unit_cost)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block">Güncel Fiyat</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickUpdateItem(inv)
+                          setQuickNewPrice(inv.current_price.toString())
+                        }}
+                        className="font-bold text-foreground hover:underline hover:text-primary tabular-nums"
+                      >
+                        {formatCurrency(inv.current_price)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <span className={cn('inline-block h-1.5 w-1.5 rounded-full', freshness.dotClass)} />
+                      <span className={freshness.colorClass}>{freshness.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenDcaModal(inv)}
+                        className="h-8 px-2 text-xs gap-1 min-h-[36px]"
+                        title="Kademeli alım ekle"
+                        aria-label="Kademeli alım ekle"
+                      >
+                        <Layers className="h-3 w-3" />
+                        <span className="hidden sm:inline">Kademeli Alım</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setQuickUpdateItem(inv)
+                          setQuickNewPrice(inv.current_price.toString())
+                        }}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-primary min-h-[36px] min-w-[36px]"
+                        title="Fiyat Güncelle"
+                        aria-label="Fiyat Güncelle"
+                      >
+                        <DollarSign className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenEditModal(inv)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground min-h-[36px] min-w-[36px]"
+                        title="Düzenle"
+                        aria-label="Düzenle"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteTargetItem(inv)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive min-h-[36px] min-w-[36px]"
+                        title="Sil"
+                        aria-label="Sil"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Desktop Asset Table (md+) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/40 border-b border-border text-muted-foreground uppercase font-semibold text-[11px]">
               <tr>
-                <th className="p-3.5">Varlık / Enstrüman</th>
-                <th className="p-3.5">Kategori & Kurum</th>
-                <th className="p-3.5 text-right">Miktar / Adet</th>
-                <th className="p-3.5 text-right">Alış Fiyatı</th>
-                <th className="p-3.5 text-right">Güncel Fiyat</th>
-                <th className="p-3.5 text-right">Toplam Değer</th>
-                <th className="p-3.5 text-right">Kâr / Zarar</th>
-                <th className="p-3.5 text-center">İşlemler</th>
+                <th scope="col" className="p-3.5">Varlık / Enstrüman</th>
+                <th scope="col" className="p-3.5">Kategori & Kurum</th>
+                <th scope="col" className="p-3.5 text-right">Miktar / Adet</th>
+                <th scope="col" className="p-3.5 text-right">Alış Fiyatı</th>
+                <th scope="col" className="p-3.5 text-right">Güncel Fiyat</th>
+                <th scope="col" className="p-3.5 text-right">Toplam Değer</th>
+                <th scope="col" className="p-3.5 text-right">Kâr / Zarar</th>
+                <th scope="col" className="p-3.5 text-center">İşlemler</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
@@ -760,7 +928,7 @@ function InvestmentsContent() {
                         <div className="font-semibold text-foreground text-xs flex items-center gap-1.5">
                           <span>{inv.name}</span>
                           {inv.symbol && (
-                            <Badge variant="outline" className="font-mono text-[10px] px-1 py-0">
+                            <Badge variant="outline" className="font-mono text-[11px] px-1 py-0">
                               {inv.symbol}
                             </Badge>
                           )}
@@ -775,7 +943,7 @@ function InvestmentsContent() {
                       {/* Category & Institution */}
                       <td className="p-3.5 font-sans">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-[11px]">
                             {inv.category}
                           </Badge>
                           {inv.institution && (
@@ -799,6 +967,7 @@ function InvestmentsContent() {
                       {/* Current Price & Freshness Badge */}
                       <td className="p-3.5 text-right font-bold text-foreground">
                         <button
+                          type="button"
                           onClick={() => {
                             setQuickUpdateItem(inv)
                             setQuickNewPrice(inv.current_price.toString())
@@ -812,7 +981,7 @@ function InvestmentsContent() {
                           const freshness = getPriceFreshness(inv.last_price_updated_at)
                           return (
                             <div
-                              className="flex items-center justify-end gap-1 text-[10px] mt-0.5"
+                              className="flex items-center justify-end gap-1 text-[11px] mt-0.5"
                               title={`Son güncelleme: ${
                                 inv.last_price_updated_at
                                   ? new Date(inv.last_price_updated_at).toLocaleString('tr-TR')
@@ -842,7 +1011,7 @@ function InvestmentsContent() {
                           {formatCurrency(pnl)}
                         </div>
                         <div
-                          className={`text-[10px] ${
+                          className={`text-[11px] ${
                             pnl >= 0 ? 'text-success/80' : 'text-destructive/80'
                           }`}
                         >
@@ -858,39 +1027,43 @@ function InvestmentsContent() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleOpenDcaModal(inv)}
-                            className="h-7 px-2 text-[11px] gap-1 text-foreground border-border hover:bg-muted"
+                            className="h-8 px-2 text-[11px] gap-1 text-foreground border-border hover:bg-muted"
                             title="Kademeli alım ekle (Ağırlıklı ortalama maliyeti otomatik hesaplar)"
+                            aria-label="Kademeli alım ekle"
                           >
                             <Layers className="h-3 w-3" />
                             <span>Kademeli Alım</span>
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => {
                               setQuickUpdateItem(inv)
                               setQuickNewPrice(inv.current_price.toString())
                             }}
-                            className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
                             title="Fiyat Güncelle"
+                            aria-label="Fiyat Güncelle"
                           >
                             <DollarSign className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => handleOpenEditModal(inv)}
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                             title="Düzenle"
+                            aria-label="Düzenle"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(inv.id)}
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            size="sm"
+                            onClick={() => setDeleteTargetItem(inv)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
                             title="Sil"
+                            aria-label="Sil"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -940,10 +1113,11 @@ function InvestmentsContent() {
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-foreground">Varlık / Şirket Adı</label>
-                  <span className="text-[10px] text-muted-foreground">Akıllı Arama Aktif</span>
+                  <label htmlFor="inv-name" className="text-xs font-semibold text-foreground">Varlık / Şirket Adı</label>
+                  <span className="text-[11px] text-muted-foreground">Akıllı Arama Aktif</span>
                 </div>
                 <Input
+                  id="inv-name"
                   value={formName}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="Örn: Türk Hava Yolları veya Gram Altın"
@@ -951,8 +1125,9 @@ function InvestmentsContent() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Sembol / Kod</label>
+                <label htmlFor="inv-symbol" className="text-xs font-semibold text-foreground">Sembol / Kod</label>
                 <Input
+                  id="inv-symbol"
                   value={formSymbol}
                   onChange={(e) => handleSymbolChange(e.target.value)}
                   placeholder="Örn: THYAO"
@@ -977,12 +1152,12 @@ function InvestmentsContent() {
                       className="w-full text-left px-3 py-2 text-xs hover:bg-muted/70 transition-colors flex items-center justify-between group cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="font-mono text-[10px] group-hover:border-primary group-hover:text-primary">
+                        <Badge variant="outline" className="font-mono text-[11px] group-hover:border-primary group-hover:text-primary">
                           {item.symbol}
                         </Badge>
                         <span className="font-semibold text-foreground">{item.name}</span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">{item.category}</span>
+                      <span className="text-[11px] text-muted-foreground">{item.category}</span>
                     </button>
                   ))}
                 </div>
@@ -993,8 +1168,8 @@ function InvestmentsContent() {
           {/* Category & Institution */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Kategori</label>
-              <Select value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
+              <label htmlFor="inv-category" className="text-xs font-semibold text-foreground">Kategori</label>
+              <Select id="inv-category" value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
                 {CATEGORIES.filter((c) => c !== 'Tümü').map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -1003,8 +1178,9 @@ function InvestmentsContent() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Saklama Kurumu / Borsa</label>
+              <label htmlFor="inv-institution" className="text-xs font-semibold text-foreground">Saklama Kurumu / Borsa</label>
               <Input
+                id="inv-institution"
                 value={formInstitution}
                 onChange={(e) => setFormInstitution(e.target.value)}
                 placeholder="Örn: Midas, Garanti, Fiziki..."
@@ -1015,8 +1191,9 @@ function InvestmentsContent() {
           {/* Quantity, Cost, Current Price */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Miktar / Adet</label>
+              <label htmlFor="inv-quantity" className="text-xs font-semibold text-foreground">Miktar / Adet</label>
               <Input
+                id="inv-quantity"
                 type="number"
                 step="any"
                 value={formQuantity}
@@ -1026,8 +1203,9 @@ function InvestmentsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Alış Maliyeti</label>
+              <label htmlFor="inv-unit-cost" className="text-xs font-semibold text-foreground">Alış Maliyeti</label>
               <Input
+                id="inv-unit-cost"
                 type="number"
                 step="any"
                 prefix="₺"
@@ -1039,17 +1217,18 @@ function InvestmentsContent() {
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-foreground">Güncel Fiyat</label>
+                <label htmlFor="inv-current-price" className="text-xs font-semibold text-foreground">Güncel Fiyat</label>
                 <button
                   type="button"
                   onClick={handleFetchLivePrice}
                   disabled={fetchingPrice || (!formSymbol && !formName)}
-                  className="text-[10px] text-primary font-semibold hover:underline"
+                  className="text-[11px] text-primary font-semibold hover:underline"
                 >
                   {fetchingPrice ? 'Çekiliyor...' : '⚡ Canlı Çek'}
                 </button>
               </div>
               <Input
+                id="inv-current-price"
                 type="number"
                 step="any"
                 prefix="₺"
@@ -1094,8 +1273,9 @@ function InvestmentsContent() {
 
           {/* Note */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">Not (İsteğe Bağlı)</label>
+            <label htmlFor="inv-note" className="text-xs font-semibold text-foreground">Not (İsteğe Bağlı)</label>
             <Input
+              id="inv-note"
               value={formNote}
               onChange={(e) => setFormNote(e.target.value)}
               placeholder="Hedef fiyat veya alım notu..."
@@ -1127,8 +1307,9 @@ function InvestmentsContent() {
             </p>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Yeni Birim Fiyat (₺)</label>
+              <label htmlFor="quick-new-price" className="text-xs font-semibold text-foreground">Yeni Birim Fiyat (₺)</label>
               <Input
+                id="quick-new-price"
                 type="number"
                 step="any"
                 value={quickNewPrice}
@@ -1201,8 +1382,9 @@ function InvestmentsContent() {
                 {/* Yeni Alım Bilgileri */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">Alınan Yeni Miktar / Adet</label>
+                    <label htmlFor="dca-added-qty" className="text-xs font-semibold text-foreground">Alınan Yeni Miktar / Adet</label>
                     <Input
+                      id="dca-added-qty"
                       type="number"
                       step="any"
                       value={dcaAddedQty}
@@ -1214,18 +1396,19 @@ function InvestmentsContent() {
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-foreground">Alış Fiyatı</label>
+                      <label htmlFor="dca-unit-price" className="text-xs font-semibold text-foreground">Alış Fiyatı</label>
                       {dcaItem.current_price > 0 && (
                         <button
                           type="button"
                           onClick={() => setDcaUnitPrice(dcaItem.current_price.toString())}
-                          className="text-[10px] text-primary font-semibold hover:underline"
+                          className="text-[11px] text-primary font-semibold hover:underline"
                         >
                           Güncel Fiyat ({formatCurrency(dcaItem.current_price)})
                         </button>
                       )}
                     </div>
                     <Input
+                      id="dca-unit-price"
                       type="number"
                       step="any"
                       prefix="₺"
@@ -1249,7 +1432,7 @@ function InvestmentsContent() {
                         <span className="text-sm font-semibold text-foreground tabular-nums">
                           {dcaRes.newQuantity.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
                         </span>
-                        <span className="text-[10px] text-muted-foreground block tabular-nums">
+                        <span className="text-[11px] text-muted-foreground block tabular-nums">
                           (+{addedQtyNum.toLocaleString('tr-TR')} adet eklendi)
                         </span>
                       </div>
@@ -1259,7 +1442,7 @@ function InvestmentsContent() {
                           {formatCurrency(dcaRes.newUnitCost)}
                         </span>
                         <span
-                          className={`text-[10px] block tabular-nums ${
+                          className={`text-[11px] block tabular-nums ${
                             costDiff <= 0 ? 'text-success' : 'text-warning'
                           }`}
                         >
@@ -1305,6 +1488,25 @@ function InvestmentsContent() {
           })()}
         </Modal>
       )}
+
+      {/* Deletion ConfirmDialog */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteTargetItem)}
+        onClose={() => setDeleteTargetItem(null)}
+        onConfirm={confirmDeleteItem}
+        title="Yatırım Kaydını Sil"
+        description={
+          deleteTargetItem ? (
+            <span>
+              <strong>{deleteTargetItem.name}</strong> kaydını portföyünüzden silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+            </span>
+          ) : undefined
+        }
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        variant="destructive"
+        isLoading={isDeleting}
+      />
     </div>
   )
 }

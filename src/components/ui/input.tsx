@@ -10,9 +10,9 @@ export interface InputProps
 }
 
 const sizeClasses = {
-  sm: 'h-8 px-2.5 text-xs',
-  md: 'h-9 px-3 text-sm',
-  lg: 'h-11 px-3.5 text-base',
+  sm: 'h-9 px-3 text-xs',
+  md: 'h-10 px-3.5 text-sm',
+  lg: 'h-11 px-4 text-base',
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -32,9 +32,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <input
         type={type}
         className={cn(
-          'flex w-full rounded-lg border border-input bg-card/60 py-1 text-foreground shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+          'flex w-full rounded-md border border-input bg-card/60 py-1 text-foreground shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/50 disabled:cursor-not-allowed disabled:opacity-50',
           sizeClasses[sizeVariant],
-          prefix && (sizeVariant === 'sm' ? 'pl-7' : sizeVariant === 'lg' ? 'pl-10' : 'pl-8'),
+          prefix && (sizeVariant === 'sm' ? 'pl-8' : sizeVariant === 'lg' ? 'pl-11' : 'pl-9'),
           suffix && (sizeVariant === 'sm' ? 'pr-8' : sizeVariant === 'lg' ? 'pr-12' : 'pr-10'),
           type === 'number' &&
             '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',

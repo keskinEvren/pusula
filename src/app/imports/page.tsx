@@ -35,6 +35,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import type { Transaction } from '@/types/database'
 
@@ -203,6 +204,21 @@ export default function ImportsPage() {
   const totalActiveAmount = activeBatches.reduce((sum, b) => sum + Number(b.total_amount || 0), 0)
   const totalActiveTransactions = activeBatches.reduce((sum, b) => sum + Number(b.actual_tx_count || 0), 0)
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-20 animate-pulse rounded-xl border border-border bg-card/60 p-6" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+        </div>
+        <div className="h-96 animate-pulse rounded-xl border border-border bg-card/60" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Standart PageHeader */}
@@ -336,36 +352,42 @@ export default function ImportsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div role="tablist" aria-label="Ekstre durum filtresi" className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1">
           <button
             type="button"
+            role="tab"
+            aria-selected={statusFilter === 'ALL'}
             onClick={() => setStatusFilter('ALL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
               statusFilter === 'ALL'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
             Tümü ({batches.length})
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={statusFilter === 'COMPLETED'}
             onClick={() => setStatusFilter('COMPLETED')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
               statusFilter === 'COMPLETED'
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
             Aktifler ({activeBatches.length})
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={statusFilter === 'ROLLED_BACK'}
             onClick={() => setStatusFilter('ROLLED_BACK')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
               statusFilter === 'ROLLED_BACK'
                 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
             Geri Alınanlar ({rolledBackBatches.length})
@@ -453,7 +475,7 @@ export default function ImportsPage() {
                             </span>
                           )}
                           {batch.file_hash && (
-                            <span className="font-mono text-3xs text-muted-foreground/80">
+                            <span className="font-mono text-[11px] text-muted-foreground/80">
                               Hash: {batch.file_hash.slice(0, 10)}...
                             </span>
                           )}
@@ -491,7 +513,8 @@ export default function ImportsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleInspect(batch)}
-                          className="text-xs"
+                          className="text-xs min-h-[36px]"
+                          aria-label="Ekstreyi İncele"
                         >
                           <FileText className="h-3.5 w-3.5 mr-1.5" />
                           İncele
@@ -503,7 +526,8 @@ export default function ImportsPage() {
                             variant="destructive"
                             size="sm"
                             onClick={() => setRollbackTarget(batch)}
-                            className="text-xs shadow-sm"
+                            className="text-xs shadow-sm min-h-[36px]"
+                            aria-label="Ekstreyi Geri Al"
                           >
                             <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
                             Geri Al
@@ -513,8 +537,9 @@ export default function ImportsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setDeleteTarget(batch)}
-                            className="text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            className="text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 min-h-[36px] min-w-[36px]"
                             title="Bu kaydı listeden tamamen sil"
+                            aria-label="Bu kaydı listeden tamamen sil"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -599,7 +624,7 @@ export default function ImportsPage() {
                     <div key={tx.id} className="p-3 flex items-center justify-between gap-3 text-xs">
                       <div className="space-y-0.5">
                         <div className="font-semibold text-foreground">{tx.description}</div>
-                        <div className="text-muted-foreground text-3xs flex items-center gap-2">
+                        <div className="text-muted-foreground text-[11px] flex items-center gap-2">
                           <span>{tx.date}</span>
                           {tx.merchant && <span>• {tx.merchant}</span>}
                           {tx.recurrence && <span className="text-primary font-medium">• {tx.recurrence}</span>}
@@ -609,7 +634,7 @@ export default function ImportsPage() {
                         <span className="font-mono font-bold text-foreground">
                           {formatCurrency(Number(tx.amount || 0))}
                         </span>
-                        <div className="text-3xs text-muted-foreground">
+                        <div className="text-[11px] text-muted-foreground">
                           {tx.analysis_group}
                         </div>
                       </div>
@@ -635,81 +660,52 @@ export default function ImportsPage() {
         </Modal>
       )}
 
-      {/* Rollback Confirmation Modal */}
-      {rollbackTarget && (
-        <Modal
-          isOpen={true}
-          onClose={() => setRollbackTarget(null)}
-          title="Ekstreyi Geri Al (Atomic Rollback)"
-        >
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-sm flex items-start gap-3">
-              <ShieldAlert className="h-5 w-5 flex-shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <p className="font-semibold">
-                  Bu işlem geri alınamaz bir veri temizliği yapacaktır.
-                </p>
-                <p className="text-xs text-destructive/90">
-                  <strong>"{rollbackTarget.file_name}"</strong> ekstresi ile sisteme girmiş{' '}
-                  <strong>{rollbackTarget.actual_tx_count} adet işlem satırı</strong>, bu ekstreye bağlı dönem borcu özeti ve otomatik keşfedilen abonelikler veritabanından tamamen silinecektir.
-                </p>
-                <p className="text-xs text-destructive/80 mt-2">
-                  ✓ Sistemde önceden var olan bağımsız finansal verilerinize kesinlikle dokunulmaz.
-                </p>
-              </div>
+      {/* Rollback ConfirmDialog */}
+      <ConfirmDialog
+        isOpen={Boolean(rollbackTarget)}
+        onClose={() => setRollbackTarget(null)}
+        onConfirm={confirmRollback}
+        title="Ekstreyi Geri Al (Atomic Rollback)"
+        description={
+          rollbackTarget ? (
+            <div className="space-y-2">
+              <p className="font-semibold text-destructive">
+                Bu işlem geri alınamaz bir veri temizliği yapacaktır.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <strong>"{rollbackTarget.file_name}"</strong> ekstresi ile sisteme girmiş{' '}
+                <strong>{rollbackTarget.actual_tx_count} adet işlem satırı</strong>, bu ekstreye bağlı dönem borcu özeti ve otomatik keşfedilen abonelikler veritabanından tamamen silinecektir.
+              </p>
+              <p className="text-xs text-emerald-400">
+                ✓ Sistemde önceden var olan bağımsız finansal verilerinize kesinlikle dokunulmaz.
+              </p>
             </div>
+          ) : undefined
+        }
+        confirmLabel="Evet, Ekstreyi Geri Al"
+        cancelLabel="Vazgeç"
+        variant="destructive"
+        isLoading={rollingBack}
+      />
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setRollbackTarget(null)}
-                disabled={rollingBack}
-              >
-                Vazgeç
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={confirmRollback}
-                disabled={rollingBack}
-              >
-                {rollingBack ? 'Geri Alınıyor...' : 'Evet, Ekstreyi Geri Al'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Permanent Delete Confirmation Modal */}
-      {deleteTarget && (
-        <Modal
-          isOpen={true}
-          onClose={() => setDeleteTarget(null)}
-          title="Kaydı Listeden Tamamen Kaldır"
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+      {/* Permanent Delete ConfirmDialog */}
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeletePermanently}
+        title="Kaydı Listeden Tamamen Kaldır"
+        description={
+          deleteTarget ? (
+            <span>
               <strong>"{deleteTarget.file_name}"</strong> ekstresinin geçmiş kaydını listeden tamamen silmek üzeresiniz. Bu işlem sadece geçmiş günlüğünü temizler (verileri zaten daha önce geri alınmıştı).
-            </p>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-              >
-                Vazgeç
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={confirmDeletePermanently}
-                disabled={deleting}
-              >
-                {deleting ? 'Siliniyor...' : 'Listeden Kaldır'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+            </span>
+          ) : undefined
+        }
+        confirmLabel="Listeden Kaldır"
+        cancelLabel="Vazgeç"
+        variant="destructive"
+        isLoading={deleting}
+      />
     </div>
   )
 }

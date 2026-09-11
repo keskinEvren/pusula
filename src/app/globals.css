@@ -44,8 +44,13 @@
 
     /* Kenarlık & Odak Halkası */
     --border: 240 4% 16%;
+    --border-strong: 240 4% 26%;
     --input: 240 4% 16%;
     --ring: 226 70% 64%;
+
+    /* Proje ve Yatırım Vurgu Aksanları */
+    --accent-project: 270 60% 60%;
+    --accent-investment: 190 70% 50%;
 
     --radius: 0.625rem;
   }
@@ -62,6 +67,17 @@
   * {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

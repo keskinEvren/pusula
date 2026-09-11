@@ -24,7 +24,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { PageHeader } from '@/components/layout/page-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
 import type { Subscription, Project, Transaction } from '@/types/database'
 
@@ -50,6 +51,10 @@ export default function SubscriptionsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Deletion confirmation
+  const [deleteTargetSub, setDeleteTargetSub] = useState<Subscription | null>(null)
+  const [isDeletingSub, setIsDeletingSub] = useState(false)
 
   // Tab filter: 'ALL' | category name | 'ARCHIVED'
   const [activeTab, setActiveTab] = useState<string>('ALL')
@@ -230,16 +235,20 @@ export default function SubscriptionsPage() {
   }
 
   // Delete
-  const handleDelete = async (id: string) => {
-    if (!confirm('Bu düzenli gideri kalıcı olarak silmek istediğinize emin misiniz?')) return
+  const confirmDeleteSub = async () => {
+    if (!deleteTargetSub) return
+    setIsDeletingSub(true)
     try {
       const supabase = createClient()
-      const { error } = await supabase.from('subscriptions').delete().eq('id', id)
+      const { error } = await supabase.from('subscriptions').delete().eq('id', deleteTargetSub.id)
       if (error) throw error
-      setSubscriptions((prev) => prev.filter((s) => s.id !== id))
+      setSubscriptions((prev) => prev.filter((s) => s.id !== deleteTargetSub.id))
       toast.success('Düzenli gider silindi.')
+      setDeleteTargetSub(null)
     } catch (err: any) {
       toast.error(err.message || 'Silinemedi')
+    } finally {
+      setIsDeletingSub(false)
     }
   }
 
@@ -397,6 +406,21 @@ export default function SubscriptionsPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-20 animate-pulse rounded-xl border border-border bg-card/60 p-6" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+          <div className="h-24 animate-pulse rounded-xl border border-border bg-card/60" />
+        </div>
+        <div className="h-96 animate-pulse rounded-xl border border-border bg-card/60" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -491,11 +515,13 @@ export default function SubscriptionsPage() {
 
       {/* KATEGORİ FİLTRE SEKMELERİ & ARAMA */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <div role="tablist" aria-label="Abonelik filtreleri" className="flex items-center gap-1.5 overflow-x-auto pb-1">
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'ALL'}
             onClick={() => setActiveTab('ALL')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'ALL'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -505,8 +531,10 @@ export default function SubscriptionsPage() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'Eğlence & Medya'}
             onClick={() => setActiveTab('Eğlence & Medya')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'Eğlence & Medya'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -516,8 +544,10 @@ export default function SubscriptionsPage() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'Spor & Yaşam'}
             onClick={() => setActiveTab('Spor & Yaşam')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'Spor & Yaşam'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -527,8 +557,10 @@ export default function SubscriptionsPage() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'İletişim & Fatura'}
             onClick={() => setActiveTab('İletişim & Fatura')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'İletişim & Fatura'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -538,8 +570,10 @@ export default function SubscriptionsPage() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'Yazılım & SaaS'}
             onClick={() => setActiveTab('Yazılım & SaaS')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all shrink-0 ${
               activeTab === 'Yazılım & SaaS'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -549,8 +583,10 @@ export default function SubscriptionsPage() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === 'ARCHIVED'}
             onClick={() => setActiveTab('ARCHIVED')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 ${
+            className={`rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-all shrink-0 flex items-center ${
               activeTab === 'ARCHIVED'
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -639,7 +675,7 @@ export default function SubscriptionsPage() {
                       </div>
                       <Badge
                         variant="outline"
-                        className="text-[10px] font-medium shrink-0"
+                        className="text-[11px] font-medium shrink-0"
                       >
                         {sub.model}
                       </Badge>
@@ -656,7 +692,7 @@ export default function SubscriptionsPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] text-muted-foreground block">Yıllık Yük:</span>
+                        <span className="text-[11px] text-muted-foreground block">Yıllık Yük:</span>
                         <span className="text-xs font-semibold text-foreground tabular-nums">
                           {formatCurrency(yearlyCost)}
                         </span>
@@ -666,10 +702,10 @@ export default function SubscriptionsPage() {
                     {/* Stratejik Tasarruf Karar Barı */}
                     {!isArchived ? (
                       <div className="space-y-1.5">
-                        <div className="text-[10px] font-medium text-muted-foreground flex items-center justify-between">
+                        <div className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
                           <span>Durum / Karar:</span>
                           {isReview && (
-                            <Badge variant="warning" className="text-[10px] py-0 px-1.5">
+                            <Badge variant="warning" className="text-[11px] py-0 px-1.5">
                               İncelemede
                             </Badge>
                           )}
@@ -678,11 +714,12 @@ export default function SubscriptionsPage() {
                           <button
                             type="button"
                             onClick={() => handleQuickDecision(sub, 'Devam')}
-                            className={`rounded-lg py-1 px-1.5 text-center font-medium border transition-all ${
+                            className={cn(
+                              'rounded-lg py-1 px-1.5 text-center font-medium border transition-all min-h-[44px] sm:min-h-[36px] flex items-center justify-center',
                               sub.decision === 'Devam'
                                 ? 'bg-muted text-foreground border-border font-semibold shadow-sm'
                                 : 'border-border/60 text-muted-foreground hover:bg-muted'
-                            }`}
+                            )}
                             title="Bu harcama hayat/iş için zorunlu kabul edilir"
                           >
                             Zorunlu
@@ -690,11 +727,12 @@ export default function SubscriptionsPage() {
                           <button
                             type="button"
                             onClick={() => handleQuickDecision(sub, 'Kararsız')}
-                            className={`rounded-lg py-1 px-1.5 text-center font-medium border transition-all ${
+                            className={cn(
+                              'rounded-lg py-1 px-1.5 text-center font-medium border transition-all min-h-[44px] sm:min-h-[36px] flex items-center justify-center',
                               sub.decision === 'Kararsız'
                                 ? 'bg-muted text-foreground border-border font-semibold shadow-sm'
                                 : 'border-border/60 text-muted-foreground hover:bg-muted'
-                            }`}
+                            )}
                             title="Gözden geçirilebilir, tasarruf adayı"
                           >
                             İncele
@@ -702,7 +740,7 @@ export default function SubscriptionsPage() {
                           <button
                             type="button"
                             onClick={() => handleQuickDecision(sub, 'İptal Et')}
-                            className="rounded-lg py-1 px-1.5 text-center font-medium border border-border/60 text-muted-foreground hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-all"
+                            className="rounded-lg py-1 px-1.5 text-center font-medium border border-border/60 text-muted-foreground hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-all min-h-[44px] sm:min-h-[36px] flex items-center justify-center"
                             title="Üyeliği/aboneliği iptal et ve tasarruf et"
                           >
                             İptal Et
@@ -717,7 +755,7 @@ export default function SubscriptionsPage() {
                         <button
                           type="button"
                           onClick={() => handleQuickDecision(sub, 'Devam')}
-                          className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-1"
+                          className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-1 min-h-[36px] px-1"
                         >
                           <RotateCcw className="h-3 w-3" />
                           <span>Geri Al</span>
@@ -742,17 +780,19 @@ export default function SubscriptionsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleOpenEditModal(sub)}
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                         title="Düzenle"
+                        aria-label="Düzenle"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(sub.id)}
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteTargetSub(sub)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
                         title="Kalıcı Olarak Sil"
+                        aria-label="Kalıcı Olarak Sil"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -774,10 +814,11 @@ export default function SubscriptionsPage() {
       >
         <form onSubmit={handleSaveSubscription} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
+            <label htmlFor="sub-service" className="text-xs font-semibold text-muted-foreground">
               Hizmet / Kurum / Abonelik Adı
             </label>
             <Input
+              id="sub-service"
               required
               placeholder="Örn: Macfit Spor Salonu, Netflix, Turkcell Telefon, Cursor Pro"
               value={form.service}
@@ -787,8 +828,9 @@ export default function SubscriptionsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
+              <label htmlFor="sub-category" className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
               <Select
+                id="sub-category"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value as ExpenseCategory })}
               >
@@ -801,8 +843,9 @@ export default function SubscriptionsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Tasarruf Durumu</label>
+              <label htmlFor="sub-decision" className="text-xs font-semibold text-muted-foreground">Tasarruf Durumu</label>
               <Select
+                id="sub-decision"
                 value={form.decision}
                 onChange={(e) => setForm({ ...form, decision: e.target.value as StrategicDecision })}
               >
@@ -815,8 +858,9 @@ export default function SubscriptionsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
+              <label htmlFor="sub-amount" className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
               <Input
+                id="sub-amount"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -828,8 +872,9 @@ export default function SubscriptionsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
+              <label htmlFor="sub-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
               <Select
+                id="sub-period"
                 value={form.period}
                 onChange={(e) => setForm({ ...form, period: e.target.value })}
               >
@@ -842,10 +887,11 @@ export default function SubscriptionsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor="sub-payment-method" className="text-xs font-semibold text-muted-foreground">
                 Ödeme Yolu / Kart
               </label>
               <Input
+                id="sub-payment-method"
                 placeholder="Örn: Enpara Kartı, Otomatik Ödeme, Elden"
                 value={form.payment_method}
                 onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
@@ -853,8 +899,9 @@ export default function SubscriptionsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">Kapsam</label>
+              <label htmlFor="sub-group-type" className="text-xs font-semibold text-muted-foreground">Kapsam</label>
               <Select
+                id="sub-group-type"
                 value={form.group_type}
                 onChange={(e) => setForm({ ...form, group_type: e.target.value as any })}
               >
@@ -865,10 +912,11 @@ export default function SubscriptionsPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
+            <label htmlFor="sub-project-id" className="text-xs font-semibold text-muted-foreground">
               İlişkili Proje (Opsiyonel)
             </label>
             <Select
+              id="sub-project-id"
               value={form.project_id}
               onChange={(e) => setForm({ ...form, project_id: e.target.value })}
             >
@@ -905,6 +953,8 @@ export default function SubscriptionsPage() {
           </p>
 
           <Input
+            id="sub-picker-search"
+            aria-label="İşyeri veya açıklama ara"
             placeholder="İşyeri ara... (Örn: Turkcell, Netflix, Macfit, Prime)"
             value={pickerSearch}
             onChange={(e) => setPickerSearch(e.target.value)}
@@ -926,7 +976,7 @@ export default function SubscriptionsPage() {
                     <div className="font-semibold text-xs text-foreground truncate">
                       {tx.merchant || tx.description}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-2">
+                    <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
                       <span>Son İşlem: {formatDate(tx.date)}</span>
                       <span>•</span>
                       <span>{tx.account_or_card || 'Kart'}</span>
@@ -958,6 +1008,24 @@ export default function SubscriptionsPage() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteTargetSub)}
+        onClose={() => setDeleteTargetSub(null)}
+        onConfirm={confirmDeleteSub}
+        title="Düzenli Gideri Sil"
+        description={
+          deleteTargetSub ? (
+            <span>
+              <strong>{deleteTargetSub.service}</strong> kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+            </span>
+          ) : undefined
+        }
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        variant="destructive"
+        isLoading={isDeletingSub}
+      />
     </div>
   )
 }

@@ -30,6 +30,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
 import { useToast } from '@/lib/toast-context'
 import type { Project, ProjectTask, Transaction, Subscription, Account } from '@/types/database'
@@ -57,6 +59,7 @@ export default function ProjectDetailPage({
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [taskToDelete, setTaskToDelete] = useState<{ id: string; title: string } | null>(null)
 
   // Task Edit Modal State
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null)
@@ -261,15 +264,20 @@ export default function ProjectDetailPage({
     }
   }
 
-  const handleDeleteTask = async (id: string) => {
+  const confirmDeleteTask = async () => {
+    if (!taskToDelete) return
+    setSubmitting(true)
     try {
       const supabase = createClient()
-      const { error } = await supabase.from('project_tasks').delete().eq('id', id)
+      const { error } = await supabase.from('project_tasks').delete().eq('id', taskToDelete.id)
       if (error) throw error
-      setTasks(tasks.filter((t) => t.id !== id))
+      setTasks(tasks.filter((t) => t.id !== taskToDelete.id))
       toast.success('Görev silindi.')
+      setTaskToDelete(null)
     } catch (err: any) {
       toast.error(err.message || 'Silinemedi')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -406,68 +414,82 @@ export default function ProjectDetailPage({
 
   return (
     <div className="space-y-8">
-      {/* Back Link */}
-      <div>
-        <Link
-          href="/projects"
-          className="text-xs font-semibold text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> Projeler Panosuna Dön
-        </Link>
-      </div>
-
       {/* Project Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              {project.name}
-            </h1>
+      <PageHeader
+        title={project.name}
+        backHref="/projects"
+        backLabel="Projeler Panosuna Dön"
+        badge={
+          <div className="flex items-center gap-2">
             <Badge variant="purple" className="text-xs">
               {project.status}
             </Badge>
-            <span className="text-xs font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/50" title={`URL: /projects/${project.slug}`}>
+            <span
+              className="text-xs font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/50"
+              title={`URL: /projects/${project.slug}`}
+            >
               /{project.slug}
             </span>
           </div>
-          {project.description && (
-            <p className="mt-1 text-sm text-muted-foreground max-w-2xl line-clamp-2">
-              {project.description}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button onClick={handleOpenProjectEdit} variant="outline" size="sm" className="gap-1.5 text-xs">
-            <Settings className="h-3.5 w-3.5" />
-            Projeyi Düzenle
-          </Button>
-          {project.repo_url && (
-            <a href={project.repo_url} target="_blank" rel="noreferrer">
-              <Button variant="outline" size="sm" className="gap-2 text-xs">
-                <Github className="h-4 w-4" /> GitHub
-              </Button>
-            </a>
-          )}
-          {project.live_url && (
-            <a href={project.live_url} target="_blank" rel="noreferrer">
-              <Button variant="outline" size="sm" className="gap-2 text-xs">
-                <Globe className="h-4 w-4" /> Canlı Site
-              </Button>
-            </a>
-          )}
-          <Button onClick={() => setIsExpenseModalOpen(true)} variant="secondary" className="gap-2 shadow-md">
-            ⚡ Hızlı Harcama Ekle
-          </Button>
-          <Button onClick={() => setIsTaskModalOpen(true)} className="gap-2 shadow-md">
-            <Plus className="h-4 w-4" />
-            Görev Ekle
-          </Button>
-        </div>
-      </div>
+        }
+        description={project.description || undefined}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              onClick={handleOpenProjectEdit}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs min-h-[36px]"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Projeyi Düzenle
+            </Button>
+            {project.repo_url && (
+              <a
+                href={project.repo_url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="GitHub deposunu yeni sekmede aç"
+              >
+                <Button variant="outline" size="sm" className="gap-2 text-xs min-h-[36px]">
+                  <Github className="h-4 w-4" /> GitHub
+                </Button>
+              </a>
+            )}
+            {project.live_url && (
+              <a
+                href={project.live_url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Canlı siteyi yeni sekmede aç"
+              >
+                <Button variant="outline" size="sm" className="gap-2 text-xs min-h-[36px]">
+                  <Globe className="h-4 w-4" /> Canlı Site
+                </Button>
+              </a>
+            )}
+            <Button
+              onClick={() => setIsExpenseModalOpen(true)}
+              variant="secondary"
+              size="sm"
+              className="gap-2 shadow-sm min-h-[36px] text-xs"
+            >
+              ⚡ Hızlı Harcama Ekle
+            </Button>
+            <Button
+              onClick={() => setIsTaskModalOpen(true)}
+              size="sm"
+              className="gap-2 shadow-sm min-h-[36px] text-xs"
+            >
+              <Plus className="h-4 w-4" />
+              Görev Ekle
+            </Button>
+          </div>
+        }
+      />
 
       {/* Real Cost & Budget Bridge Card */}
-      <Card className="border-border bg-gradient-to-r from-card to-purple-950/20 shadow-md">
+      <Card className="border-border bg-card shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
@@ -508,7 +530,7 @@ export default function ProjectDetailPage({
               <div className="text-lg font-bold font-mono text-destructive mt-1">
                 {formatCurrency(monthlySubCost)} / ay
               </div>
-              <div className="text-[10px] text-muted-foreground mt-0.5">
+              <div className="text-[11px] text-muted-foreground mt-0.5">
                 {subscriptions.filter(s => s.status === 'Aktif').length} aktif abonelik
               </div>
             </div>
@@ -518,7 +540,7 @@ export default function ProjectDetailPage({
               <div className="text-lg font-bold font-mono text-foreground mt-1">
                 {project.budget_limit ? formatCurrency(project.budget_limit) : 'Limitsiz'}
               </div>
-              <div className="text-[10px] mt-0.5">
+              <div className="text-[11px] mt-0.5">
                 {budgetEvaluation.status === 'RED' ? (
                   <span className="text-destructive font-semibold">Bütçe Aşıldı!</span>
                 ) : budgetEvaluation.status === 'YELLOW' ? (
@@ -633,10 +655,10 @@ export default function ProjectDetailPage({
                     {task.title}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-[11px]">
                       {task.category}
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground">
                       {task.status}
                     </span>
                   </div>
@@ -648,19 +670,21 @@ export default function ProjectDetailPage({
                   variant="ghost"
                   size="icon"
                   onClick={() => handleOpenEditTask(task)}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  aria-label={`"${task.title}" görevini düzenle`}
                   title="Görevi Düzenle"
                 >
-                  <Edit3 className="h-3.5 w-3.5" />
+                  <Edit3 className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => handleDeleteTask(task.id)}
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={() => setTaskToDelete({ id: task.id, title: task.title })}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  aria-label={`"${task.title}" görevini sil`}
                   title="Görevi Sil"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -683,7 +707,7 @@ export default function ProjectDetailPage({
           </div>
           {transactions.length > 0 && project && (
             <Link href={`/transactions?project_id=${project.id}`}>
-              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
+              <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
                 <Receipt className="h-3 w-3" />
                 İşlem Defterinde Aç
               </Button>
@@ -691,15 +715,42 @@ export default function ProjectDetailPage({
           )}
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-border/50 font-sans">
+            {transactions.map((tx) => (
+              <div key={tx.id} className="p-3 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-foreground">{tx.merchant || tx.description}</span>
+                  <span className="font-mono font-bold text-foreground">{formatCurrency(tx.amount)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span className="font-mono">{formatDate(tx.date)}</span>
+                  <Badge variant="purple" className="text-[11px]">
+                    {tx.analysis_group}
+                  </Badge>
+                </div>
+                {tx.account_or_card && (
+                  <div className="text-[11px] text-muted-foreground">{tx.account_or_card}</div>
+                )}
+              </div>
+            ))}
+            {transactions.length === 0 && (
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                Bu projeye henüz harcama bağlanmadı.
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs" aria-label="Bu Projeye Ait Harcamalar">
               <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
                 <tr>
-                  <th className="p-3">Tarih</th>
-                  <th className="p-3">İşyeri / Açıklama</th>
-                  <th className="p-3">Grup</th>
-                  <th className="p-3">Hesap / Kart</th>
-                  <th className="p-3 text-right">Tutar</th>
+                  <th scope="col" className="p-3">Tarih</th>
+                  <th scope="col" className="p-3">İşyeri / Açıklama</th>
+                  <th scope="col" className="p-3">Grup</th>
+                  <th scope="col" className="p-3">Hesap / Kart</th>
+                  <th scope="col" className="p-3 text-right">Tutar</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-mono">
@@ -708,7 +759,7 @@ export default function ProjectDetailPage({
                     <td className="p-3 text-muted-foreground font-mono">{formatDate(tx.date)}</td>
                     <td className="p-3 font-semibold text-foreground">{tx.merchant || tx.description}</td>
                     <td className="p-3">
-                      <Badge variant="purple" className="text-[10px]">
+                      <Badge variant="purple" className="text-[11px]">
                         {tx.analysis_group}
                       </Badge>
                     </td>
@@ -740,8 +791,9 @@ export default function ProjectDetailPage({
       >
         <form onSubmit={handleAddTask} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
+            <label htmlFor="new-task-title" className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
             <Input
+              id="new-task-title"
               required
               placeholder="Örn: Supabase Auth kurulumu, Landing page yayını"
               value={newTask.title}
@@ -751,8 +803,9 @@ export default function ProjectDetailPage({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Kategori</label>
+            <label htmlFor="new-task-category" className="text-xs font-semibold text-muted-foreground">Kategori</label>
             <Select
+              id="new-task-category"
               value={newTask.category}
               onChange={(e) =>
                 setNewTask({ ...newTask, category: e.target.value as ProjectTask['category'] })
@@ -786,8 +839,9 @@ export default function ProjectDetailPage({
       >
         <form onSubmit={handleQuickExpense} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Tutar</label>
+            <label htmlFor="quick-exp-amount" className="text-xs font-semibold text-muted-foreground">Tutar</label>
             <Input
+              id="quick-exp-amount"
               required
               type="number"
               step="0.01"
@@ -800,8 +854,9 @@ export default function ProjectDetailPage({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Açıklama</label>
+            <label htmlFor="quick-exp-desc" className="text-xs font-semibold text-muted-foreground">Açıklama</label>
             <Input
+              id="quick-exp-desc"
               required
               placeholder="Örn: Sunucu ödemesi"
               value={expenseForm.description}
@@ -811,8 +866,9 @@ export default function ProjectDetailPage({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Kasa / Hesap (Opsiyonel)</label>
+            <label htmlFor="quick-exp-account" className="text-xs font-semibold text-muted-foreground">Kasa / Hesap (Opsiyonel)</label>
             <Select
+              id="quick-exp-account"
               value={expenseForm.accountId}
               onChange={(e) => setExpenseForm({ ...expenseForm, accountId: e.target.value })}
               className="text-xs"
@@ -847,8 +903,9 @@ export default function ProjectDetailPage({
         {editingTask && (
           <form onSubmit={handleUpdateTask} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
+              <label htmlFor="edit-task-title" className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
               <Input
+                id="edit-task-title"
                 required
                 placeholder="Örn: Supabase Auth kurulumu"
                 value={editTaskForm.title}
@@ -857,10 +914,11 @@ export default function ProjectDetailPage({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Kategori</label>
+                <label htmlFor="edit-task-category" className="text-xs font-semibold text-muted-foreground">Kategori</label>
                 <Select
+                  id="edit-task-category"
                   value={editTaskForm.category}
                   onChange={(e) =>
                     setEditTaskForm({ ...editTaskForm, category: e.target.value as ProjectTask['category'] })
@@ -875,8 +933,9 @@ export default function ProjectDetailPage({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Durum</label>
+                <label htmlFor="edit-task-status" className="text-xs font-semibold text-muted-foreground">Durum</label>
                 <Select
+                  id="edit-task-status"
                   value={editTaskForm.status}
                   onChange={(e) =>
                     setEditTaskForm({ ...editTaskForm, status: e.target.value as ProjectTask['status'] })
@@ -913,8 +972,9 @@ export default function ProjectDetailPage({
         {project && (
           <form onSubmit={handleUpdateProject} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Proje Adı</label>
+              <label htmlFor="proj-edit-name" className="text-xs font-semibold text-muted-foreground">Proje Adı</label>
               <Input
+                id="proj-edit-name"
                 required
                 placeholder="Örn: PusulaOS, KadroPlan"
                 value={projectEditForm.name}
@@ -932,10 +992,11 @@ export default function ProjectDetailPage({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">URL Slug</label>
+                <label htmlFor="proj-edit-slug" className="text-xs font-semibold text-muted-foreground">URL Slug</label>
                 <Input
+                  id="proj-edit-slug"
                   required
                   placeholder="proje-adi"
                   prefix="/"
@@ -943,14 +1004,15 @@ export default function ProjectDetailPage({
                   onChange={(e) => setProjectEditForm({ ...projectEditForm, slug: slugify(e.target.value) })}
                   className="text-xs font-mono"
                 />
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground">
                   Proje linki: /projects/{slugify(projectEditForm.slug || projectEditForm.name || 'slug')}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Proje Durumu</label>
+                <label htmlFor="proj-edit-status" className="text-xs font-semibold text-muted-foreground">Proje Durumu</label>
                 <Select
+                  id="proj-edit-status"
                   value={projectEditForm.status}
                   onChange={(e) =>
                     setProjectEditForm({
@@ -970,10 +1032,11 @@ export default function ProjectDetailPage({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor="proj-edit-budget" className="text-xs font-semibold text-muted-foreground">
                 Bütçe Tavanı (Opsiyonel)
               </label>
               <Input
+                id="proj-edit-budget"
                 type="number"
                 step="0.01"
                 placeholder="20000.00"
@@ -984,10 +1047,11 @@ export default function ProjectDetailPage({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">GitHub Repo URL</label>
+                <label htmlFor="proj-edit-repo" className="text-xs font-semibold text-muted-foreground">GitHub Repo URL</label>
                 <Input
+                  id="proj-edit-repo"
                   type="url"
                   placeholder="https://github.com/..."
                   value={projectEditForm.repo_url}
@@ -997,8 +1061,9 @@ export default function ProjectDetailPage({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Canlı Site URL</label>
+                <label htmlFor="proj-edit-live" className="text-xs font-semibold text-muted-foreground">Canlı Site URL</label>
                 <Input
+                  id="proj-edit-live"
                   type="url"
                   placeholder="https://..."
                   value={projectEditForm.live_url}
@@ -1019,6 +1084,18 @@ export default function ProjectDetailPage({
           </form>
         )}
       </Modal>
+
+      {/* Task Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!taskToDelete}
+        onClose={() => setTaskToDelete(null)}
+        onConfirm={confirmDeleteTask}
+        title="Görevi Sil"
+        description={`"${taskToDelete?.title}" görevini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`}
+        confirmLabel="Görevi Sil"
+        variant="destructive"
+        isLoading={submitting}
+      />
     </div>
   )
 }

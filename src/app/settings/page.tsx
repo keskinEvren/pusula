@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { Account, MerchantMapping, Project } from '@/types/database'
@@ -32,6 +33,10 @@ export default function SettingsPage() {
   const [mappings, setMappings] = useState<MerchantMapping[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Silme Onay Modalları
+  const [accountToDelete, setAccountToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [mappingToDelete, setMappingToDelete] = useState<{ id: string; pattern: string } | null>(null)
 
   // Account Modal
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false)
@@ -130,8 +135,9 @@ export default function SettingsPage() {
     }
   }
 
-  const handleDeleteAccount = async (id: string) => {
-    if (!confirm('Bu hesabı silmek istediğinize emin misiniz?')) return
+  const confirmDeleteAccount = async () => {
+    if (!accountToDelete) return
+    const id = accountToDelete.id
     try {
       const supabase = createClient()
       const { error } = await supabase.from('accounts').delete().eq('id', id)
@@ -140,6 +146,8 @@ export default function SettingsPage() {
       toast.success('Hesap silindi.')
     } catch (err: any) {
       toast.error(err.message || 'Silinemedi')
+    } finally {
+      setAccountToDelete(null)
     }
   }
 
@@ -184,7 +192,9 @@ export default function SettingsPage() {
     }
   }
 
-  const handleDeleteMapping = async (id: string) => {
+  const confirmDeleteMapping = async () => {
+    if (!mappingToDelete) return
+    const id = mappingToDelete.id
     try {
       const supabase = createClient()
       const { error } = await supabase.from('merchant_mappings').delete().eq('id', id)
@@ -193,7 +203,20 @@ export default function SettingsPage() {
       toast.success('Kural silindi.')
     } catch (err: any) {
       toast.error(err.message || 'Silinemedi')
+    } finally {
+      setMappingToDelete(null)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-10 w-48 bg-muted/60 rounded-lg" />
+        <div className="h-20 bg-muted/20 rounded-xl border border-border/40" />
+        <div className="h-48 bg-muted/20 rounded-xl border border-border/40" />
+        <div className="h-64 bg-muted/20 rounded-xl border border-border/40" />
+      </div>
+    )
   }
 
   return (
@@ -222,7 +245,7 @@ export default function SettingsPage() {
             <div>
               <div className="text-sm font-bold text-foreground flex items-center gap-2">
                 <span>Kişisel Kasa & Veri Bağımsızlığı (Offline Vault)</span>
-                <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 text-[10px]">
+                <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 text-[11px]">
                   Güvenli Yedek
                 </Badge>
               </div>
@@ -273,22 +296,25 @@ export default function SettingsPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="font-bold text-sm text-foreground">{acc.name}</div>
-                    <div className="text-[10px] text-muted-foreground uppercase">{acc.type}</div>
+                    <div className="text-[11px] text-muted-foreground uppercase">{acc.type}</div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteAccount(acc.id)}
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  <button
+                    type="button"
+                    onClick={() => setAccountToDelete({ id: acc.id, name: acc.name })}
+                    className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors"
+                    aria-label={`${acc.name} hesabını sil`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-muted-foreground">Güncel Bakiye</label>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <label htmlFor={`acc-balance-${acc.id}`} className="text-[11px] text-muted-foreground font-medium block mb-1">
+                    Güncel Bakiye
+                  </label>
+                  <div className="flex items-center gap-2">
                     <Input
+                      id={`acc-balance-${acc.id}`}
                       type="number"
                       step="0.01"
                       defaultValue={acc.balance}
@@ -330,15 +356,16 @@ export default function SettingsPage() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs" aria-label="Otomatik işyeri eşleştirme kuralları tablosu">
               <thead className="bg-muted/40 border-b border-border uppercase font-semibold text-muted-foreground">
                 <tr>
-                  <th className="p-3">Ekstrede Geçen Metin</th>
-                  <th className="p-3">Dönüştürülecek İşyeri</th>
-                  <th className="p-3">Varsayılan Grup</th>
-                  <th className="p-3">Varsayılan Proje</th>
-                  <th className="p-3 text-center">İşlem</th>
+                  <th scope="col" className="p-3">Ekstrede Geçen Metin</th>
+                  <th scope="col" className="p-3">Dönüştürülecek İşyeri</th>
+                  <th scope="col" className="p-3">Varsayılan Grup</th>
+                  <th scope="col" className="p-3">Varsayılan Proje</th>
+                  <th scope="col" className="p-3 text-center">İşlem</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-mono">
@@ -363,14 +390,14 @@ export default function SettingsPage() {
                               ? 'outline'
                               : 'secondary'
                           }
-                          className="text-[10px]"
+                          className="text-[11px]"
                         >
                           {m.default_group}
                         </Badge>
                       </td>
                       <td className="p-3 font-sans">
                         {project ? (
-                          <Badge variant="purple" className="text-[10px] gap-1">
+                          <Badge variant="purple" className="text-[11px] gap-1">
                             <FolderKanban className="h-3 w-3" />
                             {project.name}
                           </Badge>
@@ -379,14 +406,14 @@ export default function SettingsPage() {
                         )}
                       </td>
                       <td className="p-3 text-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteMapping(m.id)}
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        <button
+                          type="button"
+                          onClick={() => setMappingToDelete({ id: m.id, pattern: m.raw_pattern })}
+                          className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 inline-flex items-center justify-center transition-colors"
+                          aria-label={`${m.raw_pattern} kuralını sil`}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                   )
@@ -402,6 +429,63 @@ export default function SettingsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Cards View */}
+          <div className="md:hidden divide-y divide-border/60">
+            {mappings.map((m) => {
+              const project = projects.find((p) => p.id === m.default_project_id)
+              return (
+                <div key={m.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono text-xs font-bold text-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/50">
+                        {m.raw_pattern}
+                      </span>
+                      <div className="text-sm font-medium text-foreground mt-1.5">
+                        → {m.merchant_name}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMappingToDelete({ id: m.id, pattern: m.raw_pattern })}
+                      className="h-9 w-9 min-h-[36px] min-w-[36px] rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center shrink-0 transition-colors"
+                      aria-label={`${m.raw_pattern} kuralını sil`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Badge
+                      variant={
+                        m.default_group === 'İş'
+                          ? 'purple'
+                          : m.default_group === 'Finansman'
+                          ? 'destructive'
+                          : m.default_group === 'Hariç'
+                          ? 'outline'
+                          : 'secondary'
+                      }
+                      className="text-[11px]"
+                    >
+                      {m.default_group}
+                    </Badge>
+                    {project && (
+                      <Badge variant="purple" className="text-[11px] gap-1">
+                        <FolderKanban className="h-3 w-3" />
+                        {project.name}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {mappings.length === 0 && (
+              <div className="p-8 text-center text-xs text-muted-foreground">
+                Henüz özel işyeri kuralı eklenmedi.
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -415,8 +499,9 @@ export default function SettingsPage() {
       >
         <form onSubmit={handleAddAccount} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Hesap Adı</label>
+            <label htmlFor="settings-acc-name" className="text-xs font-semibold text-muted-foreground">Hesap Adı</label>
             <Input
+              id="settings-acc-name"
               required
               placeholder="Örn: Garanti Vadesiz, Enpara Günlük, Nakit Kasa"
               value={accountForm.name}
@@ -427,8 +512,9 @@ export default function SettingsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Hesap Türü</label>
+              <label htmlFor="settings-acc-type" className="text-xs font-semibold text-muted-foreground">Hesap Türü</label>
               <Select
+                id="settings-acc-type"
                 value={accountForm.type}
                 onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value })}
                 className="text-xs"
@@ -440,8 +526,9 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Mevcut Bakiye</label>
+              <label htmlFor="settings-acc-balance" className="text-xs font-semibold text-muted-foreground">Mevcut Bakiye</label>
               <Input
+                id="settings-acc-balance"
                 type="number"
                 step="0.01"
                 prefix="₺"
@@ -475,8 +562,9 @@ export default function SettingsPage() {
       >
         <form onSubmit={handleAddMapping} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Ekstredeki Ham İfade (Regex/Kalıp)</label>
+            <label htmlFor="settings-map-pattern" className="text-xs font-semibold text-muted-foreground">Ekstredeki Ham İfade (Regex/Kalıp)</label>
             <Input
+              id="settings-map-pattern"
               required
               placeholder="Örn: AMAZON.COM, HOSTINGER, CURSOR"
               value={mappingForm.raw_pattern}
@@ -486,8 +574,9 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Dönüştürülecek Temiz İşyeri Adı</label>
+            <label htmlFor="settings-map-merchant" className="text-xs font-semibold text-muted-foreground">Dönüştürülecek Temiz İşyeri Adı</label>
             <Input
+              id="settings-map-merchant"
               required
               placeholder="Örn: Amazon Web Hizmetleri"
               value={mappingForm.merchant_name}
@@ -498,8 +587,9 @@ export default function SettingsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Varsayılan Grup</label>
+              <label htmlFor="settings-map-group" className="text-xs font-semibold text-muted-foreground">Varsayılan Grup</label>
               <Select
+                id="settings-map-group"
                 value={mappingForm.default_group}
                 onChange={(e) =>
                   setMappingForm({
@@ -517,8 +607,9 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Varsayılan Proje (Opsiyonel)</label>
+              <label htmlFor="settings-map-project" className="text-xs font-semibold text-muted-foreground">Varsayılan Proje (Opsiyonel)</label>
               <Select
+                id="settings-map-project"
                 value={mappingForm.default_project_id}
                 onChange={(e) =>
                   setMappingForm({ ...mappingForm, default_project_id: e.target.value })
@@ -545,6 +636,28 @@ export default function SettingsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Hesap Silme Onay Modalı */}
+      <ConfirmDialog
+        isOpen={!!accountToDelete}
+        onClose={() => setAccountToDelete(null)}
+        onConfirm={confirmDeleteAccount}
+        title="Hesabı Sil"
+        description={`"${accountToDelete?.name}" hesabını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmLabel="Hesabı Sil"
+        variant="destructive"
+      />
+
+      {/* Kural Silme Onay Modalı */}
+      <ConfirmDialog
+        isOpen={!!mappingToDelete}
+        onClose={() => setMappingToDelete(null)}
+        onConfirm={confirmDeleteMapping}
+        title="Eşleştirme Kuralını Sil"
+        description={`"${mappingToDelete?.pattern}" ifadesine ait eşleştirme kuralını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmLabel="Kuralı Sil"
+        variant="destructive"
+      />
     </div>
   )
 }

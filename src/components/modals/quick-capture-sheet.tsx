@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { X, Coffee, ShoppingBag, Utensils, Car, Pill, Laptop, Check, CreditCard as CardIcon, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { createClient } from '@/lib/supabase/client'
 import { financialBridge } from '@/lib/financial-bridge'
@@ -35,6 +37,16 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
   const [cards, setCards] = useState<CreditCard[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Escape key handler
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
 
   // Load accounts and cards
   useEffect(() => {
@@ -141,16 +153,23 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quick-capture-title"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+    >
       <div 
-        className="w-full max-w-lg rounded-t-3xl sm:rounded-2xl border-t sm:border border-white/[0.12] bg-[#16161b] p-5 sm:p-6 pb-safe shadow-[0_-12px_48px_rgba(0,0,0,0.8)] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-t-3xl sm:rounded-2xl border-t sm:border border-border/80 bg-card p-5 sm:p-6 pb-safe shadow-[0_-12px_48px_rgba(0,0,0,0.8)] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto"
       >
         {/* Mobile Drag Handle Bar */}
-        <div className="w-12 h-1 rounded-full bg-white/20 mx-auto mb-4 sm:hidden" />
+        <div className="w-12 h-1 rounded-full bg-muted-foreground/30 mx-auto mb-4 sm:hidden" />
 
-        <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+        <div className="flex items-center justify-between pb-3 border-b border-border/60">
           <div>
-            <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            <h2 id="quick-capture-title" className="text-base font-bold text-foreground flex items-center gap-2">
               <span>⚡ Hızlı Harcama</span>
             </h2>
             <p className="text-xs text-muted-foreground">3 saniyede nakit veya kart harcaması kaydet</p>
@@ -169,9 +188,9 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           {/* Quick Category Chips */}
           <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">
               Hızlı Şablonlar
-            </label>
+            </span>
             <div className="grid grid-cols-3 gap-2">
               {QUICK_CHIPS.map((chip) => {
                 const Icon = chip.icon
@@ -182,10 +201,10 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
                     type="button"
                     onClick={() => handleChipSelect(chip)}
                     className={cn(
-                      'flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium transition-all text-left',
+                      'flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium transition-all text-left min-h-[36px]',
                       isSelected
                         ? 'bg-primary/20 border-primary text-primary-foreground shadow-sm ring-1 ring-primary/40'
-                        : 'bg-white/[0.03] border-white/[0.08] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground'
+                        : 'bg-muted/30 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground'
                     )}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -208,25 +227,28 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
 
           {/* Description / Merchant */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">
+            <label htmlFor="quick-capture-desc" className="text-xs font-medium text-muted-foreground block mb-1">
               Açıklama / İşyeri
             </label>
-            <input
+            <Input
+              id="quick-capture-desc"
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Örn: Kahve Dünyası, Migros vb."
-              className="w-full h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+              className="w-full h-9"
             />
           </div>
 
           {/* Payment Source Selection (Account or Card) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Ödeme Kaynağı</label>
-              <div className="flex rounded-lg bg-white/[0.04] p-0.5 border border-white/[0.08]">
+              <label htmlFor="quick-capture-source" className="text-xs font-medium text-muted-foreground">Ödeme Kaynağı</label>
+              <div role="radiogroup" aria-label="Ödeme Kaynağı Türü" className="flex rounded-lg bg-muted/40 p-0.5 border border-border/60">
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={sourceType === 'card'}
                   onClick={() => {
                     setSourceType('card')
                     if (cards.length > 0) setSelectedSourceId(cards[0].id)
@@ -241,6 +263,8 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
                 </button>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={sourceType === 'account'}
                   onClick={() => {
                     setSourceType('account')
                     if (accounts.length > 0) setSelectedSourceId(accounts[0].id)
@@ -256,33 +280,34 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
               </div>
             </div>
 
-            <select
+            <Select
+              id="quick-capture-source"
               value={selectedSourceId}
               onChange={(e) => setSelectedSourceId(e.target.value)}
-              className="w-full h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 text-xs text-foreground focus:outline-none focus:border-primary/50"
+              className="w-full h-9 text-xs"
             >
               {sourceType === 'card' ? (
                 cards.length > 0 ? (
                   cards.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-[#16161b] text-foreground">
+                    <option key={c.id} value={c.id}>
                       {c.bank} — {c.card_name}
                     </option>
                   ))
                 ) : (
-                  <option value="" disabled className="bg-[#16161b] text-muted-foreground">Kayıtlı kart bulunamadı</option>
+                  <option value="" disabled>Kayıtlı kart bulunamadı</option>
                 )
               ) : (
                 accounts.length > 0 ? (
                   accounts.map((a) => (
-                    <option key={a.id} value={a.id} className="bg-[#16161b] text-foreground">
+                    <option key={a.id} value={a.id}>
                       {a.name} ({a.balance?.toLocaleString('tr-TR')} ₺)
                     </option>
                   ))
                 ) : (
-                  <option value="" disabled className="bg-[#16161b] text-muted-foreground">Kayıtlı hesap bulunamadı</option>
+                  <option value="" disabled>Kayıtlı hesap bulunamadı</option>
                 )
               )}
-            </select>
+            </Select>
           </div>
 
           {/* Submit Action */}
