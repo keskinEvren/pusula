@@ -84,7 +84,31 @@ export class FinancialBridge {
     try {
       const supabase = createClient()
 
-      // 1. Transaction defterine yaz
+      // 1. Primary: Atomic PostgreSQL RPC
+      try {
+        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_record_expense_atomic', {
+          p_user_id: params.userId,
+          p_date: params.date,
+          p_amount: params.amount,
+          p_description: params.description,
+          p_analysis_group: params.analysisGroup || 'Kişisel',
+          p_merchant: params.merchant || null,
+          p_account_id: params.accountId || null,
+          p_card_id: params.cardId || null,
+          p_project_id: params.projectId || null,
+        })
+
+        if (!rpcErr && rpcRes) {
+          if (!rpcRes.success) {
+            return { success: false, error: rpcRes.error || 'Harcama kaydedilemedi.' }
+          }
+          return { success: true, transactionId: rpcRes.transaction_id }
+        }
+      } catch {
+        // Fallback below if RPC is unavailable in current client/environment
+      }
+
+      // 2. Transaction defterine yaz
       const { data: tx, error: txErr } = await supabase
         .from('transactions')
         .insert({
@@ -104,7 +128,7 @@ export class FinancialBridge {
 
       if (txErr) throw txErr
 
-      // 2. Hesap bakiyesi düşür (vadesiz hesaptan harcama)
+      // 3. Hesap bakiyesi düşür (vadesiz hesaptan harcama)
       if (params.accountId) {
         const { data: acc } = await supabase
           .from('accounts')
@@ -136,6 +160,29 @@ export class FinancialBridge {
 
     try {
       const supabase = createClient()
+
+      // 1. Primary: Atomic PostgreSQL RPC
+      try {
+        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_record_income_atomic', {
+          p_user_id: params.userId,
+          p_date: params.date,
+          p_amount: params.amount,
+          p_description: params.description,
+          p_analysis_group: 'Kişisel',
+          p_merchant: params.merchant || null,
+          p_account_id: params.accountId,
+          p_project_id: params.projectId || null,
+        })
+
+        if (!rpcErr && rpcRes) {
+          if (!rpcRes.success) {
+            return { success: false, error: rpcRes.error || 'Gelir kaydedilemedi.' }
+          }
+          return { success: true, transactionId: rpcRes.transaction_id }
+        }
+      } catch {
+        // Fallback below
+      }
 
       const { data: tx, error: txErr } = await supabase
         .from('transactions')
@@ -398,6 +445,27 @@ export class FinancialBridge {
     try {
       const supabase = createClient()
 
+      // 1. Primary: Atomic PostgreSQL RPC
+      try {
+        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_record_transfer_atomic', {
+          p_user_id: params.userId,
+          p_date: params.date,
+          p_amount: params.amount,
+          p_description: params.description || 'Hesaplar Arası Transfer',
+          p_source_account_id: params.sourceAccountId,
+          p_target_account_id: params.targetAccountId,
+        })
+
+        if (!rpcErr && rpcRes) {
+          if (!rpcRes.success) {
+            return { success: false, error: rpcRes.error || 'Transfer kaydedilemedi.' }
+          }
+          return { success: true, transactionId: rpcRes.transaction_id }
+        }
+      } catch {
+        // Fallback below
+      }
+
       // 1. Transaction defterine yaz
       const { data: tx, error: txErr } = await supabase
         .from('transactions')
@@ -458,6 +526,26 @@ export class FinancialBridge {
   async deleteTransaction(transactionId: string): Promise<FinancialEventResult> {
     try {
       const supabase = createClient()
+
+      // 1. Primary: Atomic PostgreSQL RPC
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_delete_transaction_atomic', {
+            p_tx_id: transactionId,
+            p_user_id: user.id,
+          })
+
+          if (!rpcErr && rpcRes) {
+            if (!rpcRes.success) {
+              return { success: false, error: rpcRes.error || 'İşlem silinemedi.' }
+            }
+            return { success: true }
+          }
+        }
+      } catch {
+        // Fallback below
+      }
 
       // Önce mevcut işlemi oku
       const { data: tx, error: readErr } = await supabase
@@ -562,6 +650,24 @@ export class FinancialBridge {
     try {
       const supabase = createClient()
 
+      // 1. Primary: Atomic PostgreSQL RPC
+      try {
+        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_link_transaction_to_debt_atomic', {
+          p_user_id: params.userId,
+          p_transaction_id: params.transactionId,
+          p_debt_id: params.debtId,
+        })
+
+        if (!rpcErr && rpcRes) {
+          if (!rpcRes.success) {
+            return { success: false, error: rpcRes.error || 'Borç eşlenemedi.' }
+          }
+          return { success: true, transactionId: params.transactionId }
+        }
+      } catch {
+        // Fallback below
+      }
+
       // 1. Oku: Transaction
       const { data: tx, error: txErr } = await supabase
         .from('transactions')
@@ -571,6 +677,12 @@ export class FinancialBridge {
         .single()
 
       if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
+
+      // F17 Idempotency: Zaten bu borca bağlıysa işlem yapma, başarı dön
+      const oldDebtId = getLinkedDebtId(tx)
+      if (oldDebtId && oldDebtId === params.debtId) {
+        return { success: true, transactionId: params.transactionId }
+      }
 
       // 2. Oku: Debt
       const { data: debt, error: debtErr } = await supabase
@@ -583,7 +695,6 @@ export class FinancialBridge {
       if (debtErr || !debt) return { success: false, error: 'Borç/Alacak kaydı bulunamadı.' }
 
       // Eğer hareket önceden başka bir borca bağlıysa, önce eski borçtan çıkar
-      const oldDebtId = getLinkedDebtId(tx)
       if (oldDebtId && oldDebtId !== params.debtId) {
         await this.unlinkTransactionFromDebt({ userId: params.userId, transactionId: params.transactionId })
       }

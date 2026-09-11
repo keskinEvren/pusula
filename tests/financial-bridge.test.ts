@@ -154,5 +154,41 @@ describe('FinancialBridge Unit Tests', () => {
       expect(id).toBeNull()
     })
   })
+
+  describe('linkTransactionToDebt Idempotency (F17)', () => {
+    it('should be idempotent when transaction is already linked to the target debt', async () => {
+      const { createClient } = await import('@/lib/supabase/client')
+      const mockSingle = vi.fn().mockResolvedValue({
+        data: {
+          id: 'tx-1',
+          user_id: 'u1',
+          amount: 500,
+          related_debt_id: 'debt-100',
+          description: 'Payment [DEBT:debt-100]',
+        },
+        error: null,
+      })
+      const mockEq = vi.fn().mockReturnValue({ single: mockSingle, eq: vi.fn().mockReturnValue({ single: mockSingle }) })
+      const mockSelect = vi.fn().mockReturnValue({ eq: mockEq })
+      const mockUpdate = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
+
+      ;(createClient as any).mockReturnValue({
+        rpc: vi.fn().mockResolvedValue({ data: { success: true, already_linked: true }, error: null }),
+        from: vi.fn().mockReturnValue({
+          select: mockSelect,
+          update: mockUpdate,
+        }),
+      })
+
+      const res = await bridge.linkTransactionToDebt({
+        userId: 'u1',
+        transactionId: 'tx-1',
+        debtId: 'debt-100',
+      })
+
+      expect(res.success).toBe(true)
+      expect(res.transactionId).toBe('tx-1')
+    })
+  })
 })
 

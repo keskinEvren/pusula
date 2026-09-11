@@ -244,7 +244,7 @@ function JournalPageContent() {
     if (isEditingNew || !selectedEntryId) {
       // Yeni Giriş
       const newEntry: JournalEntry = {
-        id: `journal-${Date.now()}`,
+        id: crypto.randomUUID(),
         user_id: userId,
         entry_date: editorDate,
         title: finalTitle,
@@ -266,7 +266,11 @@ function JournalPageContent() {
 
       try {
         if (user) {
-          await supabase.from('journal_entries').insert([newEntry])
+          const { error: insErr } = await supabase.from('journal_entries').insert([newEntry])
+          if (insErr) {
+            console.error('Insert journal error:', insErr)
+            toast.error('Seyir notu buluta kaydedilemedi: ' + insErr.message)
+          }
         }
       } catch (err) {
         console.error('Insert journal error:', err)

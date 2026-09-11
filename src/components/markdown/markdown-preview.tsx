@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
 interface MarkdownPreviewProps {
   content: string
@@ -17,7 +18,8 @@ export function MarkdownPreview({
   const html = useMemo(() => {
     if (!content || !content.trim()) return ''
     try {
-      return marked.parse(content, { gfm: true, breaks: true }) as string
+      const rawHtml = marked.parse(content, { gfm: true, breaks: true }) as string
+      return sanitizeHtml(rawHtml)
     } catch (err) {
       console.error('Markdown parse error:', err)
       return '<p class="text-destructive text-xs">Markdown işlenirken bir hata oluştu.</p>'

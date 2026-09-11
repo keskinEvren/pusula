@@ -138,26 +138,8 @@ export default function ImportPage() {
       supabase.from('statement_imports').select('*', { count: 'exact', head: true }),
     ])
 
-    if (crds) {
-      const healed = await Promise.all(
-        crds.map(async (c) => {
-          if (c.bank === 'Diğer Banka' && (c.last_four === '0887' || c.last_four === '6745')) {
-            const updated = {
-              ...c,
-              bank: 'Ziraat Bankası',
-              card_name: `Bankkart • ${c.last_four}`,
-            }
-            await supabase
-              .from('credit_cards')
-              .update({ bank: 'Ziraat Bankası', card_name: `Bankkart • ${c.last_four}` })
-              .eq('id', c.id)
-            return updated
-          }
-          return c
-        })
-      )
-      setCards(healed)
-    }
+    if (prjs) setProjects(prjs)
+    if (crds) setCards(crds)
     if (dbts) setDebts(dbts)
     if (impCount !== null) setImportHistoryCount(impCount)
     if (accs) setAccounts(accs)

@@ -6,8 +6,17 @@ export async function middleware(request: NextRequest) {
     request,
   })
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://kvyslscyepxvkrcgsvvz.supabase.co'
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_yACai0Ao0l9Hp-TD6PlFBg_8nV0veu1'
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    if (process.env.NODE_ENV === 'test') {
+      return supabaseResponse
+    }
+    throw new Error(
+      'Eksik Supabase ortam değişkeni: NEXT_PUBLIC_SUPABASE_URL ve NEXT_PUBLIC_SUPABASE_ANON_KEY tanımlanmalıdır. Lütfen .env.local dosyanızı kontrol edin.'
+    )
+  }
 
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
