@@ -435,6 +435,129 @@ describe('Pusula — Ekstre Import History & Atomic Rollback Tests', () => {
       expect(insertedRows.transactions[0].merchant).toBe('AWS')
       expect(insertedRows.statement_imports.length).toBe(1)
       expect(insertedRows.statement_imports[0].raw_text).toContain('sha256-enpara-hash')
+      expect(insertedRows.statement_imports[0].file_hash).toBe('sha256-enpara-hash')
+      expect(insertedRows.statement_imports[0].status).toBe('COMPLETED')
+    })
+
+    it('accumulates multiple payments to the same debt within a single bank import batch (F17)', async () => {
+      const debtUpdates: any[] = []
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === 'statement_imports') {
+            return {
+              insert: vi.fn(() => ({
+                select: vi.fn(() => ({
+                  single: vi.fn().mockResolvedValue({ data: { id: 'import-batch-debt-test' }, error: null }),
+                })),
+              })),
+              update: vi.fn(() => ({
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              })),
+            }
+          }
+          if (table === 'debts') {
+            return {
+              update: vi.fn((payload: any) => {
+                debtUpdates.push(payload)
+                return { eq: vi.fn().mockResolvedValue({ error: null }) }
+              }),
+            }
+          }
+          if (table === 'accounts') {
+            return {
+              update: vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) })),
+            }
+          }
+          if (table === 'credit_cards') {
+            return {
+              select: vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ data: [] }) })),
+            }
+          }
+          if (table === 'transactions') {
+            return {
+              insert: vi.fn().mockResolvedValue({ error: null }),
+            }
+          }
+          return {
+            insert: vi.fn().mockResolvedValue({ error: null }),
+          }
+        }),
+      } as any
+
+      const initialDebt = {
+        id: 'debt-cumulative-1',
+        user_id: 'user-test-1',
+        type: 'Borç',
+        person_or_entity: 'Ahmet',
+        original_amount: 1000,
+        remaining: 1000,
+        past_payments: 0,
+        status: 'Açık',
+      } as any
+
+      const account = {
+        id: 'acc-1',
+        user_id: 'user-test-1',
+        name: 'Vadesiz TL',
+        balance: 5000,
+      } as any
+
+      const result = await commitStatementBatch({
+        supabase: mockSupabase,
+        userId: 'user-test-1',
+        fileName: 'bank_statement.xlsx',
+        fileHash: 'hash-bank-cumulative',
+        importType: 'bank_account',
+        selectedAccountId: 'acc-1',
+        transactions: [
+          {
+            id: 'tx-d1',
+            date: '2026-08-10',
+            raw_description: 'Ahmet Borç Ödeme 1',
+            amount: 100,
+            direction: 'outflow',
+            action: 'PAY_DEBT',
+            target_debt_id: 'debt-cumulative-1',
+            type: 'Borç Ödemesi',
+            merchant: 'Ahmet',
+            analysis_group: 'Kişisel',
+            confidence: 'high' as const,
+            selected: true,
+          },
+          {
+            id: 'tx-d2',
+            date: '2026-08-11',
+            raw_description: 'Ahmet Borç Ödeme 2',
+            amount: 200,
+            direction: 'outflow',
+            action: 'PAY_DEBT',
+            target_debt_id: 'debt-cumulative-1',
+            type: 'Borç Ödemesi',
+            merchant: 'Ahmet',
+            analysis_group: 'Kişisel',
+            confidence: 'high' as const,
+            selected: true,
+          },
+        ],
+        cards: [],
+        accounts: [account],
+        debts: [initialDebt],
+      })
+
+      expect(result.success).toBe(true)
+      expect(debtUpdates.length).toBe(2)
+      // First payment of 100: past_payments = 100, remaining = 900
+      expect(debtUpdates[0]).toEqual({
+        past_payments: 100,
+        remaining: 900,
+        status: 'Açık',
+      })
+      // Second payment of 200: accumulated past_payments = 300, remaining = 700! (Not 800)
+      expect(debtUpdates[1]).toEqual({
+        past_payments: 300,
+        remaining: 700,
+        status: 'Açık',
+      })
     })
   })
 })

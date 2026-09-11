@@ -47,6 +47,37 @@ import {
   triggerDownload,
 } from '@/lib/vault-engine'
 
+// Helper to fetch all rows using pagination to avoid the 1000-row PostgREST ceiling
+async function fetchAllRows(supabase: any, tableName: string): Promise<any[]> {
+  const PAGE_SIZE = 1000
+  let allRows: any[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) {
+      console.warn(`Could not fetch table ${tableName}:`, error.message)
+      return []
+    }
+    if (!data || data.length === 0) break
+    allRows = allRows.concat(data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return allRows
+}
+
+async function upsertInChunks(supabase: any, table: string, rows: any[], chunkSize = 200) {
+  if (!rows || rows.length === 0) return
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize)
+    const { error } = await supabase.from(table).upsert(chunk)
+    if (error) throw new Error(`[${table}] yüklenirken hata: ${error.message}`)
+  }
+}
+
 function VaultPageContent() {
   const { toast } = useToast()
   const [vaultData, setVaultData] = useState<PusulaVaultData>(EMPTY_VAULT_DATA)
@@ -76,7 +107,7 @@ function VaultPageContent() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // 1. Tüm Tabloları Yükleme (Supabase + LocalStorage Fallback)
+  // 1. Tüm Tabloları Yükleme (Supabase + LocalStorage Fallback, 1000 satır tavan korumalı)
   useEffect(() => {
     async function fetchAllVaultData() {
       setIsLoading(true)
@@ -85,37 +116,39 @@ function VaultPageContent() {
 
       try {
         const [
-          { data: accs },
-          { data: cards },
-          { data: statements },
-          { data: txs },
-          { data: debts },
-          { data: subs },
-          { data: maps },
-          { data: invs },
-          { data: projs },
-          { data: tasks },
-          { data: ideas },
-          { data: dreams },
-          { data: routines },
-          { data: rLogs },
-          { data: journals },
+          accs,
+          cards,
+          statements,
+          txs,
+          debts,
+          subs,
+          maps,
+          invs,
+          projs,
+          tasks,
+          ideas,
+          dreams,
+          routines,
+          rLogs,
+          journals,
+          imports,
         ] = await Promise.all([
-          supabase.from('accounts').select('*'),
-          supabase.from('credit_cards').select('*'),
-          supabase.from('card_statements').select('*'),
-          supabase.from('transactions').select('*'),
-          supabase.from('debts').select('*'),
-          supabase.from('subscriptions').select('*'),
-          supabase.from('merchant_mappings').select('*'),
-          supabase.from('investments').select('*'),
-          supabase.from('projects').select('*'),
-          supabase.from('project_tasks').select('*'),
-          supabase.from('ideas').select('*'),
-          supabase.from('dreams').select('*'),
-          supabase.from('routines').select('*'),
-          supabase.from('routine_logs').select('*'),
-          supabase.from('journal_entries').select('*'),
+          fetchAllRows(supabase, 'accounts'),
+          fetchAllRows(supabase, 'credit_cards'),
+          fetchAllRows(supabase, 'card_statements'),
+          fetchAllRows(supabase, 'transactions'),
+          fetchAllRows(supabase, 'debts'),
+          fetchAllRows(supabase, 'subscriptions'),
+          fetchAllRows(supabase, 'merchant_mappings'),
+          fetchAllRows(supabase, 'investments'),
+          fetchAllRows(supabase, 'projects'),
+          fetchAllRows(supabase, 'project_tasks'),
+          fetchAllRows(supabase, 'ideas'),
+          fetchAllRows(supabase, 'dreams'),
+          fetchAllRows(supabase, 'routines'),
+          fetchAllRows(supabase, 'routine_logs'),
+          fetchAllRows(supabase, 'journal_entries'),
+          fetchAllRows(supabase, 'statement_imports'),
         ])
 
         if (accs) data.accounts = accs
@@ -129,30 +162,31 @@ function VaultPageContent() {
         if (projs) data.projects = projs
         if (tasks) data.project_tasks = tasks
         if (ideas) data.ideas = ideas
+        if (imports) data.statement_imports = imports
 
         // LocalStorage fallback'leri birleştir
         if (dreams && dreams.length > 0) data.dreams = dreams
         else {
           const lD = localStorage.getItem('pusula_local_dreams')
-          if (lD) data.dreams = JSON.parse(lD)
+          if (lD) try { data.dreams = JSON.parse(lD) } catch {}
         }
 
         if (routines && routines.length > 0) data.routines = routines
         else {
           const lR = localStorage.getItem('pusula_local_routines')
-          if (lR) data.routines = JSON.parse(lR)
+          if (lR) try { data.routines = JSON.parse(lR) } catch {}
         }
 
         if (rLogs && rLogs.length > 0) data.routine_logs = rLogs
         else {
           const lRl = localStorage.getItem('pusula_local_routine_logs')
-          if (lRl) data.routine_logs = JSON.parse(lRl)
+          if (lRl) try { data.routine_logs = JSON.parse(lRl) } catch {}
         }
 
         if (journals && journals.length > 0) data.journal_entries = journals
         else {
           const lJ = localStorage.getItem('pusula_local_journal_entries')
-          if (lJ) data.journal_entries = JSON.parse(lJ)
+          if (lJ) try { data.journal_entries = JSON.parse(lJ) } catch {}
         }
 
         setVaultData(data)
@@ -294,32 +328,90 @@ function VaultPageContent() {
 
       // LocalStorage'daki tabloları anında senkronize et
       setRestoreProgress('Yerel önbellek senkronize ediliyor...')
-      localStorage.setItem('pusula_local_dreams', JSON.stringify(finalData.dreams))
-      localStorage.setItem('pusula_local_routines', JSON.stringify(finalData.routines))
-      localStorage.setItem('pusula_local_routine_logs', JSON.stringify(finalData.routine_logs))
-      localStorage.setItem('pusula_local_journal_entries', JSON.stringify(finalData.journal_entries))
+      localStorage.setItem('pusula_local_dreams', JSON.stringify(finalData.dreams || []))
+      localStorage.setItem('pusula_local_routines', JSON.stringify(finalData.routines || []))
+      localStorage.setItem('pusula_local_routine_logs', JSON.stringify(finalData.routine_logs || []))
+      localStorage.setItem('pusula_local_journal_entries', JSON.stringify(finalData.journal_entries || []))
 
       // Supabase tablolarına opsiyonel upsert
       if (user) {
-        setRestoreProgress('Bulut veritabanı güncelleniyor...')
-        if (finalData.accounts.length > 0) {
-          await supabase.from('accounts').upsert(finalData.accounts)
+        if (restoreMode === 'replace') {
+          setRestoreProgress('Mevcut bulut verileri temizleniyor (replace modu)...')
+          // Ters FK bağımlılık sırasıyla temizleme
+          // Seviye 3 (Yapraklar):
+          const delTxs = await supabase.from('transactions').delete().eq('user_id', user.id)
+          if (delTxs.error) throw new Error(`transactions silinirken hata: ${delTxs.error.message}`)
+
+          const delRLogs = await supabase.from('routine_logs').delete().eq('user_id', user.id)
+          if (delRLogs.error) throw new Error(`routine_logs silinirken hata: ${delRLogs.error.message}`)
+
+          const delStmts = await supabase.from('card_statements').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+          if (delStmts.error) console.warn('card_statements cleanup warning:', delStmts.error.message)
+
+          // Seviye 2:
+          const delImports = await supabase.from('statement_imports').delete().eq('user_id', user.id)
+          if (delImports.error) throw new Error(`statement_imports silinirken hata: ${delImports.error.message}`)
+
+          const delTasks = await supabase.from('project_tasks').delete().eq('user_id', user.id)
+          if (delTasks.error) throw new Error(`project_tasks silinirken hata: ${delTasks.error.message}`)
+
+          const delIdeas = await supabase.from('ideas').delete().eq('user_id', user.id)
+          if (delIdeas.error) throw new Error(`ideas silinirken hata: ${delIdeas.error.message}`)
+
+          const delSubs = await supabase.from('subscriptions').delete().eq('user_id', user.id)
+          if (delSubs.error) throw new Error(`subscriptions silinirken hata: ${delSubs.error.message}`)
+
+          const delDebts = await supabase.from('debts').delete().eq('user_id', user.id)
+          if (delDebts.error) throw new Error(`debts silinirken hata: ${delDebts.error.message}`)
+
+          const delRoutines = await supabase.from('routines').delete().eq('user_id', user.id)
+          if (delRoutines.error) throw new Error(`routines silinirken hata: ${delRoutines.error.message}`)
+
+          // Seviye 1 (Kökler):
+          const delJournals = await supabase.from('journal_entries').delete().eq('user_id', user.id)
+          if (delJournals.error) throw new Error(`journal_entries silinirken hata: ${delJournals.error.message}`)
+
+          const delMaps = await supabase.from('merchant_mappings').delete().eq('user_id', user.id)
+          if (delMaps.error) throw new Error(`merchant_mappings silinirken hata: ${delMaps.error.message}`)
+
+          const delInvs = await supabase.from('investments').delete().eq('user_id', user.id)
+          if (delInvs.error) throw new Error(`investments silinirken hata: ${delInvs.error.message}`)
+
+          const delDreams = await supabase.from('dreams').delete().eq('user_id', user.id)
+          if (delDreams.error) throw new Error(`dreams silinirken hata: ${delDreams.error.message}`)
+
+          const delProjs = await supabase.from('projects').delete().eq('user_id', user.id)
+          if (delProjs.error) throw new Error(`projects silinirken hata: ${delProjs.error.message}`)
+
+          const delCards = await supabase.from('credit_cards').delete().eq('user_id', user.id)
+          if (delCards.error) throw new Error(`credit_cards silinirken hata: ${delCards.error.message}`)
+
+          const delAccs = await supabase.from('accounts').delete().eq('user_id', user.id)
+          if (delAccs.error) throw new Error(`accounts silinirken hata: ${delAccs.error.message}`)
         }
-        if (finalData.transactions.length > 0) {
-          await supabase.from('transactions').upsert(finalData.transactions)
-        }
-        if (finalData.investments.length > 0) {
-          await supabase.from('investments').upsert(finalData.investments)
-        }
-        if (finalData.dreams.length > 0) {
-          await supabase.from('dreams').upsert(finalData.dreams)
-        }
-        if (finalData.routines.length > 0) {
-          await supabase.from('routines').upsert(finalData.routines)
-        }
-        if (finalData.journal_entries.length > 0) {
-          await supabase.from('journal_entries').upsert(finalData.journal_entries)
-        }
+
+        // Düzgün FK sırasıyla yükleme (Level 1 -> Level 2 -> Level 3):
+        setRestoreProgress('Temel kayıtlar geri yükleniyor (Seviye 1)...')
+        await upsertInChunks(supabase, 'accounts', finalData.accounts)
+        await upsertInChunks(supabase, 'credit_cards', finalData.credit_cards)
+        await upsertInChunks(supabase, 'projects', finalData.projects)
+        await upsertInChunks(supabase, 'dreams', finalData.dreams)
+        await upsertInChunks(supabase, 'investments', finalData.investments)
+        await upsertInChunks(supabase, 'merchant_mappings', finalData.merchant_mappings)
+        await upsertInChunks(supabase, 'journal_entries', finalData.journal_entries)
+        await upsertInChunks(supabase, 'routines', finalData.routines)
+
+        setRestoreProgress('Bağlantılı kayıtlar geri yükleniyor (Seviye 2)...')
+        await upsertInChunks(supabase, 'statement_imports', finalData.statement_imports)
+        await upsertInChunks(supabase, 'debts', finalData.debts)
+        await upsertInChunks(supabase, 'subscriptions', finalData.subscriptions)
+        await upsertInChunks(supabase, 'project_tasks', finalData.project_tasks)
+        await upsertInChunks(supabase, 'ideas', finalData.ideas)
+
+        setRestoreProgress('İşlem ve hareket kayıtları geri yükleniyor (Seviye 3)...')
+        await upsertInChunks(supabase, 'card_statements', finalData.card_statements)
+        await upsertInChunks(supabase, 'routine_logs', finalData.routine_logs)
+        await upsertInChunks(supabase, 'transactions', finalData.transactions)
       }
 
       setVaultData(finalData)
@@ -389,7 +481,7 @@ function VaultPageContent() {
             Kapsanan Modüller
           </p>
           <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
-            15 Modül
+            {Object.keys(VAULT_TABLE_LABELS).length} Modül
           </div>
           <p className="text-[11px] text-muted-foreground">İlişkili veritabanı tabloları</p>
         </div>

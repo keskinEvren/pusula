@@ -247,13 +247,15 @@ function IdeasContent() {
       if (prjError) throw prjError
 
       // 2. Mark Idea as Promoted
-      await supabase
+      const { error: updateError } = await supabase
         .from('ideas')
         .update({
           status: 'promoted',
           promoted_project_id: newProject.id,
         })
         .eq('id', promoteTarget.id)
+
+      if (updateError) throw updateError
 
       setPromoteTarget(null)
       toast.success('Fikir başarıyla projeye dönüştürüldü!')

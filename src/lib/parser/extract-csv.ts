@@ -83,12 +83,17 @@ export async function extractFromCSVOrExcel(
 
       const isNegative = rawAmountStr.startsWith('-') || rawDescStr.toLowerCase().includes('iade')
 
-      // Date parsing
+      // Date parsing: check ISO format (YYYY-MM-DD) first to avoid corrupting it via DMY
       let parsedDate = rawDateStr
-      const dmy = rawDateStr.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/)
-      if (dmy) {
-        const year = dmy[3] ? (dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]) : new Date().getFullYear().toString()
-        parsedDate = `${year}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+      const isoMatch = rawDateStr.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/)
+      if (isoMatch) {
+        parsedDate = `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`
+      } else {
+        const dmy = rawDateStr.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/)
+        if (dmy) {
+          const year = dmy[3] ? (dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]) : new Date().getFullYear().toString()
+          parsedDate = `${year}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`
+        }
       }
 
       const repairedDesc = repairTurkishPdfText(rawDescStr)

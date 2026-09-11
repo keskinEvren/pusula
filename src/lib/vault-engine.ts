@@ -14,7 +14,9 @@ import type {
   Routine,
   RoutineLog,
   JournalEntry,
+  StatementImport,
 } from '@/types/database'
+import { z } from 'zod'
 
 export interface PusulaVaultData {
   accounts: Account[]
@@ -32,6 +34,7 @@ export interface PusulaVaultData {
   routines: Routine[]
   routine_logs: RoutineLog[]
   journal_entries: JournalEntry[]
+  statement_imports: StatementImport[]
 }
 
 export interface VaultManifest {
@@ -64,6 +67,7 @@ export const EMPTY_VAULT_DATA: PusulaVaultData = {
   routines: [],
   routine_logs: [],
   journal_entries: [],
+  statement_imports: [],
 }
 
 export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; icon: string; category: string }> = {
@@ -82,6 +86,7 @@ export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; 
   routines: { label: 'Rutinler & Alışkanlıklar', icon: '', category: 'Kişisel' },
   routine_logs: { label: 'Rutin Kayıtları', icon: '', category: 'Kişisel' },
   journal_entries: { label: 'Günlük Kayıtları', icon: '', category: 'Kişisel' },
+  statement_imports: { label: 'Ekstre Yüklemeleri', icon: '', category: 'Finans' },
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +110,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     routines: data.routines || [],
     routine_logs: data.routine_logs || [],
     journal_entries: data.journal_entries || [],
+    statement_imports: data.statement_imports || [],
   }
 
   const counts: Record<keyof PusulaVaultData, number> = {
@@ -123,6 +129,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     routines: completeData.routines.length,
     routine_logs: completeData.routine_logs.length,
     journal_entries: completeData.journal_entries.length,
+    statement_imports: completeData.statement_imports.length,
   }
 
   const total_records = Object.values(counts).reduce((a, b) => a + b, 0)
@@ -145,8 +152,17 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
 }
 
 // ---------------------------------------------------------------------------
-// 2. Yedek Bütünlüğü Doğrulama (Validation)
+// 2. Yedek Bütünlüğü Doğrulama (Validation with Zod)
 // ---------------------------------------------------------------------------
+
+export const VaultManifestSchema = z.object({
+  version: z.string(),
+  app: z.literal('Pusula Life OS'),
+  exported_at: z.string(),
+  counts: z.record(z.string(), z.number()).optional(),
+  total_records: z.number().optional(),
+  estimated_size_kb: z.number().optional(),
+})
 
 export interface ValidationResult {
   isValid: boolean
@@ -169,7 +185,9 @@ export function validateVaultPayload(rawJsonOrObject: unknown): ValidationResult
       return { isValid: false, error: 'Pusula yedek formatı eksik (manifest veya data alanı bulunamadı).' }
     }
 
-    if (payload.manifest.app !== 'Pusula Life OS') {
+    // Zod Manifest Validation
+    const manifestResult = VaultManifestSchema.safeParse(payload.manifest)
+    if (!manifestResult.success) {
       return { isValid: false, error: 'Bu dosya Pusula Life OS yedeği değil veya uyumsuz bir sürüme ait.' }
     }
 
@@ -190,10 +208,11 @@ export function validateVaultPayload(rawJsonOrObject: unknown): ValidationResult
       routines: Array.isArray(payload.data.routines) ? payload.data.routines : [],
       routine_logs: Array.isArray(payload.data.routine_logs) ? payload.data.routine_logs : [],
       journal_entries: Array.isArray(payload.data.journal_entries) ? payload.data.journal_entries : [],
+      statement_imports: Array.isArray(payload.data.statement_imports) ? payload.data.statement_imports : [],
     }
 
     const verifiedPayload: VaultPayload = {
-      manifest: payload.manifest,
+      manifest: manifestResult.data as VaultManifest,
       data: normalizedData,
     }
 

@@ -91,6 +91,14 @@ export default function DashboardPage() {
     }
 
     loadDashboardData()
+
+    const handleTxCreated = () => {
+      loadDashboardData()
+    }
+    window.addEventListener('pusula:transaction-created', handleTxCreated)
+    return () => {
+      window.removeEventListener('pusula:transaction-created', handleTxCreated)
+    }
   }, [])
 
   // 1. Calculations via Pure Financial Engine

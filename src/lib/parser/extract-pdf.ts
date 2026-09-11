@@ -83,10 +83,12 @@ export async function extractTextFromPDF(file: File | ArrayBuffer): Promise<stri
       }
     }
 
-    fullText += '\n--- PAGE BREAK ---\n'
+    const pageBreak = pageNum < pdf.numPages ? '\n--- PAGE BREAK ---\n' : ''
+    fullText += pageBreak
   }
 
-  if (pdf.numPages > 0 && fullText.trim().length === 0) {
+  const actualContent = fullText.replace(/--- PAGE BREAK ---/g, '').trim()
+  if (pdf.numPages > 0 && actualContent.length === 0) {
     throw new Error(
       'Bu PDF metin katmanı içermeyen taranmış/resim dosyasıdır. Ziraat Bankası internet bankacılığından indirilen orijinal .html veya .xlsx dosyasını doğrudan yükleyebilirsiniz.'
     )

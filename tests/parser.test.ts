@@ -515,5 +515,29 @@ IBAN: TR880001004031838013405003
       expect(txs[5].amount).toBe(161.29)
     })
   })
+
+  describe('6. CSV/XLSX ve PDF Parsing Güvenliği (F06)', () => {
+    it('6.1. ISO formatındaki tarihleri (YYYY-MM-DD) DMY regexiyle bozmaz', async () => {
+      const XLSX = await import('xlsx')
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Tarih', 'Açıklama', 'Tutar'],
+        ['2026-08-20', 'Market Alışverişi', '150.00'],
+        ['15/09/2026', 'Restoran', '250.00'],
+      ])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+      const file = new File([buf], 'statement.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+
+      const { extractFromCSVOrExcel } = await import('../src/lib/parser/extract-csv')
+      const res = await extractFromCSVOrExcel(file)
+
+      expect(res.transactions.length).toBe(2)
+      // ISO date preserved as 2026-08-20 (not corrupted to 2020-08-20)
+      expect(res.transactions[0].date).toBe('2026-08-20')
+      // DMY date converted to ISO 2026-09-15
+      expect(res.transactions[1].date).toBe('2026-09-15')
+    })
+  })
 })
 
