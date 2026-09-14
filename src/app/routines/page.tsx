@@ -39,6 +39,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
+import { isUUID } from '@/lib/utils'
 import type { Routine, RoutineLog, Dream } from '@/types/database'
 import {
   TimeBlock,
@@ -423,10 +424,12 @@ function RoutinesPageContent() {
     const updated = routines.filter((r) => r.id !== routineId)
     saveRoutinesToLocal(updated)
 
-    const supabase = createClient()
-    try {
-      await supabase.from('routines').delete().eq('id', routineId)
-    } catch {}
+    if (isUUID(routineId)) {
+      const supabase = createClient()
+      try {
+        await supabase.from('routines').delete().eq('id', routineId)
+      } catch {}
+    }
     toast.success('Rutin silindi.')
     setRoutineToDelete(null)
   }
