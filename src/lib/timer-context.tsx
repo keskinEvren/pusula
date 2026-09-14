@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -58,6 +58,19 @@ function playChime() {
     osc.stop(ctx.currentTime + 0.6)
   } catch (err) {
     // Ignore audio failures
+  }
+}
+
+function updateLocalAgendaItem(itemId: string, patch: Partial<AgendaItem>) {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = localStorage.getItem('pusula_local_agenda_items')
+    if (!raw) return
+    const list: AgendaItem[] = JSON.parse(raw)
+    const updated = list.map((item) => (item.id === itemId ? { ...item, ...patch } : item))
+    localStorage.setItem('pusula_local_agenda_items', JSON.stringify(updated))
+  } catch (err) {
+    console.error('Error updating local agenda item cache:', err)
   }
 }
 
@@ -160,7 +173,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setElapsedSeconds(item.duration_seconds || 0)
     saveStateToStorage(newTimer)
 
-    // Mark as in_progress in Supabase
+    // Mark as in_progress in Supabase & Local Cache
+    updateLocalAgendaItem(item.id, {
+      status: 'in_progress',
+      timer_mode: timerMode,
+      pomodoro_target_minutes: pomodoroTargetMinutes,
+    })
+
     try {
       const supabase = createClient()
       await supabase
@@ -168,7 +187,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         .update({ status: 'in_progress', timer_mode: timerMode, pomodoro_target_minutes: pomodoroTargetMinutes })
         .eq('id', item.id)
     } catch (err) {
-      console.error('Error updating item to in_progress:', err)
+      // Ignore database notice if offline/local
     }
 
     toast.info(`⏱️ "${item.title}" için sayaç başlatıldı`)
@@ -193,7 +212,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setElapsedSeconds(newBase)
     saveStateToStorage(paused)
 
-    // Sync seconds to Supabase
+    // Sync seconds to local cache and Supabase
+    updateLocalAgendaItem(activeTimer.itemId, { duration_seconds: newBase })
+
     try {
       const supabase = createClient()
       await supabase
@@ -201,7 +222,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         .update({ duration_seconds: newBase })
         .eq('id', activeTimer.itemId)
     } catch (err) {
-      console.error('Error updating duration on pause:', err)
+      // Ignore
     }
 
     toast.info('Sayaç duraklatıldı')
@@ -232,23 +253,27 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       finalSeconds += delta
     }
 
+    const patch: Partial<AgendaItem> = {
+      status: 'completed',
+      duration_seconds: finalSeconds,
+      completed_at: new Date().toISOString(),
+      ...(notes ? { notes } : {}),
+    }
+
+    // Always update local cache
+    updateLocalAgendaItem(activeTimer.itemId, patch)
+
     try {
       const supabase = createClient()
       await supabase
         .from('agenda_items')
-        .update({
-          status: 'completed',
-          duration_seconds: finalSeconds,
-          completed_at: new Date().toISOString(),
-          ...(notes ? { notes } : {}),
-        })
+        .update(patch)
         .eq('id', activeTimer.itemId)
-
+    } catch (err: any) {
+      // Local cache already updated
+    } finally {
       playChime()
       toast.success(`✅ "${activeTimer.itemTitle}" tamamlandı! Toplam süre: ${formatMinutesHours(finalSeconds)}`)
-    } catch (err: any) {
-      toast.error('Tamamlanırken hata oluştu: ' + (err.message || ''))
-    } finally {
       setActiveTimer(null)
       setElapsedSeconds(0)
       saveStateToStorage(null)
@@ -276,13 +301,21 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     saveStateToStorage(updated)
     pomodoroChimedRef.current = false
 
-    // Update in Supabase
-    const supabase = createClient()
-    supabase
-      .from('agenda_items')
-      .update({ timer_mode: mode, pomodoro_target_minutes: targetMinutes })
-      .eq('id', activeTimer.itemId)
-      .then(() => {})
+    updateLocalAgendaItem(activeTimer.itemId, {
+      timer_mode: mode,
+      pomodoro_target_minutes: targetMinutes,
+    })
+
+    try {
+      const supabase = createClient()
+      supabase
+        .from('agenda_items')
+        .update({ timer_mode: mode, pomodoro_target_minutes: targetMinutes })
+        .eq('id', activeTimer.itemId)
+        .then(() => {})
+    } catch {
+      // Ignore
+    }
   }, [activeTimer, saveStateToStorage])
 
   const formatTime = (totalSec: number): string => {

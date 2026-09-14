@@ -156,7 +156,18 @@ export default function ProjectDetailPage({
         if (txs) setTransactions(txs)
         if (subs) setSubscriptions(subs)
         if (accs) setAccounts(accs)
-        if (agendaData) setAgendaItems(agendaData)
+        if (agendaData && agendaData.length > 0) {
+          setAgendaItems(agendaData)
+        } else {
+          try {
+            const cached = localStorage.getItem('pusula_local_agenda_items')
+            if (cached) {
+              const allItems: any[] = JSON.parse(cached)
+              const matched = allItems.filter((i: any) => i.project_id === pData.id)
+              setAgendaItems(matched)
+            }
+          } catch {}
+        }
       }
     } catch (err) {
       console.error('Error loading project details:', err)
