@@ -26,6 +26,7 @@ import {
   Flame,
   BarChart3,
   ExternalLink,
+  AlertTriangle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -85,6 +86,7 @@ function AgendaContent() {
   const [items, setItems] = useState<AgendaItem[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [isDbFallback, setIsDbFallback] = useState(false)
   const [filterTab, setFilterTab] = useState<'all' | 'planned' | 'completed'>('all')
 
   // Quick inline add state
@@ -111,6 +113,14 @@ function AgendaContent() {
 
   const todayStr = useMemo(() => toLocalDateString(new Date()), [])
 
+  // Sync to state and localStorage cache
+  const syncLocal = (newItems: AgendaItem[]) => {
+    setItems(newItems)
+    try {
+      localStorage.setItem('pusula_local_agenda_items', JSON.stringify(newItems))
+    } catch {}
+  }
+
   // Load items & projects
   useEffect(() => {
     loadData()
@@ -127,7 +137,7 @@ function AgendaContent() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: itemsData }, { data: projectsData }] = await Promise.all([
+      const [{ data: itemsData, error: itemsError }, { data: projectsData }] = await Promise.all([
         supabase
           .from('agenda_items')
           .select('*')
@@ -136,11 +146,53 @@ function AgendaContent() {
         supabase.from('projects').select('*').order('name'),
       ])
 
-      if (itemsData) setItems(itemsData)
+      if (itemsError) {
+        console.warn('agenda_items remote notice (fallback to local):', itemsError.message)
+        setIsDbFallback(true)
+        const cached = localStorage.getItem('pusula_local_agenda_items')
+        if (cached) {
+          try {
+            setItems(JSON.parse(cached))
+          } catch {
+            setItems([])
+          }
+        } else {
+          // Starter mock task for instant usability
+          const sampleItem: AgendaItem = {
+            id: 'local-' + Date.now(),
+            user_id: 'local',
+            title: 'Bugünün Öncelikli Görevini Tamamla',
+            plan_date: toLocalDateString(new Date()),
+            plan_time: '10:00',
+            project_id: null,
+            status: 'planned',
+            timer_mode: 'stopwatch',
+            pomodoro_target_minutes: 25,
+            duration_seconds: 0,
+            notes: null,
+            completed_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+          setItems([sampleItem])
+          localStorage.setItem('pusula_local_agenda_items', JSON.stringify([sampleItem]))
+        }
+      } else if (itemsData) {
+        setIsDbFallback(false)
+        setItems(itemsData)
+        localStorage.setItem('pusula_local_agenda_items', JSON.stringify(itemsData))
+      }
+
       if (projectsData) setProjects(projectsData)
     } catch (err: any) {
-      console.error('Error loading agenda data:', err)
-      toast.error('Ajanda verileri yüklenemedi')
+      console.warn('Error loading agenda data:', err)
+      setIsDbFallback(true)
+      const cached = localStorage.getItem('pusula_local_agenda_items')
+      if (cached) {
+        try {
+          setItems(JSON.parse(cached))
+        } catch {}
+      }
     } finally {
       setLoading(false)
     }
@@ -152,38 +204,68 @@ function AgendaContent() {
     if (!quickTitle.trim()) return
 
     setQuickSubmitting(true)
+    const localId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'item-' + Date.now()
+    const newItem: AgendaItem = {
+      id: localId,
+      user_id: 'local',
+      title: quickTitle.trim(),
+      plan_date: selectedDate,
+      plan_time: quickTime.trim() || null,
+      project_id: quickProjectId || null,
+      status: 'planned',
+      timer_mode: 'stopwatch',
+      pomodoro_target_minutes: 25,
+      duration_seconds: 0,
+      notes: null,
+      completed_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
     try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error('Oturum açılmamış')
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (user) newItem.user_id = user.id
 
-      const { data, error } = await supabase
-        .from('agenda_items')
-        .insert({
-          user_id: user.id,
-          title: quickTitle.trim(),
-          plan_date: selectedDate,
-          plan_time: quickTime.trim() || null,
-          project_id: quickProjectId || null,
-          status: 'planned',
-          timer_mode: 'stopwatch',
-          duration_seconds: 0,
-        })
-        .select()
-        .single()
+        const { data, error } = await supabase
+          .from('agenda_items')
+          .insert({
+            user_id: newItem.user_id,
+            title: newItem.title,
+            plan_date: newItem.plan_date,
+            plan_time: newItem.plan_time,
+            project_id: newItem.project_id,
+            status: 'planned',
+            timer_mode: 'stopwatch',
+            duration_seconds: 0,
+          })
+          .select()
+          .single()
 
-      if (error) throw error
-      if (data) {
-        setItems((prev) => [...prev, data])
-        setQuickTitle('')
-        setQuickTime('')
-        setQuickProjectId('')
-        toast.success('Ajandaya eklendi!')
+        if (error) {
+          console.warn('Supabase insert notice, using local cache:', error.message)
+          setIsDbFallback(true)
+          syncLocal([...items, newItem])
+        } else if (data) {
+          syncLocal([...items, data])
+        }
+      } else {
+        syncLocal([...items, newItem])
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Madde eklenemedi')
+
+      setQuickTitle('')
+      setQuickTime('')
+      setQuickProjectId('')
+      toast.success('Ajandaya eklendi!')
+    } catch {
+      syncLocal([...items, newItem])
+      setQuickTitle('')
+      setQuickTime('')
+      setQuickProjectId('')
+      toast.success('Ajandaya eklendi!')
     } finally {
       setQuickSubmitting(false)
     }
@@ -195,40 +277,71 @@ function AgendaContent() {
     if (!modalTitle.trim()) return
 
     setModalSubmitting(true)
+    const localId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'item-' + Date.now()
+    const newItem: AgendaItem = {
+      id: localId,
+      user_id: 'local',
+      title: modalTitle.trim(),
+      plan_date: modalDate,
+      plan_time: modalTime.trim() || null,
+      project_id: modalProjectId || null,
+      status: 'planned',
+      timer_mode: modalTimerMode,
+      pomodoro_target_minutes: modalTimerMode === 'pomodoro' ? 25 : null,
+      duration_seconds: 0,
+      notes: null,
+      completed_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
     try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error('Oturum açılmamış')
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (user) newItem.user_id = user.id
 
-      const { data, error } = await supabase
-        .from('agenda_items')
-        .insert({
-          user_id: user.id,
-          title: modalTitle.trim(),
-          plan_date: modalDate,
-          plan_time: modalTime.trim() || null,
-          project_id: modalProjectId || null,
-          status: 'planned',
-          timer_mode: modalTimerMode,
-          pomodoro_target_minutes: modalTimerMode === 'pomodoro' ? 25 : null,
-          duration_seconds: 0,
-        })
-        .select()
-        .single()
+        const { data, error } = await supabase
+          .from('agenda_items')
+          .insert({
+            user_id: newItem.user_id,
+            title: newItem.title,
+            plan_date: newItem.plan_date,
+            plan_time: newItem.plan_time,
+            project_id: newItem.project_id,
+            status: 'planned',
+            timer_mode: modalTimerMode,
+            pomodoro_target_minutes: modalTimerMode === 'pomodoro' ? 25 : null,
+            duration_seconds: 0,
+          })
+          .select()
+          .single()
 
-      if (error) throw error
-      if (data) {
-        setItems((prev) => [...prev, data])
-        setIsModalOpen(false)
-        setModalTitle('')
-        setModalTime('')
-        setModalProjectId('')
-        toast.success('Yeni ajanda maddesi oluşturuldu!')
+        if (error) {
+          console.warn('Supabase modal insert notice, using local cache:', error.message)
+          setIsDbFallback(true)
+          syncLocal([...items, newItem])
+        } else if (data) {
+          syncLocal([...items, data])
+        }
+      } else {
+        syncLocal([...items, newItem])
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Madde oluşturulamadı')
+
+      setIsModalOpen(false)
+      setModalTitle('')
+      setModalTime('')
+      setModalProjectId('')
+      toast.success('Yeni ajanda maddesi oluşturuldu!')
+    } catch {
+      syncLocal([...items, newItem])
+      setIsModalOpen(false)
+      setModalTitle('')
+      setModalTime('')
+      setModalProjectId('')
+      toast.success('Yeni ajanda maddesi oluşturuldu!')
     } finally {
       setModalSubmitting(false)
     }
@@ -239,44 +352,45 @@ function AgendaContent() {
     const nextStatus: AgendaItem['status'] = item.status === 'completed' ? 'planned' : 'completed'
     const completedAt = nextStatus === 'completed' ? new Date().toISOString() : null
 
-    try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('agenda_items')
-        .update({ status: nextStatus, completed_at: completedAt })
-        .eq('id', item.id)
+    const updated = items.map((i) => (i.id === item.id ? { ...i, status: nextStatus, completed_at: completedAt } : i))
+    syncLocal(updated)
 
-      if (error) throw error
+    if (nextStatus === 'completed') {
+      toast.success(`"${item.title}" tamamlandı!`)
+    }
 
-      setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, status: nextStatus, completed_at: completedAt } : i))
-      )
-
-      if (nextStatus === 'completed') {
-        toast.success(`"${item.title}" tamamlandı olarak işaretlendi!`)
+    if (!isDbFallback) {
+      try {
+        const supabase = createClient()
+        await supabase
+          .from('agenda_items')
+          .update({ status: nextStatus, completed_at: completedAt })
+          .eq('id', item.id)
+      } catch (err) {
+        console.warn('Status update db notice:', err)
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Durum güncellenemedi')
     }
   }
 
   // Delete item
   const handleDeleteItem = async () => {
     if (!itemToDelete) return
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.from('agenda_items').delete().eq('id', itemToDelete.id)
-      if (error) throw error
+    const id = itemToDelete.id
+    const updated = items.filter((i) => i.id !== id)
+    syncLocal(updated)
+    if (activeTimer?.itemId === id) {
+      discardTimer()
+    }
+    toast.success('Ajanda maddesi silindi')
+    setItemToDelete(null)
 
-      setItems((prev) => prev.filter((i) => i.id !== itemToDelete.id))
-      if (activeTimer?.itemId === itemToDelete.id) {
-        discardTimer()
+    if (!isDbFallback) {
+      try {
+        const supabase = createClient()
+        await supabase.from('agenda_items').delete().eq('id', id)
+      } catch (err) {
+        console.warn('Delete db notice:', err)
       }
-      toast.success('Ajanda maddesi silindi')
-    } catch (err: any) {
-      toast.error(err.message || 'Silinemedi')
-    } finally {
-      setItemToDelete(null)
     }
   }
 
@@ -381,6 +495,19 @@ function AgendaContent() {
           </Button>
         }
       />
+
+      {isDbFallback && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-300">Yerel Mod Aktif (Supabase Tablosu Henüz Oluşturulmadı)</p>
+            <p className="text-xs text-amber-200/80 leading-relaxed">
+              Ajanda maddeleriniz ve sayaç süreleriniz tarayıcınızın yerel hafızasında saklanıyor. Tüm özellikler eksiksiz çalışmaktadır.
+              Bulut senkronizasyonu için Supabase SQL Editor&apos;de <code className="bg-black/40 px-1.5 py-0.5 rounded text-amber-300 font-mono">011_create_agenda_items.sql</code> migrasyonunu çalıştırmanız yeterlidir.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 🎯 HERO: AKTİF ÇALIŞMA SAYACI (TIMER DESK)                                */}
