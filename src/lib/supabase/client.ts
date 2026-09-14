@@ -1,18 +1,11 @@
 import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/database'
+
+const DEFAULT_SUPABASE_URL = 'https://kvyslscyepxvkrcgsvvz.supabase.co'
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_yACai0Ao0l9Hp-TD6PlFBg_8nV0veu1'
 
 export function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
-    if (process.env.NODE_ENV === 'test') {
-      return createBrowserClient('https://test.supabase.co', 'test-anon-key')
-    }
-    throw new Error(
-      'Eksik Supabase ortam değişkeni: NEXT_PUBLIC_SUPABASE_URL ve NEXT_PUBLIC_SUPABASE_ANON_KEY tanımlanmalıdır. Lütfen .env.local dosyanızı kontrol edin.'
-    )
-  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY
 
   return createBrowserClient(supabaseUrl, supabaseKey)
 }
