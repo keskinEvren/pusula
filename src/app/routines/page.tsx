@@ -739,7 +739,7 @@ function RoutinesPageContent() {
                               {streak.isKintsugi && (
                                 <Badge
                                   variant="outline"
-                                  className="text-[11px] px-1.5 py-0 border-yellow-500/40 bg-yellow-500/10 text-yellow-300 gap-0.5"
+                                  className="text-[11px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-300 gap-0.5"
                                   title="Altın dikişle onarıldı (Kintsugi). Asla iki kez kaçırmadın!"
                                 >
                                   ✨ Onarıldı

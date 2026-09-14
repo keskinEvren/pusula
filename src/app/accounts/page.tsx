@@ -236,7 +236,7 @@ export default function AccountsPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Fiziki Kasa / Diğer
             </CardTitle>
-            <Coins className="h-4 w-4 text-purple-400" />
+            <Coins className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-mono text-foreground">

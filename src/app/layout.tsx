@@ -33,8 +33,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="tr" className="dark">
-      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}>
+    <html lang="tr" className="dark" suppressHydrationWarning>
+      <body
+        className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
+        suppressHydrationWarning
+      >
         <AppShell>{children}</AppShell>
       </body>
     </html>

@@ -41,31 +41,31 @@ type ProjectTypeCategory = 'all' | 'saas' | 'workplace' | 'client' | 'internal'
 
 const TYPE_CONFIG: Record<
   NonNullable<Project['project_type']>,
-  { label: string; icon: typeof Rocket; badgeVariant: 'purple' | 'outline' | 'default' | 'success' | 'destructive' | 'muted'; color: string }
+  { label: string; icon: typeof Rocket; badgeVariant: 'outline' | 'default' | 'success' | 'destructive' | 'muted' | 'primary'; color: string }
 > = {
   saas: {
     label: 'Kendi Girişimim / SaaS',
     icon: Rocket,
-    badgeVariant: 'purple',
-    color: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
+    badgeVariant: 'outline',
+    color: 'text-primary border-primary/25 bg-primary/10',
   },
   workplace: {
     label: 'Çalıştığım Firma / İşyerim',
     icon: Building2,
-    badgeVariant: 'default',
-    color: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+    badgeVariant: 'outline',
+    color: 'text-foreground/90 border-border bg-muted/40',
   },
   client: {
     label: 'Müşteri / Kurumsal Web',
     icon: Briefcase,
     badgeVariant: 'outline',
-    color: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
+    color: 'text-foreground/90 border-border bg-muted/40',
   },
   internal: {
     label: 'Dahili Araç / Altyapı',
     icon: Wrench,
     badgeVariant: 'muted',
-    color: 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10',
+    color: 'text-muted-foreground border-border/60 bg-muted/30',
   },
 }
 
@@ -322,16 +322,16 @@ function ProjectsContent() {
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2.5">
-            <Target className="h-4 w-4 text-purple-400" />
+            <Target className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
               Aktif Tezgâh (Çalışma Masası)
             </h2>
             <Badge
-              variant={workbenchProjects.length >= 2 ? 'outline' : 'purple'}
+              variant={workbenchProjects.length >= 2 ? 'outline' : 'primary'}
               className={`text-[11px] font-mono px-2 py-0.5 ${
                 workbenchProjects.length >= 2
                   ? 'border-amber-500/40 text-amber-400 bg-amber-500/10 font-semibold'
-                  : 'bg-purple-500/20 text-purple-300'
+                  : 'bg-primary/20 text-primary'
               }`}
             >
               {workbenchProjects.length}/2 {workbenchProjects.length >= 2 ? 'Kapasite Dolu' : 'Odak'}
@@ -394,7 +394,7 @@ function ProjectsContent() {
                         </div>
                         <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <Badge
-                            variant={project.status === 'Geliştirmede' ? 'purple' : 'outline'}
+                            variant={project.status === 'Geliştirmede' ? 'primary' : 'outline'}
                             className="text-[11px] px-2 py-0.5"
                           >
                             {project.status === 'Geliştirmede' ? '🚧 Geliştirmede' : '📐 Planlama'}
@@ -569,13 +569,13 @@ function ProjectsContent() {
               onClick={() => setCategoryTab('saas')}
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all whitespace-nowrap min-h-[32px] ${
                 categoryTab === 'saas'
-                  ? 'bg-purple-600 text-white shadow-sm'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              <Rocket className="h-3.5 w-3.5 text-purple-200" />
+              <Rocket className={`h-3.5 w-3.5 ${categoryTab === 'saas' ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
               <span>Kendi Girişimlerim & SaaS</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono ${categoryTab === 'saas' ? 'bg-white/20' : 'bg-muted'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono ${categoryTab === 'saas' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                 {categoryCounts.saas}
               </span>
             </button>
@@ -585,13 +585,13 @@ function ProjectsContent() {
               onClick={() => setCategoryTab('workplace')}
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all whitespace-nowrap min-h-[32px] ${
                 categoryTab === 'workplace'
-                  ? 'bg-amber-600 text-white shadow-sm'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              <Building2 className="h-3.5 w-3.5 text-amber-200" />
+              <Building2 className={`h-3.5 w-3.5 ${categoryTab === 'workplace' ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
               <span>Çalıştığım Firma / İşyerim</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono ${categoryTab === 'workplace' ? 'bg-white/20' : 'bg-muted'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono ${categoryTab === 'workplace' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                 {categoryCounts.workplace}
               </span>
             </button>
@@ -601,13 +601,13 @@ function ProjectsContent() {
               onClick={() => setCategoryTab('client')}
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all whitespace-nowrap min-h-[32px] ${
                 categoryTab === 'client'
-                  ? 'bg-blue-600 text-white shadow-sm'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              <Briefcase className="h-3.5 w-3.5 text-blue-200" />
+              <Briefcase className={`h-3.5 w-3.5 ${categoryTab === 'client' ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
               <span>Müşteri & Kurumsal Siteler</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono ${categoryTab === 'client' ? 'bg-white/20' : 'bg-muted'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono ${categoryTab === 'client' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                 {categoryCounts.client}
               </span>
             </button>
@@ -786,7 +786,7 @@ function ProjectsContent() {
                             </Select>
                             {isWorkbench && (
                               <Badge
-                                variant="purple"
+                                variant="primary"
                                 className="text-[10px] px-1.5 py-0 shrink-0 font-medium whitespace-nowrap"
                                 title="Aktif tezgâhta yer alıyor"
                               >
