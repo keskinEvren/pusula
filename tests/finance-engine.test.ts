@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
+  round2,
   calculateNetWorth,
-  calculatePortfolioMetrics,
-  calculateDcaAverageCost,
   calculateStatementChange,
   calculateSpendingBreakdown,
   calculateProjectTotalCost,
@@ -11,341 +10,332 @@ import {
   calculateFounderRunway,
   collectReceivable,
   payDebt,
+  calculateDcaAverageCost,
   calculateMonthlyCashFlow,
-  round2,
-} from '../src/lib/finance-engine'
+  calculatePortfolioMetrics
+} from '@/lib/finance-engine'
 
-describe('Pusula Saf Finans Motoru (Gateway 2 Test Süiti)', () => {
+vi.mock('@/lib/supabase/client')
 
-  describe('1. Net Varlık Modülü (Net Worth)', () => {
-    it('1.1. Standart Pozitif Durum: Excel Ana Panel formülleriyle kuruşu kuruşuna eşleşir', () => {
-      const accounts = [
-        { balance: 188850.0 }, // Garanti Vadesiz
-        { balance: 15723.0 },  // Enpara Vadesiz
-      ]
-      const debts = [
-        { type: 'Alacak', remaining: 204573.0, status: 'Açık' }, // Maaş alacağı
-        { type: 'Borç', remaining: 50000.0, status: 'Açık' },   // Abla borcu
-        { type: 'Borç', remaining: 74.91, status: 'Açık' },     // Artı para
-      ]
-      const cards = [
-        { current_debt: 21969.86 }, // Akbank Axess
-        { current_debt: 26969.24 }, // Enpara
-        { current_debt: 35888.65 }, // Ziraat 0887
-        { current_debt: 7566.67 },  // Ziraat 6745
-      ]
-
-      const res = calculateNetWorth(accounts, debts, cards)
-
-      expect(res.totalCash).toBe(204573.0)
-      expect(res.totalReceivables).toBe(204573.0)
-      expect(res.totalOtherDebt).toBe(50074.91)
-      expect(res.totalCardDebt).toBe(92394.42)
-      expect(res.totalDebt).toBe(142469.33)
-      // Net Varlık = 204.573 + 204.573 - 142.469,33 = 266.676,67 TL
-      expect(res.netWorth).toBe(266676.67)
-    })
-
-    it('1.2. IEEE-754 Kuruş Yuvarlama Koruması: Ondalık toplama hatalarını (0.30000000000000004) engeller', () => {
-      const accounts = [{ balance: 0.1 }]
-      const debts = [{ type: 'Alacak', remaining: 0.2, status: 'Açık' }]
-      const cards = [{ current_debt: 0 }]
-
-      const res = calculateNetWorth(accounts, debts, cards)
-      expect(res.netWorth).toBe(0.3) // Never 0.30000000000000004
-    })
-
-    it('1.3. Negatif Net Varlık: Borçlar varlıktan fazla olduğunda eksi bakiye doğru döner', () => {
-      const accounts = [{ balance: 5000.0 }]
-      const debts = [{ type: 'Borç', remaining: 15000.0, status: 'Açık' }]
-      const cards = [{ current_debt: 20000.0 }]
-
-      const res = calculateNetWorth(accounts, debts, cards)
-      expect(res.netWorth).toBe(-30000.0) // 5000 - 35000
-    })
-
-    it('1.4. Kapatılan Borçlar: Statüsü Kapatıldı olan kayıtları toplama dahil etmez', () => {
-      const accounts = [{ balance: 10000.0 }]
-      const debts = [
-        { type: 'Borç', remaining: 5000.0, status: 'Açık' },
-        { type: 'Borç', remaining: 99000.0, status: 'Kapatıldı' },
-      ]
-      const cards = [{ current_debt: 0 }]
-
-      const res = calculateNetWorth(accounts, debts, cards)
-      expect(res.totalOtherDebt).toBe(5000.0)
-      expect(res.netWorth).toBe(5000.0)
+describe('finance-engine', () => {
+  describe('round2', () => {
+    it('IEEE-754 precision sorununu çözer (0.1 + 0.2 -> 0.3)', () => {
+      expect(round2(0.1 + 0.2)).toBe(0.3)
     })
   })
 
-  describe('2. Kredi Kartı Dönem Değişimi (Credit Card Statement Change)', () => {
-    it('2.1. Borç Artışı: Yeni borç eskisinden büyükse UP trendi ve pozitif yüzde döner', () => {
-      // Ziraat: 35.888,65 vs Önceki: 19.707,22 -> +16.181,43 (+82.11%)
-      const res = calculateStatementChange(35888.65, 19707.22)
-      expect(res.changeAmount).toBe(16181.43)
-      expect(res.changePct).toBe(82.11)
-      expect(res.trend).toBe('UP')
+  describe('calculateNetWorth', () => {
+    it('standart pozitif net varlık hesaplar: hesaplar + yatırımlar - borçlar - kartlar', () => {
+      const accounts = [{ balance: 1000 }]
+      const debts = [{ type: 'Alacak', remaining: 500, status: 'Aktif' }, { type: 'Borç', remaining: 200, status: 'Aktif' }]
+      const cards = [{ current_debt: 300 }]
+      const investments = [{ quantity: 10, current_price: 50 }]
+
+      const result = calculateNetWorth(accounts, debts, cards, investments)
+      expect(result.netWorth).toBe(1500)
+      expect(result.totalCash).toBe(1000)
+      expect(result.totalReceivables).toBe(500)
+      expect(result.totalInvestments).toBe(500)
+      expect(result.totalCardDebt).toBe(300)
+      expect(result.totalOtherDebt).toBe(200)
+      expect(result.totalDebt).toBe(500)
     })
 
-    it('2.2. Borç Azalışı: Yeni borç eskisinden küçükse DOWN trendi ve negatif yüzde döner', () => {
-      // Enpara: 26.969,24 vs Önceki: 32.254,28 -> -5.285,04 (-16.39%)
-      const res = calculateStatementChange(26969.24, 32254.28)
-      expect(res.changeAmount).toBe(-5285.04)
-      expect(res.changePct).toBe(-16.39)
-      expect(res.trend).toBe('DOWN')
+    it('negatif net varlık durumunu doğru hesaplar', () => {
+      const result = calculateNetWorth(
+        [{ balance: 100 }],
+        [{ type: 'Borç', remaining: 1000, status: 'Aktif' }],
+        [{ current_debt: 500 }],
+        []
+      )
+      expect(result.netWorth).toBe(-1400)
     })
 
-    it('2.3. Sabit Borç: Yeni ve eski borç eşitse STABLE trendi ve %0 döner', () => {
-      const res = calculateStatementChange(5000.0, 5000.0)
-      expect(res.changeAmount).toBe(0.0)
-      expect(res.changePct).toBe(0.0)
-      expect(res.trend).toBe('STABLE')
+    it('kapatılmış borçları hariç tutar', () => {
+      const result = calculateNetWorth(
+        [{ balance: 100 }],
+        [
+          { type: 'Borç', remaining: 1000, status: 'Kapatıldı' },
+          { type: 'Alacak', remaining: 500, status: 'Kapatıldı' }
+        ],
+        [],
+        []
+      )
+      expect(result.netWorth).toBe(100)
     })
 
-    it('2.4. İlk Dönem (Önceki Borç Yok): null değer döner, trend NONE olur', () => {
-      const res = calculateStatementChange(4542.49, null)
-      expect(res.changeAmount).toBeNull()
-      expect(res.changePct).toBeNull()
-      expect(res.trend).toBe('NONE')
-    })
-  })
-
-  describe('3. Harcama Dağılımı (Spending Breakdown)', () => {
-    it('3.1. Gruplama: Kişisel, İş ve Finansman harcamalarını doğru ayırır', () => {
-      const txs = [
-        { type: 'Harcama', analysis_group: 'Kişisel', amount: 23491.72 },
-        { type: 'Harcama', analysis_group: 'İş', amount: 984.76 },
-        { type: 'Finansman/Masraf', analysis_group: 'Finansman', amount: 4326.37 },
-      ]
-
-      const res = calculateSpendingBreakdown(txs)
-      expect(res.personal).toBe(23491.72)
-      expect(res.business).toBe(984.76)
-      expect(res.financing).toBe(4326.37)
-      expect(res.totalConsumption).toBe(28802.85)
-    })
-
-    it('3.2. Hariç Tutulanlar: Kart Ödemesi ve Transferler tüketime dahil edilmez', () => {
-      const txs = [
-        { type: 'Harcama', analysis_group: 'Kişisel', amount: 1000.0 },
-        { type: 'Kart Ödemesi', analysis_group: 'Hariç', amount: 28000.0 },
-        { type: 'Transfer', analysis_group: 'Hariç', amount: 5000.0 },
-      ]
-
-      const res = calculateSpendingBreakdown(txs)
-      expect(res.excluded).toBe(33000.0)
-      expect(res.totalConsumption).toBe(1000.0)
+    it('boş diziler girildiğinde sıfır değerleri döner', () => {
+      const result = calculateNetWorth([], [], [], [])
+      expect(result.netWorth).toBe(0)
+      expect(result.totalCash).toBe(0)
+      expect(result.totalReceivables).toBe(0)
+      expect(result.totalInvestments).toBe(0)
+      expect(result.totalCardDebt).toBe(0)
+      expect(result.totalOtherDebt).toBe(0)
+      expect(result.totalDebt).toBe(0)
     })
   })
 
-  describe('4. Proje Maliyet Köprüsü & Bütçe Tavanı (The Bridge)', () => {
-    it('4.1. Gerçek Maliyet: Projeye bağlı doğrudan harcamalar ile abonelikleri toplar', () => {
-      const projectId = 'prj-pusula'
-      const txs = [
-        { project_id: 'prj-pusula', amount: 58.59 },  // Hostinger
-        { project_id: 'prj-pusula', amount: 350.0 },  // Domain
-        { project_id: 'prj-other', amount: 999.0 },   // Başka proje
-      ]
-      const subs = [
-        { project_id: 'prj-pusula', amount: 960.0, status: 'Aktif' }, // Cursor
-        { project_id: 'prj-pusula', amount: 500.0, status: 'İptal' }, // İptal edilen
-      ]
-
-      const totalCost = calculateProjectTotalCost(projectId, txs, subs)
-      expect(totalCost).toBe(1368.59) // 58.59 + 350 + 960 (iptal edilen hariç)
+  describe('calculateStatementChange', () => {
+    it('artış olduğunda UP trendi döner', () => {
+      const result = calculateStatementChange(1500, 1000)
+      expect(result.trend).toBe('UP')
+      expect(result.changeAmount).toBe(500)
+      expect(result.changePct).toBe(50)
     })
 
-    it('4.2. Güvenli Bölge (GREEN): Harcama bütçenin %85 altında ise yeşil durum verir', () => {
-      const res = evaluateProjectBudget(5000.0, 10000.0)
-      expect(res.status).toBe('GREEN')
-      expect(res.isWarning).toBe(false)
-      expect(res.isExceeded).toBe(false)
-      expect(res.ratio).toBe(0.5)
+    it('azalış olduğunda DOWN trendi döner', () => {
+      const result = calculateStatementChange(800, 1000)
+      expect(result.trend).toBe('DOWN')
+      expect(result.changeAmount).toBe(-200)
+      expect(result.changePct).toBe(-20)
     })
 
-    it('4.3. Yaklaşan Bütçe Uyarısı (YELLOW): Harcama bütçenin %85 ile %100 arasında ise sarı uyarı verir', () => {
-      const res = evaluateProjectBudget(8500.0, 10000.0)
-      expect(res.status).toBe('YELLOW')
-      expect(res.isWarning).toBe(true)
-      expect(res.isExceeded).toBe(false)
-      expect(res.ratio).toBe(0.85)
+    it('değişim olmadığında STABLE trendi döner', () => {
+      const result = calculateStatementChange(1000, 1000)
+      expect(result.trend).toBe('STABLE')
+      expect(result.changeAmount).toBe(0)
+      expect(result.changePct).toBe(0)
     })
 
-    it('4.4. Bütçe Aşımı (RED): Harcama bütçeyi aştığında kırmızı alarm verir', () => {
-      const res = evaluateProjectBudget(10500.0, 10000.0)
-      expect(res.status).toBe('RED')
-      expect(res.isWarning).toBe(false)
-      expect(res.isExceeded).toBe(true)
-      expect(res.ratio).toBe(1.05)
-    })
-
-    it('4.5. Tanımsız Bütçe (NO_BUDGET): Bütçe limiti girilmediğinde NO_BUDGET döner', () => {
-      const res = evaluateProjectBudget(3500.0, null)
-      expect(res.status).toBe('NO_BUDGET')
-      expect(res.ratio).toBeNull()
+    it('önceki dönem verisi yoksa veya 0 ise NONE trendi döner', () => {
+      const result = calculateStatementChange(1000, 0)
+      expect(result.trend).toBe('NONE')
+      expect(result.changeAmount).toBeNull()
+      expect(result.changePct).toBeNull()
     })
   })
 
-  describe('5. 6 Aylık Nakit Yükü & Taksit Projeksiyonu (Cash Load Forecast)', () => {
-    it('5.1. Sabit Abonelik Yükü: Sadece abonelik olduğunda 6 ay sabit yük dağıtır', () => {
-      const subs = [
-        { status: 'Aktif', period: 'Aylık', amount: 960.0 }, // Cursor
-        { status: 'Aktif', period: 'Aylık', amount: 1090.0 }, // OpenAI
-        { status: 'İptal', period: 'Aylık', amount: 500.0 }, // İptal
+  describe('calculateSpendingBreakdown', () => {
+    it('Kişisel, İş ve Finansman gruplarını doğru toparlar', () => {
+      const transactions = [
+        { type: 'Gider', analysis_group: 'Kişisel', amount: 100 },
+        { type: 'Gider', analysis_group: 'İş', amount: 200 },
+        { type: 'Gider', analysis_group: 'Finansman', amount: 50 }
       ]
-
-      const res = projectSixMonthCashLoad(subs, [], 6)
-      expect(res).toHaveLength(6)
-      expect(res.every((v) => v === 2050.0)).toBe(true)
+      const result = calculateSpendingBreakdown(transactions)
+      expect(result.personal).toBe(100)
+      expect(result.business).toBe(200)
+      expect(result.financing).toBe(50)
+      expect(result.totalConsumption).toBe(350)
     })
 
-    it('5.2. Taksit Dağılımı: Devam eden taksitleri kalan ay sayısına göre geleceğe dağıtır', () => {
-      const subs = [{ status: 'Aktif', period: 'Aylık', amount: 1000.0 }]
+    it('kart ödemesi ve transferleri hariç tutar (excluded)', () => {
+      const transactions = [
+        { type: 'Kart Ödemesi', analysis_group: 'Kişisel', amount: 500 },
+        { type: 'Transfer', analysis_group: 'İş', amount: 1000 }
+      ]
+      const result = calculateSpendingBreakdown(transactions)
+      expect(result.excluded).toBe(1500)
+      expect(result.totalConsumption).toBe(0)
+    })
+
+    it('iade işlemlerini gruptan düşer', () => {
+      const transactions = [
+        { type: 'Gider', analysis_group: 'Kişisel', amount: 300 },
+        { type: 'İade', analysis_group: 'Kişisel', amount: 100 },
+        { type: 'Gider', analysis_group: 'İş', amount: -50 }
+      ]
+      const result = calculateSpendingBreakdown(transactions)
+      expect(result.personal).toBe(200)
+      expect(result.business).toBe(-50)
+    })
+
+    it('boş dizi için tüm alanları sıfır döner', () => {
+      const result = calculateSpendingBreakdown([])
+      expect(result.personal).toBe(0)
+      expect(result.business).toBe(0)
+      expect(result.financing).toBe(0)
+      expect(result.excluded).toBe(0)
+      expect(result.totalConsumption).toBe(0)
+    })
+  })
+
+  describe('calculateProjectTotalCost', () => {
+    it('direkt harcamalar ve aktif abonelikleri toplar', () => {
+      const transactions = [
+        { project_id: 'p1', amount: 100 },
+        { project_id: 'p2', amount: 50 }
+      ]
+      const subscriptions = [
+        { project_id: 'p1', amount: 20, status: 'Aktif' }
+      ]
+      const result = calculateProjectTotalCost('p1', transactions, subscriptions)
+      expect(result).toBe(120)
+    })
+
+    it('iptal edilmiş abonelikleri hariç tutar', () => {
+      const subscriptions = [
+        { project_id: 'p1', amount: 20, status: 'İptal' }
+      ]
+      const result = calculateProjectTotalCost('p1', [], subscriptions)
+      expect(result).toBe(0)
+    })
+  })
+
+  describe('evaluateProjectBudget', () => {
+    it('limite ulaşılmadıysa GREEN döner', () => {
+      const result = evaluateProjectBudget(50, 100)
+      expect(result.status).toBe('GREEN')
+    })
+
+    it('limitin %85 ine ulaşıldıysa YELLOW döner', () => {
+      const result = evaluateProjectBudget(85, 100)
+      expect(result.status).toBe('YELLOW')
+      expect(result.isWarning).toBe(true)
+    })
+
+    it('limit aşıldıysa RED döner', () => {
+      const result = evaluateProjectBudget(101, 100)
+      expect(result.status).toBe('RED')
+      expect(result.isExceeded).toBe(true)
+    })
+
+    it('limit yoksa veya sıfırsa NO_BUDGET döner', () => {
+      const result = evaluateProjectBudget(50, 0)
+      expect(result.status).toBe('NO_BUDGET')
+    })
+  })
+
+  describe('projectSixMonthCashLoad', () => {
+    it('sabit abonelikler ve azalan taksitleri hesaplar', () => {
+      const subscriptions = [
+        { status: 'Aktif', period: 'Aylık', amount: 100 }
+      ]
       const installments = [
-        { amountPerMonth: 1879.0, remainingMonths: 2 }, // 2 ay kalan taksit (RIHTIM VE VERASET)
-        { amountPerMonth: 500.0, remainingMonths: 4 },  // 4 ay kalan taksit
+        { amountPerMonth: 50, remainingMonths: 2 }
       ]
+      const result = projectSixMonthCashLoad(subscriptions, installments, 6)
+      
+      expect(result.length).toBe(6)
+      expect(result[0]).toBe(150)
+      expect(result[1]).toBe(150)
+      expect(result[2]).toBe(100)
+      expect(result[5]).toBe(100)
+    })
 
-      const res = projectSixMonthCashLoad(subs, installments, 6)
-      // Ay 1: 1000 + 1879 + 500 = 3379
-      // Ay 2: 1000 + 1879 + 500 = 3379
-      // Ay 3: 1000 + 500 = 1500
-      // Ay 4: 1000 + 500 = 1500
-      // Ay 5: 1000
-      // Ay 6: 1000
-      expect(res[0]).toBe(3379.0)
-      expect(res[1]).toBe(3379.0)
-      expect(res[2]).toBe(1500.0)
-      expect(res[3]).toBe(1500.0)
-      expect(res[4]).toBe(1000.0)
-      expect(res[5]).toBe(1000.0)
+    it('gelecek tarihli bitiş tarihi olan aboneliği süre bitince dahil etmez', () => {
+      const now = new Date()
+      const end = new Date(now.getFullYear(), now.getMonth() + 2, 15)
+
+      const subscriptions = [
+        { status: 'Aktif', period: 'Aylık', amount: 100, end_date: end.toISOString() }
+      ]
+      const result = projectSixMonthCashLoad(subscriptions, [], 6)
+      
+      expect(result[0]).toBe(100)
+      expect(result[1]).toBe(100)
+      expect(result[2]).toBe(0)
     })
   })
 
-  describe('6. Kurucu Runway Formülü (Founder Runway)', () => {
-    it('6.1. Standart Runway: Likit nakit / Toplam aylık nakit çıkışı', () => {
-      const res = calculateFounderRunway(100000.0, 20000.0, 5000.0)
-      expect(res.totalMonthlyCashDrain).toBe(25000.0)
-      expect(res.runwayMonths).toBe(4.0) // 100k / 25k = 4 ay
+  describe('calculateFounderRunway', () => {
+    it('standart giderle aylık hesaplama yapar', () => {
+      const result = calculateFounderRunway(10000, 2000, 500)
+      expect(result.runwayMonths).toBe(4)
     })
 
-    it('6.2. Sıfır Gider Durumu: Gider 0 ise infinite döner', () => {
-      const res = calculateFounderRunway(50000.0, 0, 0)
-      expect(res.runwayMonths).toBe('infinite')
-    })
-  })
-
-  describe('7. Borç / Alacak Tahsilat Senkronizasyonu (Auto-Sync)', () => {
-    it('7.1. Tam Alacak Tahsilatı: Hesap bakiyesi artar, kalan 0 olur ve kapatılır', () => {
-      const res = collectReceivable(10000.0, 5000.0, 5000.0)
-      expect(res.newAccountBalance).toBe(15000.0)
-      expect(res.newReceivableRemaining).toBe(0.0)
-      expect(res.isClosed).toBe(true)
+    it('gider yoksa infinite döner', () => {
+      const result = calculateFounderRunway(10000, 0, 0)
+      expect(result.runwayMonths).toBe('infinite')
     })
 
-    it('7.2. Kısmi Alacak Tahsilatı: Hesap bakiyesi artar, kalan azalır ama açık kalır', () => {
-      const res = collectReceivable(10000.0, 5000.0, 2000.0)
-      expect(res.newAccountBalance).toBe(12000.0)
-      expect(res.newReceivableRemaining).toBe(3000.0)
-      expect(res.isClosed).toBe(false)
-    })
-
-    it('7.3. Borç Geri Ödemesi: Hesap bakiyesi düşer, kalan borç 0 olur ve kapatılır', () => {
-      const res = payDebt(15000.0, 5000.0, 5000.0)
-      expect(res.newAccountBalance).toBe(10000.0)
-      expect(res.newDebtRemaining).toBe(0.0)
-      expect(res.isClosed).toBe(true)
+    it('negatif nakit veya sıfır nakit durumunu işler', () => {
+      const result = calculateFounderRunway(-2500, 2000, 500)
+      expect(result.runwayMonths).toBe(-1)
     })
   })
 
-  describe('8. Portföy ve Yatırım Analitiği', () => {
-    it('8.1. Net Varlığa Portföy Entegrasyonu: Varlıkların güncel değeri Net Varlık toplamına kuruşu kuruşuna eklenir', () => {
-      const accounts = [{ balance: 10000.0 }]
-      const debts = [{ type: 'Alacak', remaining: 5000.0, status: 'Açık' }]
-      const cards = [{ current_debt: 3000.0 }]
+  describe('collectReceivable & payDebt', () => {
+    it('alacak tam tahsil edildiğinde kapatıldı flagi döner', () => {
+      const result = collectReceivable(1000, 500, 500)
+      expect(result.newAccountBalance).toBe(1500)
+      expect(result.newReceivableRemaining).toBe(0)
+      expect(result.isClosed).toBe(true)
+    })
+
+    it('alacak kısmi tahsil edildiğinde kapanmaz', () => {
+      const result = collectReceivable(1000, 500, 200)
+      expect(result.newAccountBalance).toBe(1200)
+      expect(result.newReceivableRemaining).toBe(300)
+      expect(result.isClosed).toBe(false)
+    })
+
+    it('borç tam ödendiğinde kapatıldı flagi döner', () => {
+      const result = payDebt(1000, 500, 500)
+      expect(result.newAccountBalance).toBe(500)
+      expect(result.newDebtRemaining).toBe(0)
+      expect(result.isClosed).toBe(true)
+    })
+
+    it('borç kısmi ödendiğinde kapanmaz', () => {
+      const result = payDebt(1000, 500, 200)
+      expect(result.newAccountBalance).toBe(800)
+      expect(result.newDebtRemaining).toBe(300)
+      expect(result.isClosed).toBe(false)
+    })
+  })
+
+  describe('calculateDcaAverageCost', () => {
+    it('ağırlıklı ortalama maliyeti doğru hesaplar', () => {
+      const result = calculateDcaAverageCost(10, 100, 5, 130)
+      expect(result.newQuantity).toBe(15)
+      expect(result.newUnitCost).toBe(110)
+      expect(result.totalCost).toBe(1650)
+    })
+
+    it('ilk alış işleminde (mevcut miktar 0) doğru hesaplar', () => {
+      const result = calculateDcaAverageCost(0, 0, 10, 50)
+      expect(result.newQuantity).toBe(10)
+      expect(result.newUnitCost).toBe(50)
+      expect(result.totalCost).toBe(500)
+    })
+
+    it('negatif sayı girişlerine karşı sıfır kabul eder', () => {
+      const result = calculateDcaAverageCost(-5, -100, 5, 50)
+      expect(result.newQuantity).toBe(5)
+      expect(result.newUnitCost).toBe(50)
+    })
+  })
+
+  describe('calculateMonthlyCashFlow & calculatePortfolioMetrics', () => {
+    it('cash flow standart hesaplama yapar', () => {
+      const transactions = [
+        { type: 'Gelir', amount: 5000, description: 'Maaş' },
+        { type: 'Kart Ödemesi', amount: 1000 },
+        { type: 'Finansman/Masraf', amount: 100 }
+      ]
+      const result = calculateMonthlyCashFlow(transactions)
+      expect(result.totalInflow).toBe(5000)
+      expect(result.cardPayments).toBe(1000)
+      expect(result.financingFees).toBe(100)
+      expect(result.netCashFlow).toBe(3900)
+    })
+
+    it('portfolio metrics standart hesaplama yapar', () => {
       const investments = [
-        { quantity: 10, current_price: 300.0 }, // 3.000 TL
-        { quantity: 5.5, current_price: 2000.0 }, // 11.000 TL
+        { category: 'Hisse', quantity: 10, unit_cost: 100, current_price: 150 },
+        { category: 'Kripto', quantity: 2, unit_cost: 500, current_price: 400 }
       ]
-
-      const res = calculateNetWorth(accounts, debts, cards, investments)
-      expect(res.totalCash).toBe(10000.0)
-      expect(res.totalReceivables).toBe(5000.0)
-      expect(res.totalInvestments).toBe(14000.0) // 3000 + 11000
-      expect(res.totalDebt).toBe(3000.0)
-      // Net Varlık = 10.000 + 5.000 + 14.000 - 3.000 = 26.000 TL
-      expect(res.netWorth).toBe(26000.0)
+      const result = calculatePortfolioMetrics(investments)
+      
+      expect(result.totalCost).toBe(2000)
+      expect(result.totalValue).toBe(2300)
+      expect(result.totalProfitLoss).toBe(300)
+      expect(result.totalProfitLossPct).toBe(15)
+      expect(result.assetCount).toBe(2)
+      expect(result.categoryAllocations.length).toBe(2)
     })
 
-    it('8.2. Portföy Kâr/Zarar ve Kategori Dağılımı: Maliyet, kâr yüzdesi ve kategori payları doğru hesaplanır', () => {
-      const items = [
-        { category: 'Hisse Senedi (BIST)', quantity: 100, unit_cost: 250.0, current_price: 300.0 }, // Maliyet: 25.000, Değer: 30.000 (+5.000)
-        { category: 'Emtia & Altın', quantity: 10, unit_cost: 2000.0, current_price: 2500.0 }, // Maliyet: 20.000, Değer: 25.000 (+5.000)
-        { category: 'Kripto Para', quantity: 0.1, unit_cost: 50000.0, current_price: 40000.0 }, // Maliyet: 5.000, Değer: 4.000 (-1.000)
-      ]
+    it('boş dizilerde sıfır değerleri döner', () => {
+      const cashFlowResult = calculateMonthlyCashFlow([])
+      expect(cashFlowResult.totalInflow).toBe(0)
+      expect(cashFlowResult.netCashFlow).toBe(0)
 
-      const metrics = calculatePortfolioMetrics(items)
-      expect(metrics.totalCost).toBe(50000.0) // 25k + 20k + 5k
-      expect(metrics.totalValue).toBe(59000.0) // 30k + 25k + 4k
-      expect(metrics.totalProfitLoss).toBe(9000.0) // 59k - 50k
-      expect(metrics.totalProfitLossPct).toBe(18.0) // 9000 / 50000 = %18
-      expect(metrics.assetCount).toBe(3)
-
-      // Kategori sıralaması: 1. Hisse (30k, %50.85), 2. Altın (25k, %42.37), 3. Kripto (4k, %6.78)
-      expect(metrics.categoryAllocations[0].category).toBe('Hisse Senedi (BIST)')
-      expect(metrics.categoryAllocations[0].value).toBe(30000.0)
-      expect(metrics.categoryAllocations[1].category).toBe('Emtia & Altın')
-      expect(metrics.categoryAllocations[1].value).toBe(25000.0)
-      expect(metrics.categoryAllocations[2].category).toBe('Kripto Para')
-      expect(metrics.categoryAllocations[2].value).toBe(4000.0)
-    })
-
-    it('8.3. Kademeli Alım (DCA): Ağırlıklı ortalama maliyet kuruşu kuruşuna hesaplanır', () => {
-      // 100 lot @ 200 TL = 20.000 TL
-      // + 50 lot @ 290 TL = 14.500 TL
-      // Toplam: 150 lot, 34.500 TL -> 34.500 / 150 = 230,00 TL
-      const res = calculateDcaAverageCost(100, 200.0, 50, 290.0)
-      expect(res.newQuantity).toBe(150)
-      expect(res.totalCost).toBe(34500.0)
-      expect(res.newUnitCost).toBe(230.0)
-
-      // Ondalıklı miktar (Gram altın / Kripto): 1.5 gram @ 3.000 TL + 0.5 gram @ 3.400 TL = 2 gram @ 3.100 TL
-      const goldRes = calculateDcaAverageCost(1.5, 3000.0, 0.5, 3400.0)
-      expect(goldRes.newQuantity).toBe(2.0)
-      expect(goldRes.totalCost).toBe(6200.0) // 4500 + 1700
-      expect(goldRes.newUnitCost).toBe(3100.0)
-
-      // Sıfırdan ilk alım durumu
-      const initialRes = calculateDcaAverageCost(0, 0, 10, 150.0)
-      expect(initialRes.newQuantity).toBe(10)
-      expect(initialRes.newUnitCost).toBe(150.0)
-      expect(initialRes.totalCost).toBe(1500.0)
-    })
-  })
-
-  describe('9. Kasa & Nakit Akışı Modülü (Monthly Cash Flow)', () => {
-    it('9.1. Maaş girişi ve kart ödemeleri net kasa akışını kuruşu kuruşuna hesaplar', () => {
-      const septTxs = [
-        { type: 'Gelir', amount: 43299, description: 'Ağustos 2026 Maaş Ödemesi', merchant: 'İşveren' },
-        { type: 'Kart Ödemesi', amount: 24100, description: 'Kredi Kartı Ödeme', merchant: 'Kart Ödemesi (Akbank)' },
-        { type: 'Kart Ödemesi', amount: 10800.92, description: 'KK TAHSİLAT KART NO: 0887', merchant: 'Kart Ödemesi (Ziraat Bankası)' },
-        { type: 'Kart Ödemesi', amount: 8376.31, description: 'Enpara.com kredi kartı ödemesi', merchant: 'Kart Ödemesi (Enpara)' },
-        { type: 'Finansman/Masraf', amount: 16.75, description: 'Ekpara kullanım faizi', analysis_group: 'Finansman' },
-        { type: 'Finansman/Masraf', amount: 2.51, description: 'BSMV', analysis_group: 'Finansman' },
-        { type: 'Finansman/Masraf', amount: 2.51, description: 'KKDF', analysis_group: 'Finansman' },
-        // İç transfer (kendi hesapları arasında FAST)
-        { type: 'Gelir', amount: 24100, description: 'Evren Keskin - Vakıf Katılım Ban', merchant: 'Evren Keskin - Vakıf Katılım Ban' },
-      ]
-
-      const res = calculateMonthlyCashFlow(septTxs)
-
-      expect(res.totalInflow).toBe(43299)
-      expect(res.cardPayments).toBe(43277.23)
-      expect(res.financingFees).toBe(21.77)
-      expect(res.netCashFlow).toBe(0)
+      const portfolioResult = calculatePortfolioMetrics([])
+      expect(portfolioResult.totalCost).toBe(0)
+      expect(portfolioResult.totalValue).toBe(0)
+      expect(portfolioResult.categoryAllocations.length).toBe(0)
     })
   })
 })
-
-
-

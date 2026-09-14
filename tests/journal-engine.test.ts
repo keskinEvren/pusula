@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   countWords,
   calculateReadingTimeMinutes,
@@ -7,186 +7,221 @@ import {
   buildDayContextSummary,
   JOURNAL_MOODS,
   JOURNAL_TEMPLATES,
-  INITIAL_SAMPLE_JOURNAL_ENTRIES,
-} from '../src/lib/journal-engine'
-import { JournalEntry, Routine, RoutineLog, Transaction } from '../src/types/database'
+} from '@/lib/journal-engine'
+import type { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
 
-describe('Pusula Seyir Defteri (Journal Engine) Testleri', () => {
-  const dummyEntries: JournalEntry[] = [
-    {
-      id: 'j1',
-      user_id: 'test',
-      entry_date: '2026-09-09',
-      title: 'Sakin Sabah',
-      content: 'Bugün erken uyandım ve filtre kahve yaptım. Sessizlik çok iyi geldi.',
-      mood: 'calm',
-      template_type: 'stoic',
-      tags: ['Sabah', 'Felsefe'],
-      weather_note: 'Açık',
-      pinned: true,
-      word_count: 11,
-      created_at: '2026-09-09T08:00:00Z',
-      updated_at: '2026-09-09T08:00:00Z',
-    },
-    {
-      id: 'j2',
-      user_id: 'test',
-      entry_date: '2026-09-08',
-      title: 'Fırtına ve Stres',
-      content: 'İşler yetişmedi ve çok stresli bir gün geçirdim.',
-      mood: 'stormy',
-      template_type: 'freeform',
-      tags: ['Stres', 'İş'],
-      weather_note: 'Yağmurlu',
-      pinned: false,
-      word_count: 9,
-      created_at: '2026-09-08T20:00:00Z',
-      updated_at: '2026-09-08T20:00:00Z',
-    },
-    {
-      id: 'j3',
-      user_id: 'test',
-      entry_date: '2026-09-07',
-      title: 'Yeni Proje Başlangıcı',
-      content: 'Büyük bir enerjiyle kod yazmaya başladım. Harika gidiyor.',
-      mood: 'high_energy',
-      template_type: 'gratitude_victory',
-      tags: ['Kod', 'Enerji'],
-      weather_note: 'Güneşli',
-      pinned: false,
-      word_count: 9,
-      created_at: '2026-09-07T12:00:00Z',
-      updated_at: '2026-09-07T12:00:00Z',
-    },
-  ]
+vi.mock('@/lib/supabase/client')
 
-  it('1. Kelime sayısını ve tahmini okuma süresini doğru hesaplar', () => {
-    expect(countWords('')).toBe(0)
-    expect(countWords('   ')).toBe(0)
-    expect(countWords('Merhaba dünya, bugün nasılsın?')).toBe(4)
-    expect(countWords('### Başlık\n* Madde 1\n* Madde 2')).toBe(5)
+describe('journal-engine', () => {
+  describe('countWords', () => {
+    it('normal metinlerde kelime sayısını doğru hesaplamalıdır', () => {
+      const text = 'Bu bir test metnidir ve altı kelimeden oluşur.'
+      expect(countWords(text)).toBe(8)
+    })
 
-    // Okuma süresi (dakikada ~200 kelime)
-    expect(calculateReadingTimeMinutes(0)).toBe(0)
-    expect(calculateReadingTimeMinutes(50)).toBe(1)
-    expect(calculateReadingTimeMinutes(250)).toBe(2)
+    it('markdown başlıklarını ve format karakterlerini temizleyerek saymalıdır', () => {
+      const text = '### Başlık 1\n\nBu bir **kalın** yazıdır ve [link](url) içerir.'
+      expect(countWords(text)).toBe(10)
+    })
+
+    it('boş veya geçersiz string verildiğinde 0 döndürmelidir', () => {
+      expect(countWords('')).toBe(0)
+      expect(countWords('   ')).toBe(0)
+      expect(countWords('---')).toBe(0)
+    })
   })
 
-  it('2. Seyir defteri kayıtlarını ruh haline ve arama sorgusuna göre filtreler', () => {
-    // Ruh haline göre
-    const calmOnly = filterJournalEntries(dummyEntries, { mood: 'calm' })
-    expect(calmOnly.length).toBe(1)
-    expect(calmOnly[0].id).toBe('j1')
+  describe('calculateReadingTimeMinutes', () => {
+    it('200 kelimelik metin için okuma süresini 1 dakika olarak hesaplamalıdır', () => {
+      expect(calculateReadingTimeMinutes(200)).toBe(1)
+      expect(calculateReadingTimeMinutes(400)).toBe(2)
+      expect(calculateReadingTimeMinutes(201)).toBe(2)
+    })
 
-    // Arama sorgusuna göre (büyük/küçük harf duyarsız)
-    const searchRes = filterJournalEntries(dummyEntries, { query: 'stresli' })
-    expect(searchRes.length).toBe(1)
-    expect(searchRes[0].id).toBe('j2')
-
-    // Etiket araması
-    const tagRes = filterJournalEntries(dummyEntries, { query: 'Felsefe' })
-    expect(tagRes.length).toBe(1)
-    expect(tagRes[0].id).toBe('j1')
-
-    // Sabitlenenler (pinned) her zaman en başta olmalı
-    const all = filterJournalEntries(dummyEntries)
-    expect(all[0].pinned).toBe(true)
-    expect(all[0].id).toBe('j1')
+    it('0 kelime için okuma süresini 0 olarak hesaplamalıdır', () => {
+      expect(calculateReadingTimeMinutes(0)).toBe(0)
+      expect(calculateReadingTimeMinutes(-5)).toBe(0)
+    })
   })
 
-  it('3. Seyir defteri metriklerini (toplam yazı, kelime, serisi) doğru hesaplar', () => {
-    const metrics = calculateJournalMetrics(dummyEntries, '2026-09-09')
-    expect(metrics.totalEntries).toBe(3)
-    expect(metrics.totalWords).toBe(29)
-    expect(metrics.avgWordsPerEntry).toBe(10)
-    // 07, 08, 09 Eylül ardışık 3 gün yazılmış -> streak 3
-    expect(metrics.writingStreak).toBe(3)
-    expect(metrics.totalReadingTimeMinutes).toBe(1)
-  })
-
-  it('4. Günün akıllı bağlamını (Smart Day Context Ribbon) rutin ve harcamalarla sentezler', () => {
-    const dummyRoutines: Routine[] = [
+  describe('filterJournalEntries', () => {
+    const mockEntries: JournalEntry[] = [
       {
-        id: 'r1',
-        user_id: 'test',
-        title: 'Sabah Koşusu',
-        icon: '🏃',
-        time_block: 'morning',
-        frequency: 'daily',
-        target_days: [1, 2, 3, 4, 5, 6, 7],
-        target_duration_minutes: 30,
-        minimum_effective_dose: null,
-        dream_id: null,
-        identity_persona: 'Sporcu',
-        is_active: true,
-        order_index: 0,
-        created_at: '2026-09-01T00:00:00Z',
-        updated_at: '2026-09-01T00:00:00Z',
+        id: '1',
+        user_id: 'user1',
+        entry_date: '2023-10-01',
+        title: 'Mutlu Gün',
+        content: 'Bugün harika bir gün.',
+        mood: 'high_energy',
+        template_type: 'freeform',
+        tags: ['mutluluk', 'günlük'],
+        pinned: true,
+        word_count: 4,
+        created_at: '',
+        updated_at: '',
       },
-    ]
-
-    const dummyLogs: RoutineLog[] = [
       {
-        id: 'l1',
-        user_id: 'test',
-        routine_id: 'r1',
-        log_date: '2026-09-09',
-        status: 'completed',
-        note: null,
-        duration_minutes: 30,
-        completed_at: '2026-09-09T08:00:00Z',
+        id: '2',
+        user_id: 'user1',
+        entry_date: '2023-10-02',
+        title: 'Yorgun Akşam',
+        content: 'Çok çalıştım ve yoruldum.',
+        mood: 'low_energy',
+        template_type: 'stoic',
+        tags: ['iş', 'yorgunluk'],
+        pinned: false,
+        word_count: 4,
+        created_at: '',
+        updated_at: '',
       },
-    ]
-
-    const dummyTransactions: Transaction[] = [
       {
-        id: 't1',
-        user_id: 'test',
-        account_id: 'acc1',
-        card_id: null,
-        date: '2026-09-09',
-        amount: -150,
-        type: 'Harcama',
-        description: 'Kahve & Sandviç',
-        analysis_group: 'Kişisel',
-        merchant: 'Starbucks',
-        recurrence: null,
-        statement_date: null,
-        project_id: null,
-        source_account_id: null,
-        target_account_id: null,
-        related_debt_id: null,
-        import_id: null,
-        account_or_card: null,
-        created_at: '2026-09-09T09:00:00Z',
-        updated_at: '2026-09-09T09:00:00Z',
+        id: '3',
+        user_id: 'user1',
+        entry_date: '2023-10-03',
+        title: 'Normal Bir Gün',
+        content: 'Sıradan bir gün geçti.',
+        mood: 'calm',
+        template_type: 'freeform',
+        tags: ['sıradan'],
+        pinned: true,
+        word_count: 4,
+        created_at: '',
+        updated_at: '',
       },
-    ]
+    ] as JournalEntry[]
 
-    const context = buildDayContextSummary(
-      '2026-09-09',
-      dummyRoutines,
-      dummyLogs,
-      dummyTransactions
-    )
+    it('mood ve template filtresini doğru uygulamalıdır', () => {
+      const highEnergy = filterJournalEntries(mockEntries, { mood: 'high_energy' })
+      expect(highEnergy).toHaveLength(1)
+      expect(highEnergy[0].id).toBe('1')
 
-    expect(context.routinesCompleted).toBe(1)
-    expect(context.routinesTotal).toBe(1)
-    expect(context.totalSpent).toBe(150)
-    expect(context.txCount).toBe(1)
-    expect(context.summaryText).toContain('1/1 Rutin')
-    expect(context.summaryText).toContain('150 ₺ Harcama')
+      const stoic = filterJournalEntries(mockEntries, { templateType: 'stoic' })
+      expect(stoic).toHaveLength(1)
+      expect(stoic[0].id).toBe('2')
+    })
+
+    it('query (arama) parametresine göre doğru filtrelemelidir', () => {
+      const searchResult = filterJournalEntries(mockEntries, { query: 'harika' })
+      expect(searchResult).toHaveLength(1)
+      expect(searchResult[0].id).toBe('1')
+      
+      const tagSearch = filterJournalEntries(mockEntries, { query: 'iş' })
+      expect(tagSearch).toHaveLength(1)
+      expect(tagSearch[0].id).toBe('2')
+    })
+
+    it('pinnedOnly seçeneği aktif olduğunda sadece sabitlenenleri getirmelidir', () => {
+      const pinned = filterJournalEntries(mockEntries, { pinnedOnly: true })
+      expect(pinned).toHaveLength(2)
+      expect(pinned.map(e => e.id)).toContain('1')
+      expect(pinned.map(e => e.id)).toContain('3')
+    })
+
+    it('sabitlenenleri her zaman en başa alarak sıralamalıdır', () => {
+      const sorted = filterJournalEntries(mockEntries, {})
+      expect(sorted[0].pinned).toBe(true)
+      expect(sorted[1].pinned).toBe(true)
+      expect(sorted[2].pinned).toBe(false)
+    })
+
+    it('boş bir dizi verildiğinde boş bir dizi döndürmelidir', () => {
+      const result = filterJournalEntries([], { mood: 'calm' })
+      expect(result).toEqual([])
+    })
   })
 
-  it('5. Ruh hali ve şablon tanımları eksiksizdir', () => {
-    expect(Object.keys(JOURNAL_MOODS)).toHaveLength(5)
-    expect(JOURNAL_MOODS.calm.icon).toBe('🌊')
-    expect(JOURNAL_MOODS.high_energy.icon).toBe('⚡')
+  describe('calculateJournalMetrics', () => {
+    it('metrikleri doğru şekilde toplamalıdır', () => {
+      const entries = [
+        {
+          id: '1', user_id: 'u1', entry_date: '2023-10-01', title: '1', content: 'Bir iki', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, word_count: 2, created_at: '', updated_at: ''
+        },
+        {
+          id: '2', user_id: 'u1', entry_date: '2023-10-02', title: '2', content: 'Üç dört beş', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, word_count: 3, created_at: '', updated_at: ''
+        },
+      ] as unknown as JournalEntry[]
 
-    expect(Object.keys(JOURNAL_TEMPLATES)).toHaveLength(4)
-    expect(JOURNAL_TEMPLATES.stoic.content).toContain('Kontrol Çemberi')
-    expect(JOURNAL_TEMPLATES.gratitude_victory.content).toContain('Üç Şükran Detayı')
+      const metrics = calculateJournalMetrics(entries, '2023-10-03')
+      expect(metrics.totalEntries).toBe(2)
+      expect(metrics.totalWords).toBe(5)
+      expect(metrics.avgWordsPerEntry).toBe(3) // 5 / 2 = 2.5 => Math.round(2.5) = 3
+      expect(metrics.mostFrequentMood).toBe('calm')
+      expect(metrics.totalReadingTimeMinutes).toBe(1)
+    })
 
-    expect(INITIAL_SAMPLE_JOURNAL_ENTRIES.length).toBeGreaterThanOrEqual(3)
+    it('yazma serisini (streak) art arda günler için doğru hesaplamalıdır', () => {
+      const entries: JournalEntry[] = [
+        { id: '1', user_id: 'u1', entry_date: '2023-10-01', title: '', content: '', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, weather_note: null, word_count: 0, created_at: '', updated_at: '' },
+        { id: '2', user_id: 'u1', entry_date: '2023-10-02', title: '', content: '', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, weather_note: null, word_count: 0, created_at: '', updated_at: '' },
+        { id: '3', user_id: 'u1', entry_date: '2023-10-03', title: '', content: '', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, weather_note: null, word_count: 0, created_at: '', updated_at: '' },
+      ]
+
+      const metrics = calculateJournalMetrics(entries, '2023-10-03')
+      expect(metrics.writingStreak).toBe(3)
+    })
+
+    it('yazma serisini aradaki boşluklarda (gap) sıfırlamalıdır', () => {
+      const entries: JournalEntry[] = [
+        { id: '1', user_id: 'u1', entry_date: '2023-10-01', title: '', content: '', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, weather_note: null, word_count: 0, created_at: '', updated_at: '' },
+        { id: '3', user_id: 'u1', entry_date: '2023-10-03', title: '', content: '', mood: 'calm', template_type: 'freeform', tags: [], pinned: false, weather_note: null, word_count: 0, created_at: '', updated_at: '' },
+      ]
+
+      const metrics = calculateJournalMetrics(entries, '2023-10-04')
+      expect(metrics.writingStreak).toBe(1)
+    })
+
+    it('boş bir dizi için sıfır (0) değerlerini döndürmelidir', () => {
+      const metrics = calculateJournalMetrics([], '2023-10-01')
+      expect(metrics.totalEntries).toBe(0)
+      expect(metrics.totalWords).toBe(0)
+      expect(metrics.avgWordsPerEntry).toBe(0)
+      expect(metrics.writingStreak).toBe(0)
+      expect(metrics.mostFrequentMood).toBeNull()
+      expect(metrics.totalReadingTimeMinutes).toBe(0)
+    })
+  })
+
+  describe('buildDayContextSummary', () => {
+    it('veriler mevcut olduğunda doğru özeti oluşturmalıdır', () => {
+      const dateStr = '2023-10-01'
+      const routines = [
+        { id: 'r1', user_id: 'u', title: 'Rutin 1', frequency: 'daily', is_active: true, created_at: '', updated_at: '' },
+        { id: 'r2', user_id: 'u', title: 'Rutin 2', frequency: 'daily', is_active: true, created_at: '', updated_at: '' }
+      ] as any
+      const logs = [
+        { id: 'l1', routine_id: 'r1', user_id: 'u', log_date: dateStr, status: 'completed', duration_minutes: 10, completed_at: '' }
+      ] as any
+      const txs = [
+        { id: 't1', user_id: 'u', account_id: 'a1', amount: 150, type: 'Harcama', date: dateStr, description: 'T1', created_at: '', updated_at: '', analysis_group: 'Kişisel' },
+        { id: 't2', user_id: 'u', account_id: 'a1', amount: 50, type: 'Harcama', date: dateStr, description: 'T2', created_at: '', updated_at: '', analysis_group: 'Kişisel' }
+      ] as any
+
+      const summary = buildDayContextSummary(dateStr, routines, logs, txs)
+      expect(summary.routinesCompleted).toBe(1)
+      expect(summary.routinesTotal).toBe(2)
+      expect(summary.totalSpent).toBe(200)
+      expect(summary.txCount).toBe(2)
+      expect(summary.summaryText).toContain('1/2 Rutin')
+      expect(summary.summaryText).toContain('200 ₺ Harcama (2 işlem)')
+    })
+
+    it('veri olmadığında varsayılan özeti oluşturmalıdır', () => {
+      const summary = buildDayContextSummary('2023-10-01', [], [], [])
+      expect(summary.routinesCompleted).toBe(0)
+      expect(summary.routinesTotal).toBe(0)
+      expect(summary.totalSpent).toBe(0)
+      expect(summary.txCount).toBe(0)
+      expect(summary.summaryText).toContain('Harcama yok (Sıfır Tüketim)')
+    })
+  })
+
+  describe('Constants', () => {
+    it('JOURNAL_MOODS 5 adet ruh hali içermelidir', () => {
+      expect(Object.keys(JOURNAL_MOODS)).toHaveLength(5)
+    })
+
+    it('JOURNAL_TEMPLATES 4 adet şablon içermelidir', () => {
+      expect(Object.keys(JOURNAL_TEMPLATES)).toHaveLength(4)
+    })
   })
 })

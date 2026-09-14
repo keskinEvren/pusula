@@ -116,12 +116,25 @@ function sanitizeHtmlRegex(html: string): string {
   cleaned = cleaned.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
   cleaned = cleaned.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
   cleaned = cleaned.replace(/<embed\b[^>]*>/gi, '')
+  cleaned = cleaned.replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
+  cleaned = cleaned.replace(/<svg\b[^>]*>/gi, '')
 
   // Remove inline on* handlers (onerror, onclick, etc.)
   cleaned = cleaned.replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 
-  // Remove javascript: and data: URIs from href and src
-  cleaned = cleaned.replace(/(href|src)\s*=\s*["']\s*(?:javascript|data|vbscript):[^"']*["']/gi, '')
+  // Remove javascript: and data: URIs from href and src (including entity-encoded or obfuscated schemes)
+  cleaned = cleaned.replace(/(href|src)\s*=\s*["']([^"']*)["']/gi, (match, attr, val) => {
+    const normalized = val.replace(/&#x?[0-9a-f]+;?/gi, '').replace(/[\s\x00-\x1f]/g, '').toLowerCase()
+    if (normalized.startsWith('javascript:') || normalized.startsWith('data:') || normalized.startsWith('vbscript:')) {
+      return ''
+    }
+    return match
+  })
+
+  // Ensure checkbox inputs are disabled in task lists
+  cleaned = cleaned.replace(/<input\b([^>]*type=["']checkbox["'][^>]*)>/gi, (match) => {
+    return match.includes('disabled') ? match : match.replace(/>$/, ' disabled="true">')
+  })
 
   return cleaned
 }
