@@ -1,4 +1,4 @@
-﻿import type { Credential } from '@/types/database'
+import type { Credential } from '@/types/database'
 
 export type CredentialCategory =
   | 'login'
@@ -623,4 +623,90 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
   }
 
   return results
+}
+
+// ---------------------------------------------------------------------------
+// 6. Zaman Kilitli Kasa Sıfırlama (Time-locked Emergency Reset)
+// ---------------------------------------------------------------------------
+
+export interface VaultResetRequest {
+  requested_at: string       // ISO Tarih
+  target_wiping_at: string   // ISO Tarih (Karantina bitişi, örn: 24 saat sonra)
+  is_active: boolean
+}
+
+export const STORAGE_KEY_RESET = 'pusula_vault_reset_request'
+
+export function getPendingResetRequest(): VaultResetRequest | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_RESET)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as VaultResetRequest
+    return parsed.is_active ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function requestVaultReset(hours = 24): VaultResetRequest {
+  const now = new Date()
+  const target = new Date(now.getTime() + hours * 60 * 60 * 1000)
+  const req: VaultResetRequest = {
+    requested_at: now.toISOString(),
+    target_wiping_at: target.toISOString(),
+    is_active: true,
+  }
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_RESET, JSON.stringify(req))
+    window.dispatchEvent(new CustomEvent('pusula:vault-reset-changed'))
+  }
+  return req
+}
+
+export function cancelVaultReset(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(STORAGE_KEY_RESET)
+    window.dispatchEvent(new CustomEvent('pusula:vault-reset-changed'))
+  }
+}
+
+export function executeVaultWipe(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(STORAGE_KEY_CREDENTIALS)
+    localStorage.removeItem(STORAGE_KEY_CANARY)
+    localStorage.removeItem(STORAGE_KEY_RESET)
+    window.dispatchEvent(new CustomEvent('pusula:vault-reset-changed'))
+  }
+}
+
+export function formatRemainingTime(targetIso: string): {
+  formatted: string
+  isExpired: boolean
+  hours: number
+  minutes: number
+  seconds: number
+} {
+  const diffMs = new Date(targetIso).getTime() - Date.now()
+  if (diffMs <= 0) {
+    return {
+      formatted: 'Süre Doldu (Kasa Sıfırlanabilir)',
+      isExpired: true,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+    }
+  }
+
+  const hours = Math.floor(diffMs / (1000 * 60 * 60))
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+  const seconds = Math.floor((diffMs % (1000 * 60)) / 1000)
+
+  return {
+    formatted: `${hours} sa ${minutes} dk ${seconds} sn`,
+    isExpired: false,
+    hours,
+    minutes,
+    seconds,
+  }
 }

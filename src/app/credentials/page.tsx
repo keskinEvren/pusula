@@ -56,6 +56,12 @@ import {
   loadLocalCredentials,
   saveLocalCredentials,
   createSampleCredentials,
+  type VaultResetRequest,
+  getPendingResetRequest,
+  requestVaultReset,
+  cancelVaultReset,
+  executeVaultWipe,
+  formatRemainingTime,
 } from '@/lib/credentials-engine'
 
 // 15 Dakika (900 saniye) Hareketsizlik Otomatik Kilit Süresi
@@ -72,6 +78,13 @@ export default function CredentialsPage() {
   const [masterKey, setMasterKey] = useState<CryptoKey | null>(null)
   const [canary, setCanary] = useState<VaultCanary | null>(null)
   const [isSetupMode, setIsSetupMode] = useState(false)
+
+  // Acil Durum Sıfırlama (Time-locked Reset) State
+  const [resetRequest, setResetRequest] = useState<VaultResetRequest | null>(null)
+  const [remainingDisplay, setRemainingDisplay] = useState('')
+  const [isResetExpired, setIsResetExpired] = useState(false)
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false)
+  const [resetConfirmationText, setResetConfirmationText] = useState('')
 
   // Kilit Açma / Kurulum Formu State
   const [passwordInput, setPasswordInput] = useState('')
@@ -152,6 +165,68 @@ export default function CredentialsPage() {
     }
     setIsLoading(false)
   }, [])
+
+  // Acil Durum Sıfırlama Karantinası Sayacı
+  useEffect(() => {
+    const checkReset = () => {
+      const pending = getPendingResetRequest()
+      setResetRequest(pending)
+      if (pending) {
+        const rem = formatRemainingTime(pending.target_wiping_at)
+        setRemainingDisplay(rem.formatted)
+        setIsResetExpired(rem.isExpired)
+      }
+    }
+    checkReset()
+    const interval = setInterval(checkReset, 1000)
+    window.addEventListener('pusula:vault-reset-changed', checkReset)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('pusula:vault-reset-changed', checkReset)
+    }
+  }, [])
+
+  const handleStartResetCountdown = () => {
+    if (resetConfirmationText.trim().toUpperCase() !== 'SIFIRLA') {
+      toast.error('Lütfen onaylamak için kutucuğa SIFIRLA yazın.')
+      return
+    }
+    const req = requestVaultReset(24)
+    setResetRequest(req)
+    setIsForgotModalOpen(false)
+    setResetConfirmationText('')
+    toast.info('24 saatlik acil durum kasa sıfırlama karantinası başlatıldı.')
+  }
+
+  const handleCancelReset = () => {
+    cancelVaultReset()
+    setResetRequest(null)
+    toast.success('Kasa sıfırlama karantinası iptal edildi! Kasanız güvende.')
+  }
+
+  const handleExecuteWipe = async () => {
+    executeVaultWipe()
+    setResetRequest(null)
+    setCredentials([])
+    setDecryptedCache({})
+    setMasterKey(null)
+    setCanary(null)
+    setIsUnlocked(false)
+    setIsSetupMode(true)
+
+    // Supabase temizliği
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('credentials').delete().eq('user_id', user.id)
+      }
+    } catch (err) {
+      console.warn('Bulut temizleme hatası:', err)
+    }
+
+    toast.success('Eski kasa tamamen temizlendi. Yeni bir ana parola belirleyebilirsiniz.')
+  }
 
   // Hareketsizlik Zamanlayıcısını Sıfırla
   const resetInactivityTimer = useCallback(() => {
@@ -833,51 +908,112 @@ export default function CredentialsPage() {
               </Button>
             </form>
           ) : (
-            <form onSubmit={handleUnlock} className="space-y-4">
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-semibold text-foreground">Ana Kasa Parolası</label>
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                    AES-GCM 256
-                  </span>
-                </div>
-                <Input
-                  type="password"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="Kasa parolanızı girin..."
-                  autoFocus
-                  required
-                />
-              </div>
+            <div className="space-y-4">
+              {/* Aktif Sıfırlama Karantinası Kartı */}
+              {resetRequest && resetRequest.is_active && (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-300 space-y-3 animate-in fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0 mt-0.5 animate-pulse" />
+                    <div className="space-y-1">
+                      <div className="font-bold text-xs flex items-center justify-between gap-2">
+                        <span>Kasa Sıfırlama Karantinasında!</span>
+                      </div>
+                      <div className="text-[11px] font-mono font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-1 rounded">
+                        Kalan Süre: {remainingDisplay}
+                      </div>
+                      <p className="text-[11px] leading-snug text-muted-foreground pt-1">
+                        Süre dolduğunda eski çözülemeyen veriler silinecektir. Parolanızı hatırladıysanız veya bu işlemi siz başlatmadıysanız hemen iptal edebilirsiniz.
+                      </p>
+                    </div>
+                  </div>
 
-              {unlockError && (
-                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium flex items-center gap-2 animate-in fade-in">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{unlockError}</span>
+                  <div className="flex items-center gap-2 pt-1 border-t border-rose-500/20">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelReset}
+                      className="w-full text-xs h-8 border-rose-500/30 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-semibold"
+                    >
+                      Sıfırlama Talebini İptal Et
+                    </Button>
+
+                    {isResetExpired && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleExecuteWipe}
+                        className="w-full text-xs h-8 font-semibold"
+                      >
+                        Kasayı Şimdi Sıfırla
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
 
-              <Button
-                type="submit"
-                variant="default"
-                className="w-full py-2.5 font-semibold"
-                disabled={isSubmittingAuth}
-              >
-                {isSubmittingAuth ? (
-                  <span className="flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Çözülüyor...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <Unlock className="w-4 h-4" />
-                    Kasayı Aç
-                  </span>
+              <form onSubmit={handleUnlock} className="space-y-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-semibold text-foreground">Ana Kasa Parolası</label>
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                      AES-GCM 256
+                    </span>
+                  </div>
+                  <Input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="Kasa parolanızı girin..."
+                    autoFocus
+                    required
+                  />
+                </div>
+
+                {unlockError && (
+                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium flex items-center gap-2 animate-in fade-in">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{unlockError}</span>
+                  </div>
                 )}
-              </Button>
-            </form>
+
+                <Button
+                  type="submit"
+                  variant="default"
+                  className="w-full py-2.5 font-semibold"
+                  disabled={isSubmittingAuth}
+                >
+                  {isSubmittingAuth ? (
+                    <span className="flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Çözülüyor...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Unlock className="w-4 h-4" />
+                      Kasayı Aç
+                    </span>
+                  )}
+                </Button>
+
+                {!resetRequest && (
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetConfirmationText('')
+                        setIsForgotModalOpen(true)
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+                    >
+                      Ana parolanızı mı unuttunuz?
+                    </button>
+                  </div>
+                )}
+              </form>
+            </div>
           )}
         </div>
       </div>
@@ -1818,6 +1954,67 @@ export default function CredentialsPage() {
         }}
         onClose={() => setDeleteConfirmId(null)}
       />
+
+      {/* 8. Ana Parolamı Unuttum / Kasa Sıfırlama Modalı */}
+      <Modal
+        isOpen={isForgotModalOpen}
+        onClose={() => setIsForgotModalOpen(false)}
+        title="Ana Parolamı Unuttum (Acil Durum Kasa Sıfırlama)"
+        description="Sıfır-bilgi (Zero-Knowledge) AES-GCM mimarisi nedeniyle unutulan ana parolayı sunucu üzerinden kurtarma veya eski verileri çözme imkânı matematiksel olarak yoktur."
+        size="md"
+      >
+        <div className="space-y-4 pt-1 text-xs">
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 space-y-2 leading-relaxed">
+            <p className="font-bold flex items-center gap-1.5 text-xs text-foreground">
+              <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+              24 Saatlik Güvenlik Karantinası Nasıl Çalışır?
+            </p>
+            <p>
+              Bilgisayarınızın veya hesabınızın başkaları tarafından anında sıfırlanmasını (sabotajı) önlemek amacıyla, sıfırlama işlemi <strong>24 saatlik bir bekleme süresine</strong> alınır.
+            </p>
+            <p>
+              Bu süre boyunca <strong>ana dashboard'da</strong> ve bu ekranda canlı bir geri sayım sayacı çalışır. Parolanızı hatırlarsanız veya bu işlemi siz başlatmadıysanız dilediğiniz an tek tıkla iptal edebilirsiniz.
+            </p>
+            <p className="font-semibold text-rose-600 dark:text-rose-400">
+              ⚠️ 24 saat tamamlandığında eski çözülemeyen şifreli veriler kalıcı olarak silinecek ve yeni bir ana parola belirleyebileceksiniz.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-foreground">
+              Sıfırlama karantinasını başlatmak için lütfen kutucuğa <strong>SIFIRLA</strong> yazın:
+            </label>
+            <Input
+              value={resetConfirmationText}
+              onChange={(e) => setResetConfirmationText(e.target.value)}
+              placeholder="SIFIRLA"
+              className="font-mono text-sm tracking-widest uppercase"
+              autoFocus
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsForgotModalOpen(false)}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={resetConfirmationText.trim() !== 'SIFIRLA'}
+              onClick={handleStartResetCountdown}
+              className="font-semibold"
+            >
+              24 Saatlik Geri Sayımı Başlat
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
