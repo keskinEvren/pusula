@@ -766,6 +766,57 @@ export interface Database {
         }
         Relationships: []
       }
+      agenda_items: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          plan_date: string
+          plan_time: string | null
+          project_id: string | null
+          status: 'planned' | 'in_progress' | 'completed' | 'missed' | 'cancelled'
+          duration_seconds: number
+          timer_mode: 'stopwatch' | 'pomodoro'
+          pomodoro_target_minutes: number | null
+          notes: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          plan_date?: string
+          plan_time?: string | null
+          project_id?: string | null
+          status?: 'planned' | 'in_progress' | 'completed' | 'missed' | 'cancelled'
+          duration_seconds?: number
+          timer_mode?: 'stopwatch' | 'pomodoro'
+          pomodoro_target_minutes?: number | null
+          notes?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          plan_date?: string
+          plan_time?: string | null
+          project_id?: string | null
+          status?: 'planned' | 'in_progress' | 'completed' | 'missed' | 'cancelled'
+          duration_seconds?: number
+          timer_mode?: 'stopwatch' | 'pomodoro'
+          pomodoro_target_minutes?: number | null
+          notes?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -861,6 +912,6 @@ export type Dream = Database['public']['Tables']['dreams']['Row']
 export type Routine = Database['public']['Tables']['routines']['Row']
 export type RoutineLog = Database['public']['Tables']['routine_logs']['Row']
 export type JournalEntry = Database['public']['Tables']['journal_entries']['Row']
-
-
-
+export type AgendaItem = Database['public']['Tables']['agenda_items']['Row']
+export type AgendaItemInsert = Database['public']['Tables']['agenda_items']['Insert']
+export type AgendaItemUpdate = Database['public']['Tables']['agenda_items']['Update']
