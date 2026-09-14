@@ -749,22 +749,22 @@ function AgendaContent() {
       {/* 🎯 HERO: AKTİF ÇALIŞMA SAYACI (TIMER DESK)                                */}
       {/* ========================================================================= */}
       {activeTimer && (
-        <Card className="border-purple-500/40 bg-gradient-to-br from-purple-950/30 via-card to-card shadow-lg shadow-purple-950/20 overflow-hidden relative">
-          <div className="absolute -right-12 -top-12 h-40 w-40 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+        <Card className="border-primary/25 bg-gradient-to-br from-primary/10 via-card to-card shadow-lg shadow-primary/5 overflow-hidden relative">
+          <div className="absolute -right-12 -top-12 h-40 w-40 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge
-                    variant="purple"
+                    variant="primary"
                     className="text-[11px] px-2 py-0.5 flex items-center gap-1.5"
                   >
-                    <span className={`h-2 w-2 rounded-full ${isRunning ? 'bg-purple-400 animate-ping' : 'bg-amber-400'}`} />
+                    <span className={`h-2 w-2 rounded-full ${isRunning ? 'bg-primary animate-ping' : 'bg-amber-400'}`} />
                     <span>{isRunning ? 'Odak Seansı Aktif' : 'Sayaç Duraklatıldı'}</span>
                   </Badge>
 
                   {activeTimer.projectName && (
-                    <Badge variant="outline" className="text-[11px] border-purple-500/30 text-purple-300">
+                    <Badge variant="outline" className="text-[11px] border-primary/25 text-primary">
                       🚀 {activeTimer.projectName}
                     </Badge>
                   )}
@@ -776,7 +776,7 @@ function AgendaContent() {
                       onClick={() => setTimerMode('stopwatch')}
                       className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
                         timerMode === 'stopwatch'
-                          ? 'bg-purple-600 text-white shadow-xs'
+                          ? 'bg-primary text-primary-foreground shadow-xs'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
@@ -787,7 +787,7 @@ function AgendaContent() {
                       onClick={() => setTimerMode('pomodoro', 25)}
                       className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
                         timerMode === 'pomodoro' && pomodoroTargetMinutes === 25
-                          ? 'bg-purple-600 text-white shadow-xs'
+                          ? 'bg-primary text-primary-foreground shadow-xs'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
@@ -798,7 +798,7 @@ function AgendaContent() {
                       onClick={() => setTimerMode('pomodoro', 50)}
                       className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
                         timerMode === 'pomodoro' && pomodoroTargetMinutes === 50
-                          ? 'bg-purple-600 text-white shadow-xs'
+                          ? 'bg-primary text-primary-foreground shadow-xs'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
@@ -879,7 +879,7 @@ function AgendaContent() {
             onClick={() => setViewMode('daily')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               viewMode === 'daily'
-                ? 'bg-purple-600 text-white shadow-xs'
+                ? 'bg-primary text-primary-foreground shadow-xs'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }`}
           >
@@ -888,7 +888,7 @@ function AgendaContent() {
             {dayItems.length > 0 && (
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  viewMode === 'daily' ? 'bg-purple-800 text-white' : 'bg-muted text-muted-foreground'
+                  viewMode === 'daily' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {dayItems.length}
@@ -907,7 +907,7 @@ function AgendaContent() {
             }}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               viewMode === 'calendar'
-                ? 'bg-purple-600 text-white shadow-xs'
+                ? 'bg-primary text-primary-foreground shadow-xs'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }`}
           >
@@ -916,7 +916,7 @@ function AgendaContent() {
             {items.length > 0 && (
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  viewMode === 'calendar' ? 'bg-purple-800 text-white' : 'bg-muted text-muted-foreground'
+                  viewMode === 'calendar' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
                 }`}
               >
                 {items.length}
@@ -929,7 +929,7 @@ function AgendaContent() {
           {viewMode === 'daily' ? (
             <div className="flex items-center gap-2">
               <span>Seçili Gün:</span>
-              <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300 font-mono">
+              <Badge variant="outline" className="text-xs border-primary/25 text-primary font-mono">
                 {selectedDate}
               </Badge>
             </div>
@@ -939,7 +939,7 @@ function AgendaContent() {
               <button
                 type="button"
                 onClick={() => setViewMode('daily')}
-                className="font-mono text-purple-400 hover:underline flex items-center gap-1 font-semibold"
+                className="font-mono text-primary hover:underline flex items-center gap-1 font-semibold"
               >
                 {selectedDate} Tezgâhına Dön <ExternalLink className="h-3 w-3" />
               </button>
@@ -1008,8 +1008,8 @@ function AgendaContent() {
                 )}
 
                 {monthStats.totalDurationSeconds > 0 && (
-                  <div className="flex items-center gap-1.5 bg-purple-500/10 border border-purple-500/30 text-purple-300 px-2.5 py-1 rounded-lg font-mono">
-                    <Clock className="h-3 w-3 text-purple-400" />
+                  <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/25 text-primary px-2.5 py-1 rounded-lg font-mono">
+                    <Clock className="h-3 w-3 text-primary" />
                     <span>{formatMinutesHours(monthStats.totalDurationSeconds)}</span>
                   </div>
                 )}
@@ -1068,7 +1068,7 @@ function AgendaContent() {
                     className={`group relative flex flex-col justify-between rounded-xl border p-1.5 sm:p-2.5 transition-all cursor-pointer min-h-[95px] sm:min-h-[115px] select-none ${cellTheme} ${
                       !cell.isCurrentMonth ? 'opacity-35 hover:opacity-80' : ''
                     } ${isToday ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''} ${
-                      isSelected ? 'shadow-md shadow-purple-950/40 border-purple-500 ring-1 ring-purple-500' : ''
+                      isSelected ? 'shadow-md shadow-primary/20 border-primary ring-1 ring-primary' : ''
                     }`}
                     title={`${formatDisplayDate(cell.dateStr)} — Detaylar için tıkla`}
                   >
@@ -1140,17 +1140,17 @@ function AgendaContent() {
                     {/* Bottom Row: Time and Quick Action hint */}
                     <div className="flex items-center justify-between text-[9px] sm:text-[10px] text-muted-foreground pt-1 border-t border-border/30 mt-auto">
                       {cell.totalDurationSeconds > 0 ? (
-                        <span className="font-mono text-purple-300 flex items-center gap-0.5">
-                          <Clock className="h-2.5 w-2.5 text-purple-400 shrink-0" />
+                        <span className="font-mono text-primary flex items-center gap-0.5">
+                          <Clock className="h-2.5 w-2.5 text-primary shrink-0" />
                           {formatMinutesHours(cell.totalDurationSeconds)}
                         </span>
                       ) : (
-                        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-purple-400 flex items-center gap-0.5">
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-primary flex items-center gap-0.5">
                           Aç <ExternalLink className="h-2.5 w-2.5" />
                         </span>
                       )}
 
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity font-sans text-purple-400 text-[10px] hidden sm:inline">
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity font-sans text-primary text-[10px] hidden sm:inline">
                         Tezgâha Git →
                       </span>
                     </div>
@@ -1180,7 +1180,7 @@ function AgendaContent() {
               </div>
 
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
-                <Sparkles className="h-3 w-3 text-purple-400 shrink-0" />
+                <Sparkles className="h-3 w-3 text-primary shrink-0" />
                 <span>Herhangi bir güne tıklayarak o günün tezgâhına anında geçebilirsiniz.</span>
               </div>
             </div>
@@ -1274,7 +1274,7 @@ function AgendaContent() {
                   setCalendarMonth(m - 1)
                   setViewMode('calendar')
                 }}
-                className="h-7 px-2.5 text-xs gap-1.5 border-purple-500/30 text-purple-300 hover:bg-purple-500/10"
+                className="h-7 px-2.5 text-xs gap-1.5 border-primary/25 text-primary hover:bg-primary/10"
                 title="Aylık Takvim Görünümünü Aç"
               >
                 <CalendarIcon className="h-3 w-3" />
@@ -1423,7 +1423,7 @@ function AgendaContent() {
                   key={item.id}
                   className={`flex items-center justify-between gap-3 p-3.5 rounded-xl border transition-all ${
                     isItemActive
-                      ? 'border-purple-500/60 bg-purple-500/10 shadow-sm'
+                      ? 'border-primary/50 bg-primary/10 shadow-sm'
                       : isCompleted
                       ? 'border-border/40 bg-card/40 opacity-75'
                       : isPastUncompleted
@@ -1494,7 +1494,7 @@ function AgendaContent() {
                         {prj && (
                           <Link
                             href={`/projects/${prj.slug}`}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-400 hover:underline bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 truncate max-w-[150px]"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline bg-primary/10 px-2 py-0.5 rounded border border-primary/20 truncate max-w-[150px]"
                             title={prj.name}
                           >
                             <span>{prj.name}</span>
@@ -1540,7 +1540,7 @@ function AgendaContent() {
                           size="sm"
                           variant="outline"
                           onClick={() => startTimer(item, prj?.name)}
-                          className="h-8 px-2.5 text-xs font-semibold gap-1 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                          className="h-8 px-2.5 text-xs font-semibold gap-1 border-primary/25 text-primary hover:bg-primary/10"
                           title="Sayacı Başlat"
                         >
                           <Play className="h-3.5 w-3.5 fill-current" />
@@ -1550,7 +1550,7 @@ function AgendaContent() {
                     )}
 
                     {isItemActive && (
-                      <Badge variant="purple" className="text-[10px] px-2 py-0.5 animate-pulse">
+                      <Badge variant="primary" className="text-[10px] px-2 py-0.5 animate-pulse">
                         Çalışılıyor
                       </Badge>
                     )}
@@ -1597,7 +1597,7 @@ function AgendaContent() {
           <Card className="border-border bg-card shadow-xs">
             <CardHeader className="p-4 pb-3">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-purple-400" />
+                <BarChart3 className="h-4 w-4 text-primary" />
                 <span>Bu Haftanın Odak Karnesi</span>
               </CardTitle>
               <CardDescription className="text-xs">
@@ -1645,7 +1645,7 @@ function AgendaContent() {
                           </div>
                           <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                             <div
-                              className="h-full bg-purple-500 rounded-full"
+                              className="h-full bg-primary rounded-full"
                               style={{ width: `${pct}%` }}
                             />
                           </div>
@@ -1779,7 +1779,7 @@ function AgendaContent() {
           <div className="p-3 bg-muted/40 rounded-lg border border-border/40 space-y-1 text-xs">
             <div className="text-muted-foreground">Tamamlanan İş:</div>
             <div className="font-semibold text-foreground text-sm">{activeTimer?.itemTitle}</div>
-            <div className="font-mono text-purple-400 font-bold pt-1">
+            <div className="font-mono text-primary font-bold pt-1">
               Harcanan Süre: {formatMinutesHours(elapsedSeconds)}
             </div>
           </div>

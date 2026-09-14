@@ -48,9 +48,9 @@
     --input: 240 4% 16%;
     --ring: 226 70% 64%;
 
-    /* Proje ve Yatırım Vurgu Aksanları */
-    --accent-project: 270 60% 60%;
-    --accent-investment: 190 70% 50%;
+    /* Kurumsal Birleşik Aksanlar (Nordic Steel Blue Çatısı Altında) */
+    --accent-project: 226 70% 64%;
+    --accent-investment: 226 70% 64%;
 
     --radius: 0.625rem;
   }

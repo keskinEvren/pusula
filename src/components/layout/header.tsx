@@ -179,33 +179,33 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Canlı Sayaç Widget'ı (Aktifse görünür) */}
         {activeTimer && (
-          <div className="flex items-center gap-1.5 bg-purple-500/10 border border-purple-500/30 rounded-lg px-2.5 py-1 text-xs text-foreground shadow-xs">
+          <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/25 rounded-lg px-2.5 py-1 text-xs text-foreground shadow-xs">
             <Link
               href="/agenda"
-              className="flex items-center gap-1.5 font-medium hover:text-purple-400 transition-colors"
+              className="flex items-center gap-1.5 font-medium hover:text-primary transition-colors"
               title="Ajandaya Git"
             >
               <span
                 className={`h-2 w-2 rounded-full shrink-0 ${
-                  isRunning ? 'bg-purple-500 animate-pulse' : 'bg-amber-400'
+                  isRunning ? 'bg-primary animate-pulse' : 'bg-amber-400'
                 }`}
               />
               <span className="font-semibold text-[11px] truncate max-w-[80px] sm:max-w-[130px]">
                 {activeTimer.projectName ? activeTimer.projectName : activeTimer.itemTitle}
               </span>
-              <span className="font-mono font-bold text-xs text-purple-300">
+              <span className="font-mono font-bold text-xs text-primary">
                 {timerMode === 'pomodoro'
                   ? formatTime(remainingSeconds)
                   : formatTime(elapsedSeconds)}
               </span>
             </Link>
 
-            <div className="flex items-center gap-0.5 pl-1.5 border-l border-purple-500/30">
+            <div className="flex items-center gap-0.5 pl-1.5 border-l border-primary/25">
               {isRunning ? (
                 <button
                   type="button"
                   onClick={pauseTimer}
-                  className="p-1 rounded hover:bg-purple-500/20 text-muted-foreground hover:text-foreground transition-colors"
+                  className="p-1 rounded hover:bg-primary/20 text-muted-foreground hover:text-foreground transition-colors"
                   title="Duraklat"
                 >
                   <Pause className="h-3 w-3" />
@@ -214,7 +214,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
                 <button
                   type="button"
                   onClick={resumeTimer}
-                  className="p-1 rounded hover:bg-purple-500/20 text-emerald-400 hover:text-emerald-300 transition-colors"
+                  className="p-1 rounded hover:bg-primary/20 text-emerald-400 hover:text-emerald-300 transition-colors"
                   title="Devam Et"
                 >
                   <Play className="h-3 w-3" />
@@ -223,7 +223,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               <button
                 type="button"
                 onClick={() => completeTimer()}
-                className="p-1 rounded hover:bg-purple-500/20 text-muted-foreground hover:text-emerald-400 transition-colors"
+                className="p-1 rounded hover:bg-primary/20 text-muted-foreground hover:text-emerald-400 transition-colors"
                 title="Tamamla"
               >
                 <Check className="h-3 w-3" />

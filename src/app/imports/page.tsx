@@ -305,15 +305,15 @@ export default function ImportsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border bg-card shadow-sm border-l-4 border-l-purple-500">
+        <Card className="border-border bg-card shadow-sm border-l-4 border-l-primary">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Aktif Ekstre Hacmi
             </CardTitle>
-            <CreditCard className="h-4 w-4 text-purple-400" />
+            <CreditCard className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono text-purple-400">
+            <div className="text-2xl font-bold font-mono text-primary">
               {formatCurrency(totalActiveAmount)}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">

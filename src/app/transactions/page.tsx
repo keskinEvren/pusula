@@ -966,7 +966,7 @@ function TransactionsContent() {
                     <Badge
                       variant={
                         tx.analysis_group === 'İş'
-                          ? 'purple'
+                          ? 'primary'
                           : tx.analysis_group === 'Finansman'
                           ? 'destructive'
                           : (tx.analysis_group as string) === 'Gelir'
@@ -1004,7 +1004,7 @@ function TransactionsContent() {
                       <button
                         type="button"
                         onClick={() => handleOpenInvestmentLinkModal(tx)}
-                        className="text-cyan-400 hover:underline font-medium min-h-[32px] inline-flex items-center"
+                        className="text-primary hover:underline font-medium min-h-[32px] inline-flex items-center"
                       >
                         Yatırıma Aktar
                       </button>
@@ -1019,7 +1019,7 @@ function TransactionsContent() {
                         tx.type === 'Gelir' || tx.type === 'Tahsilat'
                           ? 'text-success'
                           : tx.type === 'İade'
-                          ? 'text-purple-400'
+                          ? 'text-primary font-semibold'
                           : tx.analysis_group === 'Hariç'
                           ? 'text-muted-foreground'
                           : 'text-foreground'
@@ -1125,7 +1125,7 @@ function TransactionsContent() {
                             : tx.type === 'Kart Ödemesi' || tx.type === 'Transfer'
                             ? 'outline'
                             : tx.type === 'İade'
-                            ? 'purple'
+                            ? 'primary'
                             : 'default'
                         }
                         className="text-[11px]"
@@ -1176,7 +1176,7 @@ function TransactionsContent() {
                         if (linkedInv || investmentId) {
                           return (
                             <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary border border-primary/25 font-mono">
                                 📈 Portföy: {linkedInv ? linkedInv.name : 'Yatırım'}
                               </span>
                               <button
@@ -1222,7 +1222,7 @@ function TransactionsContent() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenInvestmentLinkModal(tx)}
-                                className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold hover:underline transition-colors"
+                                className="inline-flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 font-semibold hover:underline transition-colors"
                                 title="Bu transferi/harcamayı portföydeki bir yatırıma bağla ve tüketim harcamasından muaf tut"
                               >
                                 Yatırıma Aktar →
@@ -1248,7 +1248,7 @@ function TransactionsContent() {
                       <Badge
                         variant={
                           tx.analysis_group === 'İş'
-                            ? 'purple'
+                            ? 'primary'
                             : tx.analysis_group === 'Finansman'
                             ? 'destructive'
                             : (tx.analysis_group as string) === 'Gelir'
@@ -1269,7 +1269,7 @@ function TransactionsContent() {
                           tx.type === 'Gelir' || tx.type === 'Tahsilat'
                             ? 'text-success'
                             : tx.type === 'İade'
-                            ? 'text-purple-400'
+                            ? 'text-primary font-semibold'
                             : tx.analysis_group === 'Hariç'
                             ? 'text-muted-foreground'
                             : 'text-foreground'
@@ -1672,7 +1672,7 @@ function TransactionsContent() {
               </div>
               <div className="flex justify-between text-sm pt-2 border-t border-border/60">
                 <span className="font-semibold text-muted-foreground font-sans">Aktarılan Tutar:</span>
-                <span className="font-bold text-cyan-400 text-base font-mono">
+                <span className="font-bold text-primary text-base font-mono">
                   {formatCurrency(selectedTxForInvLink.amount)}
                 </span>
               </div>
@@ -1770,9 +1770,9 @@ function TransactionsContent() {
                       </div>
 
                       {dcaPreview && (
-                        <div className="rounded bg-cyan-500/10 border border-cyan-500/20 p-2 text-[11px] flex justify-between items-center font-mono">
+                        <div className="rounded bg-primary/10 border border-primary/25 p-2 text-[11px] flex justify-between items-center font-mono">
                           <span className="text-muted-foreground font-sans">Yeni Durum:</span>
-                          <span className="text-cyan-400 font-bold">
+                          <span className="text-primary font-bold">
                             {dcaPreview.newQty.toLocaleString('tr-TR')} Adet @ {formatCurrency(dcaPreview.newCost)} Ortalama
                           </span>
                         </div>
@@ -1791,7 +1791,7 @@ function TransactionsContent() {
                 type="button"
                 disabled={invLinking || !targetInvestmentId || investments.length === 0}
                 onClick={handleConfirmInvestmentLink}
-                className="font-semibold bg-cyan-600 hover:bg-cyan-500 text-white"
+                className="font-semibold bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {invLinking ? 'Aktarılıyor...' : 'Yatırıma Aktar & Bütçeden Muaf Tut'}
               </Button>
