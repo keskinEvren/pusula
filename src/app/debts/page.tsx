@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { formatCurrency, formatDate, formatLocalDateInput, cn } from '@/lib/utils'
 import { financialBridge } from '@/lib/financial-bridge'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -136,7 +136,7 @@ function DebtsContent() {
       const [{ data: dData }, { data: aData }, { data: tData }] = await Promise.all([
         supabase.from('debts').select('*').order('created_at', { ascending: true }),
         supabase.from('accounts').select('*'),
-        supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
       ])
 
       if (dData) setDebts(sortDebtsChronological(dData))
@@ -200,7 +200,7 @@ function DebtsContent() {
             userId: user.id,
             amount: amt,
             accountId: targetAccountId,
-            date: new Date().toISOString().split('T')[0],
+            date: formatLocalDateInput(),
             merchant: 'Tahsilat: ' + selectedDebt.person_or_entity,
             description: (selectedDebt.description || selectedDebt.person_or_entity) + ' Tahsilatı',
           })
@@ -209,7 +209,7 @@ function DebtsContent() {
             userId: user.id,
             amount: amt,
             accountId: targetAccountId,
-            date: new Date().toISOString().split('T')[0],
+            date: formatLocalDateInput(),
             merchant: 'Ödeme: ' + selectedDebt.person_or_entity,
             description: (selectedDebt.description || selectedDebt.person_or_entity) + ' Borç Ödemesi',
             analysisGroup: 'Hariç',

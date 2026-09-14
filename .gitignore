@@ -37,3 +37,6 @@ next-env.d.ts
 # supabase temp
 supabase/.temp/
 
+# local AI/chat session exports may contain credentials and personal data
+/docs/chat-history/
+

@@ -35,6 +35,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
+import { formatLocalDateInput } from '@/lib/utils'
 import type { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
 import {
   JournalMood,
@@ -54,7 +55,7 @@ const STORAGE_KEY_JOURNAL = 'pusula_local_journal_entries'
 function JournalPageContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = formatLocalDateInput()
 
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
@@ -135,14 +136,14 @@ function JournalPageContent() {
           if (lR) setRoutines(JSON.parse(lR))
         }
 
-        const { data: rlData } = await supabase.from('routine_logs').select('*')
+        const { data: rlData } = await supabase.from('routine_logs').select('*').limit(1000)
         if (rlData) setRoutineLogs(rlData as RoutineLog[])
         else {
           const lRl = localStorage.getItem('pusula_local_routine_logs')
           if (lRl) setRoutineLogs(JSON.parse(lRl))
         }
 
-        const { data: txData } = await supabase.from('transactions').select('*')
+        const { data: txData } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(1000)
         if (txData) setTransactions(txData as Transaction[])
       } catch (err) {
         console.error('Journal data load error:', err)
