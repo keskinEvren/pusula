@@ -14,6 +14,7 @@ import type {
   RoutineLog,
   JournalEntry,
   StatementImport,
+  AgendaItem,
 } from '@/types/database'
 import { z } from 'zod'
 
@@ -28,6 +29,7 @@ export interface PusulaVaultData {
   investments: Investment[]
   projects: Project[]
   ideas: Idea[]
+  agenda_items: AgendaItem[]
   dreams: Dream[]
   routines: Routine[]
   routine_logs: RoutineLog[]
@@ -60,6 +62,7 @@ export const EMPTY_VAULT_DATA: PusulaVaultData = {
   investments: [],
   projects: [],
   ideas: [],
+  agenda_items: [],
   dreams: [],
   routines: [],
   routine_logs: [],
@@ -78,6 +81,7 @@ export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; 
   merchant_mappings: { label: 'Eşleştirme Kuralları', icon: '', category: 'Finans' },
   projects: { label: 'Projeler', icon: '', category: 'Çalışma' },
   ideas: { label: 'Fikirler', icon: '', category: 'Çalışma' },
+  agenda_items: { label: 'Ajanda & Odak Masası', icon: '', category: 'Çalışma' },
   dreams: { label: 'Hedefler & Vizyon', icon: '', category: 'Kişisel' },
   routines: { label: 'Rutinler & Alışkanlıklar', icon: '', category: 'Kişisel' },
   routine_logs: { label: 'Rutin Kayıtları', icon: '', category: 'Kişisel' },
@@ -101,6 +105,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     investments: data.investments || [],
     projects: data.projects || [],
     ideas: data.ideas || [],
+    agenda_items: data.agenda_items || [],
     dreams: data.dreams || [],
     routines: data.routines || [],
     routine_logs: data.routine_logs || [],
@@ -119,6 +124,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     investments: completeData.investments.length,
     projects: completeData.projects.length,
     ideas: completeData.ideas.length,
+    agenda_items: completeData.agenda_items.length,
     dreams: completeData.dreams.length,
     routines: completeData.routines.length,
     routine_logs: completeData.routine_logs.length,
@@ -197,6 +203,7 @@ export function validateVaultPayload(rawJsonOrObject: unknown): ValidationResult
       investments: Array.isArray(payload.data.investments) ? payload.data.investments : [],
       projects: Array.isArray(payload.data.projects) ? payload.data.projects : [],
       ideas: Array.isArray(payload.data.ideas) ? payload.data.ideas : [],
+      agenda_items: Array.isArray(payload.data.agenda_items) ? payload.data.agenda_items : [],
       dreams: Array.isArray(payload.data.dreams) ? payload.data.dreams : [],
       routines: Array.isArray(payload.data.routines) ? payload.data.routines : [],
       routine_logs: Array.isArray(payload.data.routine_logs) ? payload.data.routine_logs : [],

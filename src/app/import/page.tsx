@@ -628,7 +628,7 @@ export default function ImportPage() {
               </Link>
               <Link href="/cards">
                 <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-success/30 hover:bg-success/20 text-foreground">
-                  <CardIcon className="h-3 w-3 text-purple-400" />
+                  <CardIcon className="h-3 w-3 text-primary" />
                   Kart Borçlarını Gör
                 </Button>
               </Link>
@@ -679,7 +679,7 @@ export default function ImportPage() {
               className={`flex h-16 w-16 items-center justify-center rounded-2xl mb-4 shadow-inner ${
                 activeMode === 'credit_card'
                   ? 'bg-primary/10 text-primary'
-                  : 'bg-purple-500/10 text-purple-400'
+                  : 'bg-primary/10 text-primary'
               }`}
             >
               {activeMode === 'credit_card' ? (
@@ -703,9 +703,7 @@ export default function ImportPage() {
             <div className="mt-6 flex items-center gap-3">
               <Button
                 onClick={() => fileInputRef.current?.click()}
-                className={`text-xs gap-2 ${
-                  activeMode === 'credit_card' ? 'bg-primary' : 'bg-purple-600 hover:bg-purple-700'
-                }`}
+                className="text-xs gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 <UploadCloud className="h-4 w-4" />
                 Dosyaları Seçin (Çoklu Seçim)
@@ -744,7 +742,7 @@ export default function ImportPage() {
                   {readyFiles.length} Hazır
                 </Badge>
                 {distinctDetectedCards.length > 0 && (
-                  <Badge variant="outline" className="text-xs border-purple-500/40 text-purple-400">
+                  <Badge variant="outline" className="text-xs border-primary/25 text-primary">
                     {distinctDetectedCards.length} Kart: {distinctDetectedCards.join(', ')}
                   </Badge>
                 )}
@@ -1068,7 +1066,7 @@ export default function ImportPage() {
                           </Button>
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
                           <span>Bu dosyanın hareketlerini satır bazında düzenleyebilirsiniz.</span>
                         </div>
                       </div>

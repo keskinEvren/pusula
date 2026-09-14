@@ -343,7 +343,7 @@ export default function SettingsPage() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-400" />
+              <Sparkles className="h-5 w-5 text-primary" />
               Otomatik İşyeri Eşleştirme Kuralları ({mappings.length})
             </CardTitle>
             <CardDescription>
@@ -383,7 +383,7 @@ export default function SettingsPage() {
                         <Badge
                           variant={
                             m.default_group === 'İş'
-                              ? 'purple'
+                              ? 'primary'
                               : m.default_group === 'Finansman'
                               ? 'destructive'
                               : m.default_group === 'Hariç'
@@ -397,7 +397,7 @@ export default function SettingsPage() {
                       </td>
                       <td className="p-3 font-sans">
                         {project ? (
-                          <Badge variant="purple" className="text-[11px] gap-1">
+                          <Badge variant="outline" className="text-[11px] gap-1 border-primary/25 text-primary bg-primary/10">
                             <FolderKanban className="h-3 w-3" />
                             {project.name}
                           </Badge>
@@ -458,7 +458,7 @@ export default function SettingsPage() {
                     <Badge
                       variant={
                         m.default_group === 'İş'
-                          ? 'purple'
+                          ? 'primary'
                           : m.default_group === 'Finansman'
                           ? 'destructive'
                           : m.default_group === 'Hariç'
@@ -470,7 +470,7 @@ export default function SettingsPage() {
                       {m.default_group}
                     </Badge>
                     {project && (
-                      <Badge variant="purple" className="text-[11px] gap-1">
+                      <Badge variant="outline" className="text-[11px] gap-1 border-primary/25 text-primary bg-primary/10">
                         <FolderKanban className="h-3 w-3" />
                         {project.name}
                       </Badge>

@@ -23,7 +23,12 @@ import {
   Sparkles,
   Orbit,
   BookOpen,
+  CalendarCheck,
+  Play,
+  Pause,
+  Check,
 } from 'lucide-react'
+import { useTimer } from '@/lib/timer-context'
 
 interface HeaderProps {
   onOpenMobileMenu?: () => void
@@ -31,6 +36,7 @@ interface HeaderProps {
 
 const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   '': { category: 'Genel', title: 'Genel Bakış' },
+  agenda: { category: 'Çalışma', title: 'Ajanda' },
   journal: { category: 'Kişisel', title: 'Günlük' },
   dreams: { category: 'Kişisel', title: 'Hedefler' },
   routines: { category: 'Kişisel', title: 'Rutinler' },
@@ -51,6 +57,17 @@ const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
 export function Header({ onOpenMobileMenu }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const {
+    activeTimer,
+    isRunning,
+    elapsedSeconds,
+    remainingSeconds,
+    timerMode,
+    pauseTimer,
+    resumeTimer,
+    completeTimer,
+    formatTime,
+  } = useTimer()
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false)
   const quickAddRef = useRef<HTMLDivElement>(null)
@@ -99,34 +116,29 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
   // Segment analizi ile breadcrumb oluşturma
   const segments = pathname.split('/').filter(Boolean)
-  const rootSegment = segments[0] || ''
-  const routeMeta = ROUTE_LABELS[rootSegment] || { category: 'Sayfa', title: rootSegment }
+  const primarySegment = segments[0] || ''
+  const routeMeta = ROUTE_LABELS[primarySegment] || {
+    category: 'Pusula',
+    title: primarySegment.charAt(0).toUpperCase() + primarySegment.slice(1),
+  }
   const isDeepRoute = segments.length > 1
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border bg-card/85 px-4 sm:px-6 lg:px-8 backdrop-blur-md">
-      {/* Sol: Hamburger Butonu + Dinamik Breadcrumbs */}
-      <div className="flex items-center gap-2.5 sm:gap-3.5">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border bg-card/80 px-4 sm:px-6 backdrop-blur-md">
+      {/* Sol: Hamburger + Breadcrumb */}
+      <div className="flex items-center gap-3">
         <Button
           variant="ghost"
           size="icon"
           onClick={onOpenMobileMenu}
-          className="hidden sm:inline-flex lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
+          className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
           aria-label="Menüyü Aç"
-          aria-haspopup="dialog"
         >
           <Menu className="h-5 w-5" />
         </Button>
 
-        <nav aria-label="Breadcrumbs" className="flex items-center gap-1.5 text-xs">
-          <Link
-            href="/"
-            className="font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:inline"
-          >
-            Pusula
-          </Link>
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 hidden sm:inline" />
-          
+        {/* Dinamik Yol Haritası (Breadcrumb) */}
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs">
           <span className="text-muted-foreground/80 hidden md:inline">
             {routeMeta.category}
           </span>
@@ -163,8 +175,63 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         </Link>
       </div>
 
-      {/* Sağ: Hızlı Ekle + Durum + Kullanıcı */}
+      {/* Sağ: Canlı Sayaç + Hızlı Ekle + Durum + Kullanıcı */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Canlı Sayaç Widget'ı (Aktifse görünür) */}
+        {activeTimer && (
+          <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/25 rounded-lg px-2.5 py-1 text-xs text-foreground shadow-xs">
+            <Link
+              href="/agenda"
+              className="flex items-center gap-1.5 font-medium hover:text-primary transition-colors"
+              title="Ajandaya Git"
+            >
+              <span
+                className={`h-2 w-2 rounded-full shrink-0 ${
+                  isRunning ? 'bg-primary animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              <span className="font-semibold text-[11px] truncate max-w-[80px] sm:max-w-[130px]">
+                {activeTimer.projectName ? activeTimer.projectName : activeTimer.itemTitle}
+              </span>
+              <span className="font-mono font-bold text-xs text-primary">
+                {timerMode === 'pomodoro'
+                  ? formatTime(remainingSeconds)
+                  : formatTime(elapsedSeconds)}
+              </span>
+            </Link>
+
+            <div className="flex items-center gap-0.5 pl-1.5 border-l border-primary/25">
+              {isRunning ? (
+                <button
+                  type="button"
+                  onClick={pauseTimer}
+                  className="p-1 rounded hover:bg-primary/20 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Duraklat"
+                >
+                  <Pause className="h-3 w-3" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={resumeTimer}
+                  className="p-1 rounded hover:bg-primary/20 text-emerald-400 hover:text-emerald-300 transition-colors"
+                  title="Devam Et"
+                >
+                  <Play className="h-3 w-3" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => completeTimer()}
+                className="p-1 rounded hover:bg-primary/20 text-muted-foreground hover:text-emerald-400 transition-colors"
+                title="Tamamla"
+              >
+                <Check className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* + Hızlı Ekle Dropdown */}
         <div className="relative" ref={quickAddRef}>
           <Button
@@ -225,6 +292,14 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
                 <div className="px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                   Çalışma
                 </div>
+                <Link
+                  href="/agenda?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
+                >
+                  <CalendarCheck className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Ajanda Maddesi</span>
+                </Link>
                 <Link
                   href="/projects?new=true"
                   onClick={() => setIsQuickAddOpen(false)}

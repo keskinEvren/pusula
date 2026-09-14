@@ -126,6 +126,7 @@ function VaultPageContent() {
           invs,
           projs,
           ideas,
+          agenda,
           dreams,
           routines,
           rLogs,
@@ -142,6 +143,7 @@ function VaultPageContent() {
           fetchAllRows(supabase, 'investments'),
           fetchAllRows(supabase, 'projects'),
           fetchAllRows(supabase, 'ideas'),
+          fetchAllRows(supabase, 'agenda_items'),
           fetchAllRows(supabase, 'dreams'),
           fetchAllRows(supabase, 'routines'),
           fetchAllRows(supabase, 'routine_logs'),
@@ -159,6 +161,7 @@ function VaultPageContent() {
         if (invs) data.investments = invs
         if (projs) data.projects = projs
         if (ideas) data.ideas = ideas
+        if (agenda) data.agenda_items = agenda
         if (imports) data.statement_imports = imports
 
         // LocalStorage fallback'leri birleştir
@@ -352,6 +355,9 @@ function VaultPageContent() {
           const delIdeas = await supabase.from('ideas').delete().eq('user_id', user.id)
           if (delIdeas.error) throw new Error(`ideas silinirken hata: ${delIdeas.error.message}`)
 
+          const delAgenda = await supabase.from('agenda_items').delete().eq('user_id', user.id)
+          if (delAgenda.error) throw new Error(`agenda_items silinirken hata: ${delAgenda.error.message}`)
+
           const delSubs = await supabase.from('subscriptions').delete().eq('user_id', user.id)
           if (delSubs.error) throw new Error(`subscriptions silinirken hata: ${delSubs.error.message}`)
 
@@ -400,6 +406,7 @@ function VaultPageContent() {
         await upsertInChunks(supabase, 'debts', finalData.debts)
         await upsertInChunks(supabase, 'subscriptions', finalData.subscriptions)
         await upsertInChunks(supabase, 'ideas', finalData.ideas)
+        await upsertInChunks(supabase, 'agenda_items', finalData.agenda_items)
 
         setRestoreProgress('İşlem ve hareket kayıtları geri yükleniyor (Seviye 3)...')
         await upsertInChunks(supabase, 'card_statements', finalData.card_statements)
