@@ -125,7 +125,6 @@ function VaultPageContent() {
           maps,
           invs,
           projs,
-          tasks,
           ideas,
           dreams,
           routines,
@@ -142,7 +141,6 @@ function VaultPageContent() {
           fetchAllRows(supabase, 'merchant_mappings'),
           fetchAllRows(supabase, 'investments'),
           fetchAllRows(supabase, 'projects'),
-          fetchAllRows(supabase, 'project_tasks'),
           fetchAllRows(supabase, 'ideas'),
           fetchAllRows(supabase, 'dreams'),
           fetchAllRows(supabase, 'routines'),
@@ -160,7 +158,6 @@ function VaultPageContent() {
         if (maps) data.merchant_mappings = maps
         if (invs) data.investments = invs
         if (projs) data.projects = projs
-        if (tasks) data.project_tasks = tasks
         if (ideas) data.ideas = ideas
         if (imports) data.statement_imports = imports
 
@@ -352,9 +349,6 @@ function VaultPageContent() {
           const delImports = await supabase.from('statement_imports').delete().eq('user_id', user.id)
           if (delImports.error) throw new Error(`statement_imports silinirken hata: ${delImports.error.message}`)
 
-          const delTasks = await supabase.from('project_tasks').delete().eq('user_id', user.id)
-          if (delTasks.error) throw new Error(`project_tasks silinirken hata: ${delTasks.error.message}`)
-
           const delIdeas = await supabase.from('ideas').delete().eq('user_id', user.id)
           if (delIdeas.error) throw new Error(`ideas silinirken hata: ${delIdeas.error.message}`)
 
@@ -405,7 +399,6 @@ function VaultPageContent() {
         await upsertInChunks(supabase, 'statement_imports', finalData.statement_imports)
         await upsertInChunks(supabase, 'debts', finalData.debts)
         await upsertInChunks(supabase, 'subscriptions', finalData.subscriptions)
-        await upsertInChunks(supabase, 'project_tasks', finalData.project_tasks)
         await upsertInChunks(supabase, 'ideas', finalData.ideas)
 
         setRestoreProgress('İşlem ve hareket kayıtları geri yükleniyor (Seviye 3)...')

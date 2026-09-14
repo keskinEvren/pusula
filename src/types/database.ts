@@ -77,7 +77,8 @@ export interface Database {
           slug: string
           name: string
           description: string | null
-          status: 'Fikir' | 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
+          status: 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
+          project_type: 'saas' | 'workplace' | 'client' | 'internal'
           budget_limit: number | null
           repo_url: string | null
           live_url: string | null
@@ -90,7 +91,8 @@ export interface Database {
           slug: string
           name: string
           description?: string | null
-          status?: 'Fikir' | 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
+          status?: 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
+          project_type?: 'saas' | 'workplace' | 'client' | 'internal'
           budget_limit?: number | null
           repo_url?: string | null
           live_url?: string | null
@@ -103,7 +105,8 @@ export interface Database {
           slug?: string
           name?: string
           description?: string | null
-          status?: 'Fikir' | 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
+          status?: 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
+          project_type?: 'saas' | 'workplace' | 'client' | 'internal'
           budget_limit?: number | null
           repo_url?: string | null
           live_url?: string | null
@@ -451,48 +454,13 @@ export interface Database {
         }
         Relationships: []
       }
-      project_tasks: {
-        Row: {
-          id: string
-          project_id: string
-          user_id: string
-          title: string
-          category: 'Epics' | 'Görev' | 'Bug' | 'Fikir'
-          status: 'Yapılacak' | 'Sürüyor' | 'Tamamlandı'
-          sort_order: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          project_id: string
-          user_id: string
-          title: string
-          category?: 'Epics' | 'Görev' | 'Bug' | 'Fikir'
-          status?: 'Yapılacak' | 'Sürüyor' | 'Tamamlandı'
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          project_id?: string
-          user_id?: string
-          title?: string
-          category?: 'Epics' | 'Görev' | 'Bug' | 'Fikir'
-          status?: 'Yapılacak' | 'Sürüyor' | 'Tamamlandı'
-          sort_order?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
       ideas: {
         Row: {
           id: string
           user_id: string
           title: string
           description: string | null
-          status: 'inbox' | 'maybe' | 'killed' | 'promoted'
+          status: 'inbox' | 'maybe' | 'decided' | 'killed' | 'promoted'
           score: number | null
           tags: string[] | null
           promoted_project_id: string | null
@@ -504,7 +472,7 @@ export interface Database {
           user_id: string
           title: string
           description?: string | null
-          status?: 'inbox' | 'maybe' | 'killed' | 'promoted'
+          status?: 'inbox' | 'maybe' | 'decided' | 'killed' | 'promoted'
           score?: number | null
           tags?: string[] | null
           promoted_project_id?: string | null
@@ -516,7 +484,7 @@ export interface Database {
           user_id?: string
           title?: string
           description?: string | null
-          status?: 'inbox' | 'maybe' | 'killed' | 'promoted'
+          status?: 'inbox' | 'maybe' | 'decided' | 'killed' | 'promoted'
           score?: number | null
           tags?: string[] | null
           promoted_project_id?: string | null
@@ -886,7 +854,6 @@ export type Debt = Database['public']['Tables']['debts']['Row']
 export type Subscription = Database['public']['Tables']['subscriptions']['Row']
 export type StatementImport = Database['public']['Tables']['statement_imports']['Row']
 export type Transaction = Database['public']['Tables']['transactions']['Row']
-export type ProjectTask = Database['public']['Tables']['project_tasks']['Row']
 export type Idea = Database['public']['Tables']['ideas']['Row']
 export type MerchantMapping = Database['public']['Tables']['merchant_mappings']['Row']
 export type Investment = Database['public']['Tables']['investments']['Row']
