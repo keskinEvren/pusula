@@ -132,6 +132,7 @@ function VaultPageContent() {
           rLogs,
           journals,
           imports,
+          credentials,
         ] = await Promise.all([
           fetchAllRows(supabase, 'accounts'),
           fetchAllRows(supabase, 'credit_cards'),
@@ -149,6 +150,7 @@ function VaultPageContent() {
           fetchAllRows(supabase, 'routine_logs'),
           fetchAllRows(supabase, 'journal_entries'),
           fetchAllRows(supabase, 'statement_imports'),
+          fetchAllRows(supabase, 'credentials'),
         ])
 
         if (accs) data.accounts = accs
@@ -165,6 +167,11 @@ function VaultPageContent() {
         if (imports) data.statement_imports = imports
 
         // LocalStorage fallback'leri birleştir
+        if (credentials && credentials.length > 0) data.credentials = credentials
+        else {
+          const lC = localStorage.getItem('pusula_local_credentials')
+          if (lC) try { data.credentials = JSON.parse(lC) } catch {}
+        }
         if (dreams && dreams.length > 0) data.dreams = dreams
         else {
           const lD = localStorage.getItem('pusula_local_dreams')
@@ -332,12 +339,16 @@ function VaultPageContent() {
       localStorage.setItem('pusula_local_routines', JSON.stringify(finalData.routines || []))
       localStorage.setItem('pusula_local_routine_logs', JSON.stringify(finalData.routine_logs || []))
       localStorage.setItem('pusula_local_journal_entries', JSON.stringify(finalData.journal_entries || []))
+      localStorage.setItem('pusula_local_credentials', JSON.stringify(finalData.credentials || []))
 
       // Supabase tablolarına opsiyonel upsert
       if (user) {
         if (restoreMode === 'replace') {
           setRestoreProgress('Mevcut bulut verileri temizleniyor (replace modu)...')
           // Ters FK bağımlılık sırasıyla temizleme
+          const delCreds = await supabase.from('credentials').delete().eq('user_id', user.id)
+          if (delCreds.error) console.warn('credentials cleanup warning:', delCreds.error.message)
+
           // Seviye 3 (Yapraklar):
           const delTxs = await supabase.from('transactions').delete().eq('user_id', user.id)
           if (delTxs.error) throw new Error(`transactions silinirken hata: ${delTxs.error.message}`)
@@ -400,6 +411,7 @@ function VaultPageContent() {
         await upsertInChunks(supabase, 'merchant_mappings', finalData.merchant_mappings)
         await upsertInChunks(supabase, 'journal_entries', finalData.journal_entries)
         await upsertInChunks(supabase, 'routines', finalData.routines)
+        await upsertInChunks(supabase, 'credentials', finalData.credentials)
 
         setRestoreProgress('Bağlantılı kayıtlar geri yükleniyor (Seviye 2)...')
         await upsertInChunks(supabase, 'statement_imports', finalData.statement_imports)

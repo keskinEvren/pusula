@@ -15,6 +15,7 @@ import type {
   JournalEntry,
   StatementImport,
   AgendaItem,
+  Credential,
 } from '@/types/database'
 import { z } from 'zod'
 
@@ -35,6 +36,7 @@ export interface PusulaVaultData {
   routine_logs: RoutineLog[]
   journal_entries: JournalEntry[]
   statement_imports: StatementImport[]
+  credentials: Credential[]
 }
 
 export interface VaultManifest {
@@ -68,6 +70,7 @@ export const EMPTY_VAULT_DATA: PusulaVaultData = {
   routine_logs: [],
   journal_entries: [],
   statement_imports: [],
+  credentials: [],
 }
 
 export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; icon: string; category: string }> = {
@@ -86,6 +89,7 @@ export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; 
   routines: { label: 'Rutinler & Alışkanlıklar', icon: '', category: 'Kişisel' },
   routine_logs: { label: 'Rutin Kayıtları', icon: '', category: 'Kişisel' },
   journal_entries: { label: 'Günlük Kayıtları', icon: '', category: 'Kişisel' },
+  credentials: { label: 'Kimlikler & Şifreler', icon: '', category: 'Kişisel' },
   statement_imports: { label: 'Ekstre Yüklemeleri', icon: '', category: 'Finans' },
 }
 
@@ -111,6 +115,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     routine_logs: data.routine_logs || [],
     journal_entries: data.journal_entries || [],
     statement_imports: data.statement_imports || [],
+    credentials: data.credentials || [],
   }
 
   const counts: Record<keyof PusulaVaultData, number> = {
@@ -130,6 +135,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     routine_logs: completeData.routine_logs.length,
     journal_entries: completeData.journal_entries.length,
     statement_imports: completeData.statement_imports.length,
+    credentials: completeData.credentials.length,
   }
 
   const total_records = Object.values(counts).reduce((a, b) => a + b, 0)
@@ -209,6 +215,7 @@ export function validateVaultPayload(rawJsonOrObject: unknown): ValidationResult
       routine_logs: Array.isArray(payload.data.routine_logs) ? payload.data.routine_logs : [],
       journal_entries: Array.isArray(payload.data.journal_entries) ? payload.data.journal_entries : [],
       statement_imports: Array.isArray(payload.data.statement_imports) ? payload.data.statement_imports : [],
+      credentials: Array.isArray(payload.data.credentials) ? payload.data.credentials : [],
     }
 
     const verifiedPayload: VaultPayload = {
