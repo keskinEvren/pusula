@@ -20,6 +20,7 @@ export interface ImportBatchSnapshot {
     balance: number
   }
   created_account_id?: string
+  created_card_id?: string
   created_subscription_ids?: string[]
   created_card_statement_id?: string
   created_transaction_ids?: string[]
@@ -351,6 +352,14 @@ export async function rollbackImportBatch(
       .eq('user_id', userId)
   }
 
+  if (snapshot.created_card_id) {
+    await supabase
+      .from('credit_cards')
+      .delete()
+      .eq('id', snapshot.created_card_id)
+      .eq('user_id', userId)
+  }
+
   // 4. Delete auto-discovered subscriptions created during this import
   if (snapshot.created_subscription_ids && snapshot.created_subscription_ids.length > 0) {
     await supabase
@@ -515,6 +524,8 @@ export async function commitStatementBatch(
   }
 
   let createdImportId: string | null = null
+  let createdCardId: string | null = null
+  let createdAccountId: string | null = null
   const snapshotData: ImportBatchSnapshot = {}
 
   try {
@@ -607,6 +618,18 @@ export async function commitStatementBatch(
           }
         }
 
+        if (targetCard && !snapshotData.previous_card_state) {
+          snapshotData.previous_card_state = {
+            card_id: targetCard.id,
+            current_debt: Number(targetCard.current_debt || 0),
+            statement_debt: Number(targetCard.statement_debt || 0),
+            minimum_payment: Number(targetCard.minimum_payment || 0),
+            interest_fees: Number(targetCard.interest_fees || 0),
+            statement_date: targetCard.statement_date || null,
+            due_date: targetCard.due_date || null,
+          }
+        }
+
         if (targetCard) {
           resolvedCardId = targetCard.id
           const isNewerStatement =
@@ -664,6 +687,8 @@ export async function commitStatementBatch(
           if (newCardErr) throw newCardErr
           if (newCard) {
             resolvedCardId = newCard.id
+            createdCardId = newCard.id
+            snapshotData.created_card_id = newCard.id
             cards.push(newCard)
             activeCards.push(newCard)
           }
@@ -830,9 +855,10 @@ export async function commitStatementBatch(
           .single()
 
         if (newAccErr) throw newAccErr
-        if (newAcc) {
-          currentAccountId = newAcc.id
-          accounts.push(newAcc)
+          if (newAcc) {
+            currentAccountId = newAcc.id
+            createdAccountId = newAcc.id
+            accounts.push(newAcc)
           snapshotData.created_account_id = newAcc.id
         }
       }
@@ -1081,6 +1107,26 @@ export async function commitStatementBatch(
         await rollbackImportBatch(supabase, createdImportId, userId)
       } catch (cleanupErr) {
         console.error('Error rolling back failed import batch:', cleanupErr)
+      }
+    } else {
+      // Failure happened before a rollback-capable import row existed.
+      // Restore or remove resources changed during the partial attempt.
+      if (snapshotData.previous_card_state) {
+        const prev = snapshotData.previous_card_state
+        await supabase.from('credit_cards').update({
+          current_debt: prev.current_debt,
+          statement_debt: prev.statement_debt,
+          minimum_payment: prev.minimum_payment,
+          interest_fees: prev.interest_fees,
+          statement_date: prev.statement_date,
+          due_date: prev.due_date,
+        }).eq('id', prev.card_id).eq('user_id', userId)
+      }
+      if (createdCardId) {
+        await supabase.from('credit_cards').delete().eq('id', createdCardId).eq('user_id', userId)
+      }
+      if (createdAccountId) {
+        await supabase.from('accounts').delete().eq('id', createdAccountId).eq('user_id', userId)
       }
     }
     return { success: false, error: err.message || 'Veritabanına kaydedilirken hata oluştu.' }

@@ -73,7 +73,7 @@ export default function DashboardPage() {
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
           supabase.from('debts').select('*').eq('status', 'Açık'),
-          supabase.from('transactions').select('*').order('date', { ascending: false }),
+          supabase.from('transactions').select('*').order('date', { ascending: false }).limit(1000),
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
           supabase.from('investments').select('*'),

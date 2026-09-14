@@ -55,7 +55,6 @@ import {
   saveLocalCanary,
   loadLocalCredentials,
   saveLocalCredentials,
-  createSampleCredentials,
   type VaultResetRequest,
   getPendingResetRequest,
   requestVaultReset,
@@ -205,6 +204,18 @@ export default function CredentialsPage() {
   }
 
   const handleExecuteWipe = async () => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { error } = await supabase.from('credentials').delete().eq('user_id', user.id)
+        if (error) throw error
+      }
+    } catch (err) {
+      toast.error('Bulut kasası temizlenemedi. Yerel kasa güvenlik için korunuyor.')
+      return
+    }
+
     executeVaultWipe()
     setResetRequest(null)
     setCredentials([])
@@ -213,18 +224,6 @@ export default function CredentialsPage() {
     setCanary(null)
     setIsUnlocked(false)
     setIsSetupMode(true)
-
-    // Supabase temizliği
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await supabase.from('credentials').delete().eq('user_id', user.id)
-      }
-    } catch (err) {
-      console.warn('Bulut temizleme hatası:', err)
-    }
-
     toast.success('Eski kasa tamamen temizlendi. Yeni bir ana parola belirleyebilirsiniz.')
   }
 
@@ -291,23 +290,9 @@ export default function CredentialsPage() {
       setCanary(newCanary)
       setMasterKey(key)
 
-      // İlk kurulumda örnek verileri üret
-      const saltBytes = crypto.getRandomValues(new Uint8Array(16))
-      const sampleCreds = await createSampleCredentials(key, saltBytes)
-      saveLocalCredentials(sampleCreds)
-      setCredentials(sampleCreds)
-
-      // Örnek verilerin şifrelerini anında önbelleğe yükle
-      const initialCache: Record<string, DecryptedSecretPayload> = {}
-      for (const item of sampleCreds) {
-        try {
-          const payload = await decryptSecretPayload(item.encrypted_payload, item.encryption_iv, key)
-          initialCache[item.id] = payload
-        } catch (decErr) {
-          console.error('Örnek veri çözme hatası:', decErr)
-        }
-      }
-      setDecryptedCache(initialCache)
+      saveLocalCredentials([])
+      setCredentials([])
+      setDecryptedCache({})
 
       setIsUnlocked(true)
       setIsSetupMode(false)
@@ -431,40 +416,42 @@ export default function CredentialsPage() {
   // ---------------------------------------------------------------------------
   const toggleFavorite = async (item: Credential) => {
     const updated = credentials.map((c) => (c.id === item.id ? { ...c, is_favorite: !c.is_favorite } : c))
-    setCredentials(updated)
-    saveLocalCredentials(updated)
-
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        await supabase.from('credentials').update({ is_favorite: !item.is_favorite }).eq('id', item.id)
+        const { error } = await supabase.from('credentials').update({ is_favorite: !item.is_favorite }).eq('id', item.id)
+        if (error) throw error
       }
     } catch (err) {
-      console.warn('Favori güncellenemedi:', err)
+      toast.error('Favori değişikliği buluta kaydedilemedi.')
+      return
     }
+    setCredentials(updated)
+    saveLocalCredentials(updated)
   }
 
   const handleDeleteItem = async (id: string) => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { error } = await supabase.from('credentials').delete().eq('id', id)
+        if (error) throw error
+      }
+    } catch (err) {
+      toast.error('Kayıt buluttan silinemedi; yerel kopya korundu.')
+      return
+    }
+
     const updated = credentials.filter((c) => c.id !== id)
     setCredentials(updated)
     saveLocalCredentials(updated)
-
     setDecryptedCache((prev) => {
       const copy = { ...prev }
       delete copy[id]
       return copy
     })
-
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await supabase.from('credentials').delete().eq('id', id)
-      }
-    } catch (err) {
-      console.warn('Silme hatası:', err)
-    }
 
     setDeleteConfirmId(null)
     toast.success('Kayıt kasadan silindi.')
@@ -595,19 +582,26 @@ export default function CredentialsPage() {
       }))
 
       // Supabase senkronizasyonu
+      let cloudSyncFailed = false
       try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           finalItem.user_id = user.id
-          await supabase.from('credentials').upsert(finalItem)
+          const { error } = await supabase.from('credentials').upsert(finalItem)
+          if (error) throw error
         }
       } catch (cloudErr) {
         console.warn('Bulut senkronizasyon uyarısı:', cloudErr)
+        cloudSyncFailed = true
       }
 
       setIsEditModalOpen(false)
-      toast.success(editingItem ? 'Kayıt güncellendi ve şifrelendi.' : 'Yeni kayıt güvenle şifrelendi ve eklendi.')
+      if (cloudSyncFailed) {
+        toast.warning('Kayıt yerel kasada saklandı ancak buluta senkronize edilemedi.')
+      } else {
+        toast.success(editingItem ? 'Kayıt güncellendi ve şifrelendi.' : 'Yeni kayıt güvenle şifrelendi ve eklendi.')
+      }
     } catch (err: any) {
       toast.error(err.message || 'Kayıt şifrelenirken bir hata oluştu.')
     }
@@ -720,23 +714,20 @@ export default function CredentialsPage() {
         }
       }
 
-      // 4. Kaydet
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user && reEncryptedItems.length > 0) {
+        const cloudItems = reEncryptedItems.map((item) => ({ ...item, user_id: user.id }))
+        const { error } = await supabase.from('credentials').upsert(cloudItems)
+        if (error) throw error
+      }
+
+      // Bulut güncellemesi başarılı olduktan sonra yerel anahtarı değiştir.
       saveLocalCanary(newCanary)
       saveLocalCredentials(reEncryptedItems)
       setCanary(newCanary)
       setMasterKey(newKey)
       setCredentials(reEncryptedItems)
-
-      // Supabase'e toplu senkronizasyon
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user && reEncryptedItems.length > 0) {
-          await supabase.from('credentials').upsert(reEncryptedItems)
-        }
-      } catch (err) {
-        console.warn('Parola güncellemesi bulut senkron hatası:', err)
-      }
 
       setIsChangePasswordModalOpen(false)
       setOldPassword('')

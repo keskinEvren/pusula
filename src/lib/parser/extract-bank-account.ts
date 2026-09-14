@@ -4,7 +4,7 @@ import { reconcileBankMovement } from './reconciler'
 import { parseFlexibleAmount, fixWindows1254Text, detectBankFromTextOrIban } from './utils'
 import type { ParseResult, ExtractedTransaction } from './types'
 import type { Debt, CreditCard, MerchantMapping } from '@/types/database'
-import * as XLSX from 'xlsx'
+import { formatLocalDateInput } from '../utils'
 
 /**
  * Parses raw text lines from Turkish bank account statements (Vadesiz Hesap Özeti)
@@ -68,7 +68,7 @@ export function parseBankAccountLines(
       const rest = dateMatch[2].trim()
 
       // Normalize date (handling 2-digit year e.g. 06/08/26 -> 2026-08-06)
-      let parsedDate = new Date().toISOString().split('T')[0]
+      let parsedDate = formatLocalDateInput()
       const dmy = rawDate.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/)
       if (dmy) {
         const year = dmy[3] ? (dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]) : new Date().getFullYear().toString()
@@ -607,6 +607,9 @@ export async function parseBankAccountFile(
 
   if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') {
     try {
+      // Load the spreadsheet engine on demand instead of charging every visitor
+      // to the import page for code they may never use.
+      const XLSX = await import('xlsx')
       const arrayBuffer = await file.arrayBuffer()
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]

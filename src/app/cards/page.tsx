@@ -14,7 +14,7 @@ import {
   Edit2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { formatCurrency, formatDate, formatLocalDateInput, cn } from '@/lib/utils'
 import { calculateStatementChange } from '@/lib/finance-engine'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -72,7 +72,7 @@ export default function CardsPage() {
 
   const [stmtForm, setStmtForm] = useState({
     card_id: '',
-    statement_date: new Date().toISOString().split('T')[0],
+    statement_date: formatLocalDateInput(),
     period_debt: '',
     minimum: '',
     payments: '',
@@ -92,7 +92,7 @@ export default function CardsPage() {
       const supabase = createClient()
       const [{ data: cData }, { data: sData }] = await Promise.all([
         supabase.from('credit_cards').select('*').order('created_at', { ascending: false }),
-        supabase.from('card_statements').select('*').order('statement_date', { ascending: false }),
+        supabase.from('card_statements').select('*').order('statement_date', { ascending: false }).limit(500),
       ])
       if (cData) setCards(cData)
       if (sData) setStatements(sData)

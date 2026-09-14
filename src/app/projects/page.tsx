@@ -142,7 +142,7 @@ function ProjectsContent() {
       const supabase = createClient()
       const [{ data: pData }, { data: tData }, { data: sData }] = await Promise.all([
         supabase.from('projects').select('*').order('created_at', { ascending: false }),
-        supabase.from('transactions').select('*'),
+        supabase.from('transactions').select('*').limit(1000),
         supabase.from('subscriptions').select('*'),
       ])
 

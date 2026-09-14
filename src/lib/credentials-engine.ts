@@ -501,13 +501,13 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
     {
       title: 'Google Ana Hesabı',
       category: 'login',
-      email: 'keskinevren@gmail.com',
-      username: 'keskinevren',
+      email: 'demo@example.com',
+      username: 'demo-user',
       url: 'https://accounts.google.com',
       is_favorite: true,
       payload: {
-        primary_secret: 'Pusula#Sec2026!Ggl',
-        secondary_secret: '8721 9043 1120',
+        primary_secret: 'DEMO-NOT-A-REAL-PASSWORD',
+        secondary_secret: 'DEMO-RECOVERY-CODE',
         custom_fields: [
           { id: '1', label: '2FA Yöntemi', value: 'Google Authenticator + Donanım Anahtarı' },
         ],
@@ -517,15 +517,15 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
     {
       title: 'Steam Hesabı',
       category: 'gaming',
-      email: 'keskinevren@gmail.com',
-      username: 'keskinEvren',
+      email: 'demo@example.com',
+      username: 'demo-player',
       url: 'https://store.steampowered.com',
       is_favorite: true,
       payload: {
-        primary_secret: 'Steam#Gamer2026',
-        secondary_secret: 'R49201',
+        primary_secret: 'DEMO-NOT-A-REAL-PASSWORD',
+        secondary_secret: 'DEMO-CODE',
         custom_fields: [
-          { id: '1', label: 'Steam Guard Kodu', value: 'R49201', is_secret: true },
+          { id: '1', label: 'Steam Guard Kodu', value: 'DEMO-CODE', is_secret: true },
           { id: '2', label: 'SteamID64', value: '76561198000000000' },
         ],
         secret_notes: 'CS2, Dota ve kütüphane oyunları bu hesapta.',
@@ -539,10 +539,10 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
       url: 'https://garantibbva.com.tr',
       is_favorite: true,
       payload: {
-        primary_secret: '3819',
-        secondary_secret: '418',
+        primary_secret: '0000',
+        secondary_secret: '000',
         custom_fields: [
-          { id: '1', label: 'Kart Sahibi', value: 'Evren Keskin' },
+          { id: '1', label: 'Kart Sahibi', value: 'Demo Kullanıcı' },
           { id: '2', label: 'Son Kullanma Tarihi', value: '09/29' },
         ],
         secret_notes: 'Temassız limit günlük 1.500 TL olarak ayarlanmıştır.',
@@ -556,8 +556,8 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
       url: 'http://192.168.1.1',
       is_favorite: false,
       payload: {
-        primary_secret: 'SuperFiber#2026Net!',
-        secondary_secret: 'admin_turktelekom_82',
+        primary_secret: 'DEMO-NOT-A-REAL-WIFI-PASSWORD',
+        secondary_secret: 'DEMO-NOT-A-REAL-MODEM-PASSWORD',
         custom_fields: [
           { id: '1', label: 'Modem Giriş Kullanıcısı', value: 'admin' },
           { id: '2', label: 'Modem Modeli', value: 'ZTE H3600 Wi-Fi 6' },
@@ -569,7 +569,7 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
       title: 'T.C. Kimlik Kartı & Seri No',
       category: 'identity',
       email: null,
-      username: 'Evren Keskin',
+      username: 'Demo Kullanıcı',
       url: null,
       is_favorite: false,
       payload: {
@@ -586,7 +586,7 @@ export async function createSampleCredentials(key: CryptoKey, salt: Uint8Array):
       title: 'JetBrains All Products Pack',
       category: 'license',
       email: 'is@firma.com',
-      username: 'Evren Keskin',
+      username: 'Demo Kullanıcı',
       url: 'https://account.jetbrains.com',
       is_favorite: false,
       payload: {

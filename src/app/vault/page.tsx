@@ -33,6 +33,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
+import { formatLocalDateInput } from '@/lib/utils'
 import {
   PusulaVaultData,
   VaultPayload,
@@ -228,7 +229,7 @@ function VaultPageContent() {
     try {
       const payload = createVaultPayload(vaultData)
       const jsonString = JSON.stringify(payload, null, 2)
-      const dateStr = new Date().toISOString().split('T')[0]
+      const dateStr = formatLocalDateInput()
 
       if (isEncrypted) {
         // PBKDF2 + AES-GCM ile şifrele
