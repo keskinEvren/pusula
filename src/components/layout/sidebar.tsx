@@ -11,6 +11,7 @@ import {
   Building2,
   HandCoins,
   CalendarClock,
+  CalendarCheck,
   TrendingUp,
   FolderKanban,
   Lightbulb,
@@ -59,6 +60,7 @@ const navGroups: NavGroup[] = [
     items: [
       { name: 'Projeler', href: '/projects', icon: FolderKanban },
       { name: 'Fikirler', href: '/ideas', icon: Lightbulb },
+      { name: 'Ajanda', href: '/agenda', icon: CalendarCheck },
     ],
   },
   {

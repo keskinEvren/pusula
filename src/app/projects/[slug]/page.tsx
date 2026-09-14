@@ -19,6 +19,8 @@ import {
   Rocket,
   Briefcase,
   Building2,
+  Clock,
+  CalendarCheck,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, slugify } from '@/lib/utils'
@@ -33,7 +35,8 @@ import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
 import { useToast } from '@/lib/toast-context'
-import type { Project, Transaction, Subscription, Account } from '@/types/database'
+import { formatMinutesHours } from '@/lib/timer-context'
+import type { Project, Transaction, Subscription, Account, AgendaItem } from '@/types/database'
 
 export default function ProjectDetailPage({
   params,
@@ -51,6 +54,7 @@ export default function ProjectDetailPage({
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
   const [loading, setLoading] = useState(true)
 
   // Modals
@@ -127,7 +131,7 @@ export default function ProjectDetailPage({
         const savedDraft = typeof window !== 'undefined' ? localStorage.getItem(`pusula_project_doc_${slug}`) : null
         setMarkdownDoc(savedDraft !== null ? savedDraft : (pData.description || ''))
 
-        const [{ data: txs }, { data: subs }, { data: accs }] = await Promise.all([
+        const [{ data: txs }, { data: subs }, { data: accs }, { data: agendaData }] = await Promise.all([
           supabase
             .from('transactions')
             .select('*')
@@ -141,11 +145,18 @@ export default function ProjectDetailPage({
             .from('accounts')
             .select('*')
             .order('name', { ascending: true }),
+          supabase
+            .from('agenda_items')
+            .select('*')
+            .eq('project_id', pData.id)
+            .order('plan_date', { ascending: false })
+            .order('created_at', { ascending: false }),
         ])
 
         if (txs) setTransactions(txs)
         if (subs) setSubscriptions(subs)
         if (accs) setAccounts(accs)
+        if (agendaData) setAgendaItems(agendaData)
       }
     } catch (err) {
       console.error('Error loading project details:', err)
@@ -279,6 +290,9 @@ export default function ProjectDetailPage({
   // Timeline calculation
   const diffDays = Math.max(1, Math.ceil(Math.abs(Date.now() - new Date(project.created_at).getTime()) / (1000 * 60 * 60 * 24)))
   const timelineStr = diffDays < 30 ? `${diffDays} gündür aktif` : `${Math.floor(diffDays / 30)} ay ${diffDays % 30 > 0 ? `${diffDays % 30} gün` : ''}`
+
+  // Tracked focus time from Agenda
+  const totalTrackedSeconds = agendaItems.reduce((acc, item) => acc + (item.duration_seconds || 0), 0)
 
   return (
     <div className="space-y-8">
@@ -470,6 +484,84 @@ export default function ProjectDetailPage({
                   }}
                 />
               </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Work Effort & Focus Sessions Card */}
+      <Card className="border-border bg-card shadow-sm overflow-hidden">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-border/60">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Clock className="h-4 w-4 text-purple-400" />
+              <span>Çalışma Eforu & Odak Seansları ({agendaItems.length})</span>
+            </CardTitle>
+            <CardDescription>
+              Ajanda üzerinden bu projeye bağlanan canlı çalışma süreleri ve seans kayıtları
+            </CardDescription>
+          </div>
+          <Link href="/agenda">
+            <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10">
+              <CalendarCheck className="h-3.5 w-3.5" />
+              <span>Ajandada Aç</span>
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg bg-muted/40 p-3 border border-border/40">
+              <div className="text-xs text-muted-foreground">Toplam Harcanan Süre</div>
+              <div className="text-xl font-bold font-mono text-foreground mt-1">
+                {formatMinutesHours(totalTrackedSeconds)}
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/40 p-3 border border-border/40">
+              <div className="text-xs text-muted-foreground">Tamamlanan Seans</div>
+              <div className="text-xl font-bold font-mono text-foreground mt-1">
+                {agendaItems.filter((i) => i.status === 'completed').length} adet
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/40 p-3 border border-border/40">
+              <div className="text-xs text-muted-foreground">Son Odak Tarihi</div>
+              <div className="text-sm font-semibold text-foreground mt-1.5">
+                {agendaItems[0] ? formatDate(agendaItems[0].plan_date) : 'Kayıt Yok'}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent sessions list */}
+          {agendaItems.length > 0 ? (
+            <div className="space-y-1.5 pt-1">
+              <div className="text-xs font-semibold text-foreground">Son Seanslar</div>
+              <div className="divide-y divide-border/40 rounded-lg border border-border/40 overflow-hidden bg-card/40">
+                {agendaItems.slice(0, 5).map((session) => (
+                  <div key={session.id} className="p-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          session.status === 'completed' ? 'bg-emerald-500' : 'bg-purple-400'
+                        }`}
+                      />
+                      <span className="font-medium text-foreground truncate max-w-[240px] sm:max-w-md">
+                        {session.title}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 font-mono text-muted-foreground">
+                      <span>{formatDate(session.plan_date)}</span>
+                      {session.duration_seconds > 0 && (
+                        <Badge variant="purple" className="text-[10px] px-1.5 py-0 font-mono">
+                          {formatMinutesHours(session.duration_seconds)}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 text-center text-xs text-muted-foreground/70 italic border border-dashed border-border/50 rounded-lg">
+              Bu proje için henüz Ajanda üzerinden çalışma seansı kaydedilmedi.
             </div>
           )}
         </CardContent>
