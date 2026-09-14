@@ -5,10 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
-  CheckCircle2,
-  Circle,
-  Plus,
-  Trash2,
   FolderKanban,
   Receipt,
   CalendarClock,
@@ -18,7 +14,11 @@ import {
   AlertTriangle,
   FileText,
   Settings,
-  Edit3,
+  Repeat,
+  ExternalLink,
+  Rocket,
+  Briefcase,
+  Building2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, slugify } from '@/lib/utils'
@@ -30,11 +30,10 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
 import { useToast } from '@/lib/toast-context'
-import type { Project, ProjectTask, Transaction, Subscription, Account } from '@/types/database'
+import type { Project, Transaction, Subscription, Account } from '@/types/database'
 
 export default function ProjectDetailPage({
   params,
@@ -49,43 +48,28 @@ export default function ProjectDetailPage({
   const [project, setProject] = useState<Project | null>(null)
   const [markdownDoc, setMarkdownDoc] = useState<string>('')
   const [savingDoc, setSavingDoc] = useState(false)
-  const [tasks, setTasks] = useState<ProjectTask[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
 
   // Modals
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [taskToDelete, setTaskToDelete] = useState<{ id: string; title: string } | null>(null)
-
-  // Task Edit Modal State
-  const [editingTask, setEditingTask] = useState<ProjectTask | null>(null)
-  const [editTaskForm, setEditTaskForm] = useState({
-    title: '',
-    category: 'Görev' as ProjectTask['category'],
-    status: 'Yapılacak' as ProjectTask['status'],
-  })
 
   // Project Edit Modal State
   const [isProjectEditModalOpen, setIsProjectEditModalOpen] = useState(false)
   const [projectEditForm, setProjectEditForm] = useState({
     name: '',
     slug: '',
+    project_type: 'saas' as NonNullable<Project['project_type']>,
     status: 'Planlama' as Project['status'],
     budget_limit: '',
     repo_url: '',
     live_url: '',
   })
 
-  // Forms
-  const [newTask, setNewTask] = useState({
-    title: '',
-    category: 'Görev' as ProjectTask['category'],
-  })
-
+  // Expense Form State
   const [expenseForm, setExpenseForm] = useState({
     amount: '',
     description: '',
@@ -143,12 +127,7 @@ export default function ProjectDetailPage({
         const savedDraft = typeof window !== 'undefined' ? localStorage.getItem(`pusula_project_doc_${slug}`) : null
         setMarkdownDoc(savedDraft !== null ? savedDraft : (pData.description || ''))
 
-        const [{ data: tks }, { data: txs }, { data: subs }, { data: accs }] = await Promise.all([
-          supabase
-            .from('project_tasks')
-            .select('*')
-            .eq('project_id', pData.id)
-            .order('sort_order', { ascending: true }),
+        const [{ data: txs }, { data: subs }, { data: accs }] = await Promise.all([
           supabase
             .from('transactions')
             .select('*')
@@ -164,7 +143,6 @@ export default function ProjectDetailPage({
             .order('name', { ascending: true }),
         ])
 
-        if (tks) setTasks(tks)
         if (txs) setTransactions(txs)
         if (subs) setSubscriptions(subs)
         if (accs) setAccounts(accs)
@@ -206,125 +184,15 @@ export default function ProjectDetailPage({
     }
   }
 
-  const handleToggleTaskStatus = async (task: ProjectTask) => {
-    const nextStatus = task.status === 'Tamamlandı' ? 'Yapılacak' : 'Tamamlandı'
-    try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('project_tasks')
-        .update({ status: nextStatus })
-        .eq('id', task.id)
-
-      if (error) throw error
-      setTasks((prev) =>
-        prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t))
-      )
-      toast.success('Görev durumu güncellendi!')
-    } catch (err: any) {
-      toast.error(err.message || 'Görev güncellenemedi')
-    }
-  }
-
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!project) return
-    setSubmitting(true)
-
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error('Oturum açılmamış')
-
-      const { data, error } = await supabase
-        .from('project_tasks')
-        .insert({
-          project_id: project.id,
-          user_id: user.id,
-          title: newTask.title,
-          category: newTask.category,
-          status: 'Yapılacak',
-          sort_order: tasks.length + 1,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-      if (data) {
-        setTasks([...tasks, data])
-        setIsTaskModalOpen(false)
-        setNewTask({ title: '', category: 'Görev' })
-        toast.success('Yeni görev eklendi!')
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Görev eklenemedi')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const confirmDeleteTask = async () => {
-    if (!taskToDelete) return
-    setSubmitting(true)
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.from('project_tasks').delete().eq('id', taskToDelete.id)
-      if (error) throw error
-      setTasks(tasks.filter((t) => t.id !== taskToDelete.id))
-      toast.success('Görev silindi.')
-      setTaskToDelete(null)
-    } catch (err: any) {
-      toast.error(err.message || 'Silinemedi')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const handleOpenEditTask = (task: ProjectTask) => {
-    setEditingTask(task)
-    setEditTaskForm({
-      title: task.title,
-      category: task.category,
-      status: task.status,
-    })
-  }
-
-  const handleUpdateTask = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editingTask) return
-    setSubmitting(true)
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('project_tasks')
-        .update({
-          title: editTaskForm.title,
-          category: editTaskForm.category,
-          status: editTaskForm.status,
-        })
-        .eq('id', editingTask.id)
-        .select()
-        .single()
-
-      if (error) throw error
-      if (data) {
-        setTasks((prev) => prev.map((t) => (t.id === data.id ? data : t)))
-        setEditingTask(null)
-        toast.success('Görev başarıyla güncellendi!')
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Görev güncellenemedi')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const handleOpenProjectEdit = () => {
     if (!project) return
+    const pType = (project.project_type ||
+      ((project.slug + ' ' + project.name).toLowerCase().includes('sarioglu') ? 'client' : 'saas')) as NonNullable<Project['project_type']>
+
     setProjectEditForm({
       name: project.name,
       slug: project.slug,
+      project_type: pType,
       status: project.status,
       budget_limit: project.budget_limit ? String(project.budget_limit) : '',
       repo_url: project.repo_url || '',
@@ -347,6 +215,7 @@ export default function ProjectDetailPage({
         .update({
           name: projectEditForm.name,
           slug: finalSlug,
+          project_type: projectEditForm.project_type,
           status: projectEditForm.status,
           budget_limit: projectEditForm.budget_limit ? parseFloat(projectEditForm.budget_limit) : null,
           repo_url: projectEditForm.repo_url || null,
@@ -395,8 +264,6 @@ export default function ProjectDetailPage({
   }
 
   // Cost & Bridge Calculation via Pure Finance Engine
-  const directCost = transactions.reduce((sum, t) => sum + t.amount, 0)
-  
   const totalRevenue = transactions.filter(t => t.type === 'Gelir').reduce((s, t) => s + t.amount, 0)
   const totalExpense = transactions.filter(t => t.type === 'Harcama').reduce((s, t) => s + t.amount, 0)
   
@@ -409,8 +276,9 @@ export default function ProjectDetailPage({
   const totalCost = calculateProjectTotalCost(project.id, transactions, subscriptions)
   const budgetEvaluation = evaluateProjectBudget(totalCost, project.budget_limit)
 
-  const completedTasksCount = tasks.filter((t) => t.status === 'Tamamlandı').length
-  const progressPct = tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : 0
+  // Timeline calculation
+  const diffDays = Math.max(1, Math.ceil(Math.abs(Date.now() - new Date(project.created_at).getTime()) / (1000 * 60 * 60 * 24)))
+  const timelineStr = diffDays < 30 ? `${diffDays} gündür aktif` : `${Math.floor(diffDays / 30)} ay ${diffDays % 30 > 0 ? `${diffDays % 30} gün` : ''}`
 
   return (
     <div className="space-y-8">
@@ -420,19 +288,56 @@ export default function ProjectDetailPage({
         backHref="/projects"
         backLabel="Projeler Panosuna Dön"
         badge={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="purple" className="text-xs">
               {project.status}
             </Badge>
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border ${
+                project.project_type === 'workplace'
+                  ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
+                  : (project.project_type === 'client' || project.slug.includes('sarioglu'))
+                  ? 'text-blue-400 border-blue-500/30 bg-blue-500/10'
+                  : project.project_type === 'internal'
+                  ? 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10'
+                  : 'text-purple-400 border-purple-500/30 bg-purple-500/10'
+              }`}
+            >
+              {project.project_type === 'workplace' ? (
+                <>
+                  <Building2 className="h-3 w-3" />
+                  <span>Çalıştığım Firma / İşyeri</span>
+                </>
+              ) : (project.project_type === 'client' || project.slug.includes('sarioglu')) ? (
+                <>
+                  <Briefcase className="h-3 w-3" />
+                  <span>Müşteri İşi</span>
+                </>
+              ) : project.project_type === 'internal' ? (
+                <span>Dahili Araç</span>
+              ) : (
+                <>
+                  <Rocket className="h-3 w-3" />
+                  <span>Kendi Ürünüm (SaaS)</span>
+                </>
+              )}
+            </span>
             <span
               className="text-xs font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/50"
               title={`URL: /projects/${project.slug}`}
             >
               /{project.slug}
             </span>
+            <span
+              className="text-xs font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/50 flex items-center gap-1"
+              title={`Başlangıç: ${formatDate(project.created_at)}`}
+            >
+              <CalendarClock className="h-3 w-3 text-primary" />
+              {formatDate(project.created_at)} ({timelineStr})
+            </span>
           </div>
         }
-        description={project.description || undefined}
+        description="Proje genel bakışı, P&L finansal performansı ve teknik şartname dokümantasyonu"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             <Button
@@ -475,14 +380,6 @@ export default function ProjectDetailPage({
               className="gap-2 shadow-sm min-h-[36px] text-xs"
             >
               ⚡ Hızlı Harcama Ekle
-            </Button>
-            <Button
-              onClick={() => setIsTaskModalOpen(true)}
-              size="sm"
-              className="gap-2 shadow-sm min-h-[36px] text-xs"
-            >
-              <Plus className="h-4 w-4" />
-              Görev Ekle
             </Button>
           </div>
         }
@@ -602,99 +499,9 @@ export default function ProjectDetailPage({
             title={`${project.name} Şartname & Dokümantasyon`}
             placeholder="Proje mimarisi, veritabanı şeması, yapılacaklar listesi veya API gereksinimlerini buraya yazın ya da .md dosyası sürükleyip bırakın..."
             minHeight="380px"
-            defaultMode="split"
+            defaultMode="preview"
             className="border-0 rounded-none shadow-none"
           />
-        </CardContent>
-      </Card>
-
-      {/* Tasks & Epics Checklist */}
-      <Card className="border-border bg-card shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div>
-            <CardTitle className="text-base">Görevler & Epics ({completedTasksCount}/{tasks.length})</CardTitle>
-            <CardDescription>Geliştirme hedefleri ve yapılacaklar listesi</CardDescription>
-          </div>
-          <div className="text-right">
-            <span className="text-xs font-mono font-bold text-foreground">
-              %{progressPct} Tamamlandı
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              className="flex items-center justify-between rounded-lg border border-border/40 bg-card/40 p-3 hover:bg-muted/30 transition-colors group"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  type="button"
-                  onClick={() => handleToggleTaskStatus(task)}
-                  className="text-muted-foreground hover:text-foreground shrink-0"
-                  title={task.status === 'Tamamlandı' ? 'Yapılacak olarak işaretle' : 'Tamamlandı olarak işaretle'}
-                >
-                  {task.status === 'Tamamlandı' ? (
-                    <CheckCircle2 className="h-5 w-5 text-success" />
-                  ) : (
-                    <Circle className="h-5 w-5" />
-                  )}
-                </button>
-                <div
-                  className="cursor-pointer min-w-0"
-                  onClick={() => handleOpenEditTask(task)}
-                  title="Görevi düzenlemek için tıklayın"
-                >
-                  <div
-                    className={`text-sm font-medium truncate ${
-                      task.status === 'Tamamlandı'
-                        ? 'line-through text-muted-foreground'
-                        : 'text-foreground group-hover:text-primary transition-colors'
-                    }`}
-                  >
-                    {task.title}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Badge variant="outline" className="text-[11px]">
-                      {task.category}
-                    </Badge>
-                    <span className="text-[11px] text-muted-foreground">
-                      {task.status}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0 ml-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleOpenEditTask(task)}
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  aria-label={`"${task.title}" görevini düzenle`}
-                  title="Görevi Düzenle"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setTaskToDelete({ id: task.id, title: task.title })}
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  aria-label={`"${task.title}" görevini sil`}
-                  title="Görevi Sil"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
-
-          {tasks.length === 0 && (
-            <div className="p-6 text-center text-xs text-muted-foreground">
-              Henüz görev eklenmedi. Yeni görev ekleyerek başlayın.
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -782,53 +589,76 @@ export default function ProjectDetailPage({
         </CardContent>
       </Card>
 
-      {/* Add Task Modal */}
-      <Modal
-        isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
-        title="Yeni Görev / Epic Ekle"
-        description={`${project.name} projesi için yapılacak iş ekleyin.`}
-      >
-        <form onSubmit={handleAddTask} className="space-y-4">
-          <div className="space-y-1">
-            <label htmlFor="new-task-title" className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
-            <Input
-              id="new-task-title"
-              required
-              placeholder="Örn: Supabase Auth kurulumu, Landing page yayını"
-              value={newTask.title}
-              onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-              className="text-xs"
-            />
+      {/* Tied Subscriptions (SaaS & Infrastructure) */}
+      <Card className="border-border bg-card shadow-sm overflow-hidden">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Repeat className="h-4 w-4 text-purple-400" />
+              Bağlı Abonelikler & Altyapı Servisleri ({subscriptions.length})
+            </CardTitle>
+            <CardDescription>
+              Bu projenin kullandığı sunucu, veritabanı, domain veya SaaS araçları
+            </CardDescription>
           </div>
-
-          <div className="space-y-1">
-            <label htmlFor="new-task-category" className="text-xs font-semibold text-muted-foreground">Kategori</label>
-            <Select
-              id="new-task-category"
-              value={newTask.category}
-              onChange={(e) =>
-                setNewTask({ ...newTask, category: e.target.value as ProjectTask['category'] })
-              }
-              className="text-xs"
-            >
-              <option value="Görev">Görev</option>
-              <option value="Epics">Epic / Büyük Hedef</option>
-              <option value="Bug">Hata (Bug)</option>
-              <option value="Fikir">Fikir</option>
-            </Select>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={() => setIsTaskModalOpen(false)}>
-              İptal
+          <Link href="/subscriptions">
+            <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10">
+              <Repeat className="h-3 w-3" />
+              Abonelikleri Yönet
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'Ekleniyor...' : 'Görevi Ekle'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+          </Link>
+        </CardHeader>
+        <CardContent className="p-0">
+          {subscriptions.length > 0 ? (
+            <div className="divide-y divide-border/40">
+              {subscriptions.map((sub) => (
+                <div key={sub.id} className="p-3 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-xs text-foreground flex items-center gap-2">
+                      <span>{sub.service}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {sub.group_type}
+                      </Badge>
+                      <Badge
+                        variant={sub.status === 'Aktif' ? 'success' : 'muted'}
+                        className="text-[10px]"
+                      >
+                        {sub.status}
+                      </Badge>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      Model: {sub.model || 'Abonelik'} {sub.strategic_tag && `• ${sub.strategic_tag}`}
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0 font-mono">
+                    <div className="text-xs font-bold text-destructive">
+                      {formatCurrency(sub.amount)}
+                      <span className="text-[10px] text-muted-foreground font-normal"> / {sub.period}</span>
+                    </div>
+                    {sub.decision && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        Karar: {sub.decision}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 text-center text-xs text-muted-foreground">
+              Bu projeye henüz bağlı bir abonelik (Vercel, Supabase, Domain vb.) bulunmuyor.
+              <div className="mt-2">
+                <Link href="/subscriptions">
+                  <Button size="sm" variant="ghost" className="text-xs text-primary hover:underline">
+                    Abonelikler sayfasından bu projeyi seçerek bağlayabilirsiniz →
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick Expense Modal */}
       <Modal
@@ -893,74 +723,6 @@ export default function ProjectDetailPage({
         </form>
       </Modal>
 
-      {/* Edit Task Modal */}
-      <Modal
-        isOpen={!!editingTask}
-        onClose={() => setEditingTask(null)}
-        title="Görevi Düzenle"
-        description="Görev başlığını, kategorisini veya durumunu güncelleyin."
-      >
-        {editingTask && (
-          <form onSubmit={handleUpdateTask} className="space-y-4">
-            <div className="space-y-1">
-              <label htmlFor="edit-task-title" className="text-xs font-semibold text-muted-foreground">Görev Başlığı</label>
-              <Input
-                id="edit-task-title"
-                required
-                placeholder="Örn: Supabase Auth kurulumu"
-                value={editTaskForm.title}
-                onChange={(e) => setEditTaskForm({ ...editTaskForm, title: e.target.value })}
-                className="text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label htmlFor="edit-task-category" className="text-xs font-semibold text-muted-foreground">Kategori</label>
-                <Select
-                  id="edit-task-category"
-                  value={editTaskForm.category}
-                  onChange={(e) =>
-                    setEditTaskForm({ ...editTaskForm, category: e.target.value as ProjectTask['category'] })
-                  }
-                  className="text-xs"
-                >
-                  <option value="Görev">Görev</option>
-                  <option value="Epics">Epic / Büyük Hedef</option>
-                  <option value="Bug">Hata (Bug)</option>
-                  <option value="Fikir">Fikir</option>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <label htmlFor="edit-task-status" className="text-xs font-semibold text-muted-foreground">Durum</label>
-                <Select
-                  id="edit-task-status"
-                  value={editTaskForm.status}
-                  onChange={(e) =>
-                    setEditTaskForm({ ...editTaskForm, status: e.target.value as ProjectTask['status'] })
-                  }
-                  className="text-xs"
-                >
-                  <option value="Yapılacak">Yapılacak</option>
-                  <option value="Sürüyor">Sürüyor</option>
-                  <option value="Tamamlandı">Tamamlandı</option>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t border-border">
-              <Button type="button" variant="outline" onClick={() => setEditingTask(null)}>
-                İptal
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? 'Güncelleniyor...' : 'Görevi Güncelle'}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
       {/* Edit Project & Slug Modal */}
       <Modal
         isOpen={isProjectEditModalOpen}
@@ -992,7 +754,7 @@ export default function ProjectDetailPage({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <label htmlFor="proj-edit-slug" className="text-xs font-semibold text-muted-foreground">URL Slug</label>
                 <Input
@@ -1005,8 +767,28 @@ export default function ProjectDetailPage({
                   className="text-xs font-mono"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Proje linki: /projects/{slugify(projectEditForm.slug || projectEditForm.name || 'slug')}
+                  Link: /projects/{slugify(projectEditForm.slug || projectEditForm.name || 'slug')}
                 </p>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="proj-edit-type" className="text-xs font-semibold text-muted-foreground">Proje Türü</label>
+                <Select
+                  id="proj-edit-type"
+                  value={projectEditForm.project_type}
+                  onChange={(e) =>
+                    setProjectEditForm({
+                      ...projectEditForm,
+                      project_type: e.target.value as NonNullable<Project['project_type']>,
+                    })
+                  }
+                  className="text-xs"
+                >
+                  <option value="saas">🚀 Kendi Girişimim / SaaS</option>
+                  <option value="workplace">🏢 Çalıştığım Firma / İşyerim</option>
+                  <option value="client">💼 Müşteri / Kurumsal Web</option>
+                  <option value="internal">🛠️ Dahili Araç / Altyapı</option>
+                </Select>
               </div>
 
               <div className="space-y-1">
@@ -1025,7 +807,6 @@ export default function ProjectDetailPage({
                   <option value="Planlama">📐 Planlama</option>
                   <option value="Geliştirmede">🚧 Geliştirmede</option>
                   <option value="Canlı">🚀 Canlı</option>
-                  <option value="Fikir">💡 Fikir</option>
                   <option value="Arşiv">📦 Arşiv</option>
                 </Select>
               </div>
@@ -1084,19 +865,6 @@ export default function ProjectDetailPage({
           </form>
         )}
       </Modal>
-
-      {/* Task Delete Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={!!taskToDelete}
-        onClose={() => setTaskToDelete(null)}
-        onConfirm={confirmDeleteTask}
-        title="Görevi Sil"
-        description={`"${taskToDelete?.title}" görevini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`}
-        confirmLabel="Görevi Sil"
-        variant="destructive"
-        isLoading={submitting}
-      />
     </div>
   )
 }
-
