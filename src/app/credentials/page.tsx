@@ -1016,6 +1016,67 @@ export default function CredentialsPage() {
             </div>
           )}
         </div>
+
+        {/* Ana Parolamı Unuttum / Kasa Sıfırlama Modalı (Kilit Ekranında Açılır) */}
+        <Modal
+          isOpen={isForgotModalOpen}
+          onClose={() => setIsForgotModalOpen(false)}
+          title="Ana Parolamı Unuttum (Acil Durum Kasa Sıfırlama)"
+          description="Sıfır-bilgi (Zero-Knowledge) AES-GCM mimarisi nedeniyle unutulan ana parolayı sunucu üzerinden kurtarma veya eski verileri çözme imkânı matematiksel olarak yoktur."
+          size="md"
+        >
+          <div className="space-y-4 pt-1 text-xs">
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 space-y-2 leading-relaxed">
+              <p className="font-bold flex items-center gap-1.5 text-xs text-foreground">
+                <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+                24 Saatlik Güvenlik Karantinası Nasıl Çalışır?
+              </p>
+              <p>
+                Bilgisayarınızın veya hesabınızın başkaları tarafından anında sıfırlanmasını (sabotajı) önlemek amacıyla, sıfırlama işlemi <strong>24 saatlik bir bekleme süresine</strong> alınır.
+              </p>
+              <p>
+                Bu süre boyunca <strong>ana dashboard'da</strong> ve bu ekranda canlı bir geri sayım sayacı çalışır. Parolanızı hatırlarsanız veya bu işlemi siz başlatmadıysanız dilediğiniz an tek tıkla iptal edebilirsiniz.
+              </p>
+              <p className="font-semibold text-rose-600 dark:text-rose-400">
+                ⚠️ 24 saat tamamlandığında eski çözülemeyen şifreli veriler kalıcı olarak silinecek ve yeni bir ana parola belirleyebileceksiniz.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-foreground">
+                Sıfırlama karantinasını başlatmak için lütfen kutucuğa <strong>SIFIRLA</strong> yazın:
+              </label>
+              <Input
+                value={resetConfirmationText}
+                onChange={(e) => setResetConfirmationText(e.target.value)}
+                placeholder="SIFIRLA"
+                className="font-mono text-sm tracking-widest uppercase"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsForgotModalOpen(false)}
+              >
+                Vazgeç
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={resetConfirmationText.trim() !== 'SIFIRLA'}
+                onClick={handleStartResetCountdown}
+                className="font-semibold"
+              >
+                24 Saatlik Geri Sayımı Başlat
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     )
   }
@@ -1954,67 +2015,6 @@ export default function CredentialsPage() {
         }}
         onClose={() => setDeleteConfirmId(null)}
       />
-
-      {/* 8. Ana Parolamı Unuttum / Kasa Sıfırlama Modalı */}
-      <Modal
-        isOpen={isForgotModalOpen}
-        onClose={() => setIsForgotModalOpen(false)}
-        title="Ana Parolamı Unuttum (Acil Durum Kasa Sıfırlama)"
-        description="Sıfır-bilgi (Zero-Knowledge) AES-GCM mimarisi nedeniyle unutulan ana parolayı sunucu üzerinden kurtarma veya eski verileri çözme imkânı matematiksel olarak yoktur."
-        size="md"
-      >
-        <div className="space-y-4 pt-1 text-xs">
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 space-y-2 leading-relaxed">
-            <p className="font-bold flex items-center gap-1.5 text-xs text-foreground">
-              <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
-              24 Saatlik Güvenlik Karantinası Nasıl Çalışır?
-            </p>
-            <p>
-              Bilgisayarınızın veya hesabınızın başkaları tarafından anında sıfırlanmasını (sabotajı) önlemek amacıyla, sıfırlama işlemi <strong>24 saatlik bir bekleme süresine</strong> alınır.
-            </p>
-            <p>
-              Bu süre boyunca <strong>ana dashboard'da</strong> ve bu ekranda canlı bir geri sayım sayacı çalışır. Parolanızı hatırlarsanız veya bu işlemi siz başlatmadıysanız dilediğiniz an tek tıkla iptal edebilirsiniz.
-            </p>
-            <p className="font-semibold text-rose-600 dark:text-rose-400">
-              ⚠️ 24 saat tamamlandığında eski çözülemeyen şifreli veriler kalıcı olarak silinecek ve yeni bir ana parola belirleyebileceksiniz.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-foreground">
-              Sıfırlama karantinasını başlatmak için lütfen kutucuğa <strong>SIFIRLA</strong> yazın:
-            </label>
-            <Input
-              value={resetConfirmationText}
-              onChange={(e) => setResetConfirmationText(e.target.value)}
-              placeholder="SIFIRLA"
-              className="font-mono text-sm tracking-widest uppercase"
-              autoFocus
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsForgotModalOpen(false)}
-            >
-              Vazgeç
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              disabled={resetConfirmationText.trim() !== 'SIFIRLA'}
-              onClick={handleStartResetCountdown}
-              className="font-semibold"
-            >
-              24 Saatlik Geri Sayımı Başlat
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
