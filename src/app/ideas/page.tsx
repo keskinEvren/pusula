@@ -33,8 +33,9 @@ import type { Idea } from '@/types/database'
 const TABS = [
   { key: 'inbox', label: 'Gelenler' },
   { key: 'maybe', label: 'Değerlendirilecekler' },
-  { key: 'killed', label: 'Arşiv' },
+  { key: 'decided', label: 'Karar Verildi' },
   { key: 'promoted', label: 'Projeye Dönüşenler' },
+  { key: 'killed', label: 'Arşiv' },
 ]
 
 function IdeasContent() {
@@ -53,6 +54,7 @@ function IdeasContent() {
     description: '',
     status: 'inbox' as Idea['status'],
     tags: '',
+    score: '',
   })
 
   // Idea Detail & Edit Modal State
@@ -63,6 +65,7 @@ function IdeasContent() {
     description: '',
     status: 'inbox' as Idea['status'],
     tags: '',
+    score: '',
   })
 
   // Promote Modal State
@@ -126,6 +129,7 @@ function IdeasContent() {
           description: ideaForm.description,
           status: ideaForm.status,
           tags: tagsArray,
+          score: ideaForm.score ? parseFloat(ideaForm.score) : null,
         })
         .select()
         .single()
@@ -140,6 +144,7 @@ function IdeasContent() {
           description: '',
           status: 'inbox',
           tags: '',
+          score: '',
         })
       }
     } catch (err: any) {
@@ -156,6 +161,7 @@ function IdeasContent() {
       description: idea.description || '',
       status: idea.status,
       tags: (idea.tags || []).join(', '),
+      score: idea.score !== null && idea.score !== undefined ? String(idea.score) : '',
     })
   }
 
@@ -176,6 +182,7 @@ function IdeasContent() {
           description: editForm.description,
           status: editForm.status,
           tags: tagsArray,
+          score: editForm.score ? parseFloat(editForm.score) : null,
         })
         .eq('id', selectedIdea.id)
         .select()
@@ -405,6 +412,28 @@ function IdeasContent() {
             </CardHeader>
 
             <CardContent className="space-y-4 pt-0">
+              {/* Score Badge */}
+              {idea.score !== null && idea.score !== undefined && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground">Potansiyel:</span>
+                  <span className={`text-xs font-bold font-mono ${
+                    Number(idea.score) >= 7 ? 'text-success' : 
+                    Number(idea.score) >= 4 ? 'text-amber-400' : 'text-muted-foreground'
+                  }`}>
+                    {idea.score}/10
+                  </span>
+                  <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden max-w-[80px]">
+                    <div 
+                      className={`h-full rounded-full ${
+                        Number(idea.score) >= 7 ? 'bg-success' : 
+                        Number(idea.score) >= 4 ? 'bg-amber-400' : 'bg-muted-foreground'
+                      }`}
+                      style={{ width: `${(Number(idea.score) / 10) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Tags */}
               {idea.tags && idea.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -432,6 +461,7 @@ function IdeasContent() {
                 >
                   <option value="inbox">Gelenler</option>
                   <option value="maybe">Değerlendirilecek</option>
+                  <option value="decided">Karar Verildi</option>
                   <option value="killed">Arşiv</option>
                   <option value="promoted">Projeye Dönüşen</option>
                 </Select>
@@ -505,7 +535,7 @@ function IdeasContent() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <label htmlFor="idea-add-tags" className="text-xs font-semibold text-muted-foreground">Etiketler (Virgülle ayırın)</label>
               <Input
@@ -514,6 +544,21 @@ function IdeasContent() {
                 value={ideaForm.tags}
                 onChange={(e) => setIdeaForm({ ...ideaForm, tags: e.target.value })}
                 className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="idea-add-score" className="text-xs font-semibold text-muted-foreground">Potansiyel Skoru (0-10)</label>
+              <Input
+                id="idea-add-score"
+                type="number"
+                min="0"
+                max="10"
+                step="0.1"
+                placeholder="7.5"
+                value={ideaForm.score}
+                onChange={(e) => setIdeaForm({ ...ideaForm, score: e.target.value })}
+                className="text-xs font-mono"
               />
             </div>
 
@@ -529,6 +574,7 @@ function IdeasContent() {
               >
                 <option value="inbox">Gelenler</option>
                 <option value="maybe">Değerlendirilecek</option>
+                <option value="decided">Karar Verildi</option>
               </Select>
             </div>
           </div>
@@ -580,7 +626,7 @@ function IdeasContent() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <label htmlFor="idea-edit-tags" className="text-xs font-semibold text-muted-foreground">Etiketler</label>
                 <Input
@@ -589,6 +635,21 @@ function IdeasContent() {
                   onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
                   placeholder="b2b, saas, ai"
                   className="text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="idea-edit-score" className="text-xs font-semibold text-muted-foreground">Potansiyel Skoru (0-10)</label>
+                <Input
+                  id="idea-edit-score"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  placeholder="7.5"
+                  value={editForm.score}
+                  onChange={(e) => setEditForm({ ...editForm, score: e.target.value })}
+                  className="text-xs font-mono"
                 />
               </div>
 
@@ -604,6 +665,7 @@ function IdeasContent() {
                 >
                   <option value="inbox">Gelenler</option>
                   <option value="maybe">Değerlendirilecek</option>
+                  <option value="decided">Karar Verildi</option>
                   <option value="killed">Arşiv</option>
                   <option value="promoted">Projeye Dönüşen</option>
                 </Select>
