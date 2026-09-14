@@ -1012,6 +1012,11 @@ export default function CredentialsPage() {
                     </button>
                   </div>
                 )}
+
+                <div className="pt-2 border-t border-border/50 text-[11px] text-muted-foreground text-center flex items-center justify-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>Şifreleriniz uçtan uca <strong>AES-GCM-256</strong> ile korunur ve sunucuda asla saklanmaz.</span>
+                </div>
               </form>
             </div>
           )}
@@ -1137,7 +1142,18 @@ export default function CredentialsPage() {
         </div>
       </div>
 
-      {/* 2. "Hangi E-posta?" Akıllı Filtre Hapları */}
+      {/* 2. Sıfır-Bilgi Güvenlik & Gizlilik Notu */}
+      <div className="flex items-start sm:items-center gap-3 p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground shadow-xs">
+        <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0 mt-0.5 sm:mt-0">
+          <ShieldCheck className="w-4 h-4" />
+        </div>
+        <div className="leading-relaxed">
+          <span className="font-semibold text-foreground mr-1.5">Uçtan Uca Sıfır-Bilgi (Zero-Knowledge) Koruması:</span>
+          Tüm şifre, PIN, lisans ve kimlik kayıtlarınız tarayıcınızda <strong>AES-GCM-256</strong> ile şifrelenir. Ana parolanız sunucuya asla gönderilmez; Pusula dahil hiç kimse şifrelerinizi göremez, kaydedemez veya çözemez.
+        </div>
+      </div>
+
+      {/* 3. "Hangi E-posta?" Akıllı Filtre Hapları */}
       {sortedEmails.length > 0 && (
         <div className="space-y-2 bg-muted/30 border border-border/60 rounded-xl p-3.5">
           <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground px-0.5">
