@@ -62,7 +62,7 @@ export default function AccountsPage() {
     const supabase = createClient()
     const [{ data: accs }, { data: txs }] = await Promise.all([
       supabase.from('accounts').select('*').order('created_at', { ascending: true }),
-      supabase.from('transactions').select('*').order('date', { ascending: false }),
+      supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
     ])
 
     if (accs) setAccounts(accs)

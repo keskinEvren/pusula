@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { slugify, formatCurrency, formatDate, formatMonthYear } from '../src/lib/utils'
+import {
+  slugify,
+  formatCurrency,
+  formatDate,
+  formatMonthYear,
+  formatLocalDateInput,
+  formatLocalMonthInput,
+} from '../src/lib/utils'
 
 describe('Utils & Slugify', () => {
   describe('slugify', () => {
@@ -32,6 +39,14 @@ describe('Utils & Slugify', () => {
     it('YYYY-MM formatını Türkçe ay ve yıla çevirir', () => {
       expect(formatMonthYear('2026-09')).toBe('Eylül 2026')
       expect(formatMonthYear('2026-01')).toBe('Ocak 2026')
+    })
+  })
+
+  describe('local date inputs', () => {
+    it('UTC dönüşümü yapmadan yerel takvim gününü korur', () => {
+      const localDate = new Date(2026, 8, 14, 0, 30)
+      expect(formatLocalDateInput(localDate)).toBe('2026-09-14')
+      expect(formatLocalMonthInput(localDate)).toBe('2026-09')
     })
   })
 })

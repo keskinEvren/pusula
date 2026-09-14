@@ -90,7 +90,7 @@ export default function SubscriptionsPage() {
       const [{ data: sData }, { data: pData }, { data: tData }] = await Promise.all([
         supabase.from('subscriptions').select('*').order('amount', { ascending: false }),
         supabase.from('projects').select('*').order('name', { ascending: true }),
-        supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
       ])
       if (sData) setSubscriptions(sData)
       if (pData) setProjects(pData)

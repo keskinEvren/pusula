@@ -23,7 +23,7 @@ import {
   CalendarCheck,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate, slugify } from '@/lib/utils'
+import { formatCurrency, formatDate, formatLocalDateInput, slugify } from '@/lib/utils'
 import { calculateProjectTotalCost, evaluateProjectBudget } from '@/lib/finance-engine'
 import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -95,7 +95,7 @@ export default function ProjectDetailPage({
         amount: parseFloat(expenseForm.amount),
         merchant: project.name + ' Proje Gideri',
         description: expenseForm.description,
-        date: new Date().toISOString().split('T')[0],
+        date: formatLocalDateInput(),
         accountId: expenseForm.accountId || undefined,
         projectId: project.id,
         analysisGroup: 'İş'

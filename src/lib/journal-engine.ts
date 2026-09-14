@@ -1,4 +1,5 @@
 import { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
+import { formatLocalDateInput } from './utils'
 
 export type JournalMood = 'high_energy' | 'calm' | 'low_energy' | 'stormy' | 'reflective'
 export type JournalTemplateType = 'freeform' | 'stoic' | 'gratitude_victory' | 'weekly_retro'
@@ -187,7 +188,7 @@ export interface JournalMetrics {
 
 export function calculateJournalMetrics(
   entries: JournalEntry[],
-  referenceDateStr: string = new Date().toISOString().split('T')[0]
+  referenceDateStr: string = formatLocalDateInput()
 ): JournalMetrics {
   const totalEntries = entries.length
   if (totalEntries === 0) {
@@ -240,7 +241,7 @@ export function calculateJournalMetrics(
     // Dün yazılmış mı?
     const yesterday = new Date(check)
     yesterday.setDate(yesterday.getDate() - 1)
-    const yStr = yesterday.toISOString().split('T')[0]
+    const yStr = formatLocalDateInput(yesterday)
     if (dateSet.has(yStr)) {
       check = yesterday
     } else {
@@ -250,7 +251,7 @@ export function calculateJournalMetrics(
 
   if (check.getTime() > 0) {
     while (true) {
-      const dStr = check.toISOString().split('T')[0]
+      const dStr = formatLocalDateInput(check)
       if (dateSet.has(dStr)) {
         if (dStr !== todayStr) writingStreak++
         check.setDate(check.getDate() - 1)
@@ -345,7 +346,7 @@ export const INITIAL_SAMPLE_JOURNAL_ENTRIES: JournalEntry[] = [
   {
     id: 'sample-entry-1',
     user_id: 'local',
-    entry_date: new Date().toISOString().split('T')[0],
+    entry_date: formatLocalDateInput(),
     title: 'Sakin Bir Sabah, Rüzgar Dindi',
     content: `Bugün erken uyandım. Şafak vakti bir bardak su içip gökyüzüne baktığımda zihnimdeki karmaşanın durulduğunu hissettim.
 
@@ -364,7 +365,7 @@ Marcus Aurelius'un dediği gibi: "Ruh, düşündüğü şeylerin rengine boyanı
   {
     id: 'sample-entry-2',
     user_id: 'local',
-    entry_date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    entry_date: formatLocalDateInput(new Date(Date.now() - 24 * 60 * 60 * 1000)),
     title: 'Fırtınalı Bir Gün ve Kintsugi',
     content: `Dün planladığım hiçbir şey vaktinde gitmedi. Sabah kodu derlerken çıkan beklenmedik hatalar ve gelen bir fatura enerjimi emdi.
 
@@ -383,7 +384,7 @@ Akşam masayı 5 dakika topladım, minimum dozda esnedim ve günü korudum. Kusu
   {
     id: 'sample-entry-3',
     user_id: 'local',
-    entry_date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    entry_date: formatLocalDateInput(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)),
     title: '3 Şükran ve Büyük İvme',
     content: `### 🙏 1. Üç Şükran Detayı
 1. Çalışma masamın üzerine vuran ikindi güneşi ve sessizlik.

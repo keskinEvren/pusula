@@ -24,7 +24,14 @@ import {
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate, formatMonthYear, cn } from '@/lib/utils'
+import {
+  formatCurrency,
+  formatDate,
+  formatMonthYear,
+  formatLocalDateInput,
+  formatLocalMonthInput,
+  cn,
+} from '@/lib/utils'
 import { round2 } from '@/lib/finance-engine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -112,7 +119,7 @@ function TransactionsContent() {
     return Array.from(months).sort().reverse()
   }, [transactions, monthFilter])
 
-  const currentMonth = new Date().toISOString().slice(0, 7)
+  const currentMonth = formatLocalMonthInput()
 
   // Check if any filter is active
   const hasActiveFilters =
@@ -154,7 +161,7 @@ function TransactionsContent() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [newTx, setNewTx] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: formatLocalDateInput(),
     account_or_card: 'Enpara Vadesiz',
     type: 'Harcama',
     description: '',
@@ -276,7 +283,7 @@ function TransactionsContent() {
     try {
       const supabase = createClient()
       const [{ data: txs }, { data: prjs }, { data: crds }, { data: accs }, { data: dbts }] = await Promise.all([
-        supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
         supabase.from('projects').select('*'),
         supabase.from('credit_cards').select('*'),
         supabase.from('accounts').select('*'),
@@ -586,7 +593,7 @@ function TransactionsContent() {
 
       setIsAddModalOpen(false)
       setNewTx({
-        date: new Date().toISOString().split('T')[0],
+        date: formatLocalDateInput(),
         account_or_card: 'Enpara Vadesiz',
         type: 'Harcama',
         description: '',
