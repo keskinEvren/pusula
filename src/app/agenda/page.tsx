@@ -27,6 +27,8 @@ import {
   BarChart3,
   ExternalLink,
   AlertTriangle,
+  ArrowRight,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -423,6 +425,43 @@ function AgendaContent() {
         console.warn('Delete db notice:', err)
       }
     }
+  }
+
+  // Move single item to today (Carry-over)
+  const handleMoveToToday = async (item: AgendaItem) => {
+    const updated = items.map((i) => (i.id === item.id ? { ...i, plan_date: todayStr } : i))
+    syncLocal(updated)
+    toast.success(`✨ "${item.title}" bugünün ajandasına aktarıldı!`)
+
+    if (!isDbFallback) {
+      try {
+        const supabase = createClient()
+        await supabase.from('agenda_items').update({ plan_date: todayStr }).eq('id', item.id)
+      } catch (err) {
+        console.warn('Move to today db notice:', err)
+      }
+    }
+  }
+
+  // Move all uncompleted items of a past day to today
+  const handleMoveAllToToday = async (uncompletedItems: AgendaItem[]) => {
+    const uncompletedIds = new Set(uncompletedItems.map((i) => i.id))
+    const updated = items.map((i) => (uncompletedIds.has(i.id) ? { ...i, plan_date: todayStr } : i))
+    syncLocal(updated)
+    toast.success(`✨ ${uncompletedItems.length} görev bugünün ajandasına aktarıldı!`)
+
+    if (!isDbFallback) {
+      try {
+        const supabase = createClient()
+        for (const it of uncompletedItems) {
+          await supabase.from('agenda_items').update({ plan_date: todayStr }).eq('id', it.id)
+        }
+      } catch (err) {
+        console.warn('Move all to today db notice:', err)
+      }
+    }
+    // Switch view to today
+    setSelectedDate(todayStr)
   }
 
   // Handle Complete Active Timer
@@ -1345,12 +1384,39 @@ function AgendaContent() {
             </span>
           </div>
 
+          {/* Past Uncompleted Carry-over Banner */}
+          {selectedDate < todayStr && dayItems.some((i) => i.status !== 'completed') && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-200 shadow-xs">
+              <div className="flex items-center gap-2.5 text-xs">
+                <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+                <div>
+                  <p className="font-semibold text-rose-300">
+                    Bu geçmiş günde tamamlanmamış {dayItems.filter((i) => i.status !== 'completed').length} görev var
+                  </p>
+                  <p className="text-rose-200/80 text-[11px]">
+                    Geçmiş görevler doğrudan tamamlanamaz veya silinemez; üzerinde çalışmak için bugünün ajandasına aktarmalısınız.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => handleMoveAllToToday(dayItems.filter((i) => i.status !== 'completed'))}
+                className="h-8 px-3 text-xs font-semibold shrink-0 gap-1.5 bg-rose-600 hover:bg-rose-500 text-white shadow-xs"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                <span>Tümünü Bugüne Getir ({dayItems.filter((i) => i.status !== 'completed').length})</span>
+              </Button>
+            </div>
+          )}
+
           {/* Items List */}
           <div className="space-y-2">
             {filteredDayItems.map((item) => {
               const prj = getProject(item.project_id)
               const isItemActive = activeTimer?.itemId === item.id
               const isCompleted = item.status === 'completed'
+              const isPastUncompleted = item.plan_date < todayStr && !isCompleted
 
               return (
                 <div
@@ -1360,6 +1426,8 @@ function AgendaContent() {
                       ? 'border-purple-500/60 bg-purple-500/10 shadow-sm'
                       : isCompleted
                       ? 'border-border/40 bg-card/40 opacity-75'
+                      : isPastUncompleted
+                      ? 'border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50'
                       : 'border-border bg-card hover:border-border/80 shadow-xs'
                   }`}
                 >
@@ -1367,26 +1435,55 @@ function AgendaContent() {
                     {/* Checkbox toggle */}
                     <button
                       type="button"
-                      onClick={() => handleToggleStatus(item)}
+                      disabled={isPastUncompleted}
+                      onClick={() => {
+                        if (isPastUncompleted) {
+                          toast.warning("Geçmişte kalan görev doğrudan tamamlanamaz. Lütfen önce 'Bugüne Getir' butonuna basın.")
+                          return
+                        }
+                        handleToggleStatus(item)
+                      }}
                       className={`h-5 w-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                         isCompleted
                           ? 'bg-emerald-600 border-emerald-500 text-white'
+                          : isPastUncompleted
+                          ? 'border-rose-500/40 bg-rose-500/10 text-rose-400 cursor-not-allowed opacity-60'
                           : 'border-muted-foreground/40 hover:border-primary'
                       }`}
-                      title={isCompleted ? 'Tamamlanmadı olarak işaretle' : 'Tamamla'}
+                      title={
+                        isPastUncompleted
+                          ? "Geçmişteki görev doğrudan tamamlanamaz. Önce 'Bugüne Getir' demelisiniz."
+                          : isCompleted
+                          ? 'Tamamlanmadı olarak işaretle'
+                          : 'Tamamla'
+                      }
                     >
-                      {isCompleted && <Check className="h-3.5 w-3.5" />}
+                      {isCompleted ? (
+                        <Check className="h-3.5 w-3.5" />
+                      ) : isPastUncompleted ? (
+                        <span className="text-[10px] font-bold text-rose-400">✕</span>
+                      ) : null}
                     </button>
 
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
-                          className={`text-sm font-semibold text-foreground ${
-                            isCompleted ? 'line-through text-muted-foreground' : ''
+                          className={`text-sm font-semibold ${
+                            isCompleted
+                              ? 'line-through text-muted-foreground'
+                              : isPastUncompleted
+                              ? 'text-rose-200'
+                              : 'text-foreground'
                           }`}
                         >
                           {item.title}
                         </span>
+
+                        {isPastUncompleted && (
+                          <Badge variant="outline" className="text-[10px] border-rose-500/40 bg-rose-500/10 text-rose-300">
+                            Geçmişte Atlandı
+                          </Badge>
+                        )}
 
                         {item.plan_time && (
                           <span className="text-[11px] font-mono text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/40">
@@ -1424,18 +1521,32 @@ function AgendaContent() {
                       </span>
                     ) : null}
 
-                    {/* Start Timer Button (if not completed and not currently active) */}
-                    {!isCompleted && !isItemActive && (
+                    {/* If past uncompleted: Show "Bugüne Getir" button */}
+                    {isPastUncompleted ? (
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => startTimer(item, prj?.name)}
-                        className="h-8 px-2.5 text-xs font-semibold gap-1 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                        title="Sayacı Başlat"
+                        type="button"
+                        onClick={() => handleMoveToToday(item)}
+                        className="h-8 px-3 text-xs font-semibold gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-xs"
+                        title="Bu görevi bugünün ajandasına aktar ve çalışmaya aç"
                       >
-                        <Play className="h-3.5 w-3.5 fill-current" />
-                        <span className="hidden sm:inline">Başlat</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                        <span>Bugüne Getir</span>
                       </Button>
+                    ) : (
+                      /* Start Timer Button (if not completed and not currently active) */
+                      !isCompleted && !isItemActive && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => startTimer(item, prj?.name)}
+                          className="h-8 px-2.5 text-xs font-semibold gap-1 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                          title="Sayacı Başlat"
+                        >
+                          <Play className="h-3.5 w-3.5 fill-current" />
+                          <span className="hidden sm:inline">Başlat</span>
+                        </Button>
+                      )
                     )}
 
                     {isItemActive && (
@@ -1444,15 +1555,24 @@ function AgendaContent() {
                       </Badge>
                     )}
 
-                    {/* Delete button */}
-                    <button
-                      type="button"
-                      onClick={() => setItemToDelete(item)}
-                      className="p-1.5 rounded text-muted-foreground/60 hover:text-destructive transition-colors"
-                      title="Maddeyi Sil"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {/* Delete button: ONLY allow deleting if NOT past uncompleted */}
+                    {!isPastUncompleted ? (
+                      <button
+                        type="button"
+                        onClick={() => setItemToDelete(item)}
+                        className="p-1.5 rounded text-muted-foreground/60 hover:text-destructive transition-colors"
+                        title="Maddeyi Sil"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <div
+                        className="p-1.5 text-muted-foreground/30 cursor-not-allowed"
+                        title="Geçmişteki kayıtlar silinemez. Önce bugüne getirmelisiniz."
+                      >
+                        <Trash2 className="h-3.5 w-3.5 opacity-30" />
+                      </div>
+                    )}
                   </div>
                 </div>
               )
