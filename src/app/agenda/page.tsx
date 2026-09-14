@@ -40,6 +40,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
+import { isUUID } from '@/lib/utils'
 import { useTimer, formatMinutesHours, type TimerMode } from '@/lib/timer-context'
 import type { AgendaItem, Project } from '@/types/database'
 
@@ -417,7 +418,7 @@ function AgendaContent() {
     toast.success('Ajanda maddesi silindi')
     setItemToDelete(null)
 
-    if (!isDbFallback) {
+    if (!isDbFallback && isUUID(id)) {
       try {
         const supabase = createClient()
         await supabase.from('agenda_items').delete().eq('id', id)

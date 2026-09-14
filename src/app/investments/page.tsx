@@ -23,7 +23,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, cn } from '@/lib/utils'
+import { formatCurrency, cn, isUUID } from '@/lib/utils'
 import { calculatePortfolioMetrics, calculateDcaAverageCost, round2 } from '@/lib/finance-engine'
 import { searchAssetCatalog, type CatalogAsset } from '@/lib/market/assets-catalog'
 import { Button } from '@/components/ui/button'
@@ -523,7 +523,7 @@ function InvestmentsContent() {
     if (!deleteTargetItem) return
     setIsDeleting(true)
     try {
-      if (!isDbFallback) {
+      if (!isDbFallback && isUUID(deleteTargetItem.id)) {
         const supabase = createClient()
         await supabase.from('investments').delete().eq('id', deleteTargetItem.id)
         await loadInvestments()

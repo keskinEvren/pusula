@@ -37,6 +37,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
+import { isUUID } from '@/lib/utils'
 import type { Dream } from '@/types/database'
 import {
   DREAM_HORIZONS,
@@ -54,7 +55,7 @@ import {
 
 const INITIAL_SAMPLE_DREAMS: Dream[] = [
   {
-    id: 'dream-ironman',
+    id: 'a1000000-0000-4000-8000-000000000001',
     user_id: 'local',
     title: 'İRONMAN Olmak',
     description: '3.8 km yüzme, 180 km bisiklet ve 42.2 km maraton koşusundan oluşan dayanıklılık triatlonunu aralıksız tamamlamak.',
@@ -74,7 +75,7 @@ const INITIAL_SAMPLE_DREAMS: Dream[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 'dream-skydiving',
+    id: 'a2000000-0000-4000-8000-000000000002',
     user_id: 'local',
     title: 'Paraşütle Atlamak',
     description: 'Binlerce metre irtifadan serbest düşüş ve gökyüzünde süzülerek adrenalin ve mutlak özgürlüğü deneyimlemek.',
@@ -94,7 +95,7 @@ const INITIAL_SAMPLE_DREAMS: Dream[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 'dream-sailboat',
+    id: 'a3000000-0000-4000-8000-000000000003',
     user_id: 'local',
     title: 'Güzel Bir Yelkenli Sahibi Olmak',
     description: 'Masmavi koylarda sadece rüzgarın gücüyle seyretmek, denizle baş başa bağımsız ve dingin bir yaşam kurmak.',
@@ -110,106 +111,6 @@ const INITIAL_SAMPLE_DREAMS: Dream[] = [
     achieved_note: null,
     achieved_image_url: null,
     order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'sample-1',
-    user_id: 'local',
-    title: "Kyoto'da Taş Bahçeli Evde 1 Ay Çalışmak",
-    description: 'Sonbahar yaprakları eşliğinde sabah tapınak yürüyüşleri ve öğleden sonra derin çalışma seansları.',
-    identity_persona: 'Özgür Kaşif & Bağımsız Üretici',
-    motivation_why: 'Sadece çalışmak için değil, dünyayı deneyimlemek ve zihnimi genişletmek için buradayım.',
-    horizon: 'horizon_1_3y',
-    category: 'Deneyim & Seyahat',
-    status: 'active',
-    next_focus_note: 'Japonya uzun dönem konaklama ve vize gereksinimlerini araştır',
-    cover_image_url: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2027',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'sample-2',
-    user_id: 'local',
-    title: 'Minimalist Stüdyo & Ergonomik Çalışma Alanı',
-    description: 'Doğal ceviz masa, Herman Miller Embody koltuk, 4K ekran ve sessiz ortam.',
-    identity_persona: 'Bedenine Saygılı Zanaatkar',
-    motivation_why: 'Günde 8 saat vakit geçirdiğim alan sağlığıma ve odak kaliteme değer katmalı.',
-    horizon: 'horizon_1y',
-    category: 'Maddi Hedef',
-    status: 'active',
-    next_focus_note: 'Oda yerleşimini çiz ve masa ayaklarını seç',
-    cover_image_url: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2026',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'sample-3',
-    user_id: 'local',
-    title: 'Tam Bağımsızlık & Lokasyon Bağımsız Yaşam',
-    description: 'Sadece istediğim insanlarla, istediğim yerden kendi projelerimi üreterek yaşamak.',
-    identity_persona: 'Kendi Zamanının Efendisi',
-    motivation_why: 'Hayattaki en değerli sermaye geri gelmeyen zamandır; onu başkalarına kiralamak istemiyorum.',
-    horizon: 'horizon_lifetime',
-    category: 'Kariyer & Üretim',
-    status: 'active',
-    next_focus_note: 'Pusula ve mikro-SaaS ürünlerini istikrarlı büyüt',
-    cover_image_url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1600&q=80',
-    target_year: 'Ömür Boyu',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'sample-4',
-    user_id: 'local',
-    title: 'Pilotluk & Planör İlk Uçuş Deneyimi',
-    description: 'Gökyüzünde rüzgarı hissederek tek başına kontrolü ele alma hissi.',
-    identity_persona: 'Sınırlarını Aşan Havacı',
-    motivation_why: 'Korkularımı gökyüzünde bırakmak ve dünyayı kuşbakışı görmek için.',
-    horizon: 'horizon_3_5y',
-    category: 'Deneyim & Seyahat',
-    status: 'incubating',
-    next_focus_note: 'İnönü Türkkuşu eğitim takvimine bak',
-    cover_image_url: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2028',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 3,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'sample-5',
-    user_id: 'local',
-    title: 'İlk 10km Koşu Hedefini Tamamla',
-    description: 'İstanbul sahilinde kesintisiz 10 kilometre koşusu.',
-    identity_persona: 'Dayanıklı & Kararlı Sporcu',
-    motivation_why: 'Zihinsel dayanıklılığın ve disiplinin bedenle kanıtı.',
-    horizon: 'horizon_1y',
-    category: 'Kişisel Gelişim & Sağlık',
-    status: 'achieved',
-    next_focus_note: null,
-    cover_image_url: 'https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2026',
-    achieved_at: new Date().toISOString(),
-    achieved_note: 'Son 2 kilometrede bacaklarım yanıyordu ama o çizgiyi geçtiğim andaki özsaygı hissi paha biçilemezdi!',
-    achieved_image_url: 'https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1600&q=80',
-    order_index: 4,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -266,6 +167,10 @@ function DreamsContent() {
   async function loadDreams() {
     setLoading(true)
     const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     const { data, error } = await supabase
       .from('dreams')
       .select('*')
@@ -278,17 +183,11 @@ function DreamsContent() {
       if (cached) {
         try {
           const parsed: Dream[] = JSON.parse(cached)
-          const missing = INITIAL_SAMPLE_DREAMS.slice(0, 3).filter(
-            (d) =>
-              !parsed.some(
-                (p) =>
-                  p.id === d.id ||
-                  (p.title && p.title.toLowerCase() === d.title.toLowerCase())
-              )
-          )
-          const merged = missing.length > 0 ? [...missing, ...parsed] : parsed
-          setDreams(merged)
-          localStorage.setItem('pusula_local_dreams', JSON.stringify(merged))
+          // Clean legacy sample-* entries
+          const cleaned = parsed.filter((d) => !d.id.startsWith('sample-'))
+          const listToUse = cleaned.length > 0 ? cleaned : INITIAL_SAMPLE_DREAMS
+          setDreams(listToUse)
+          localStorage.setItem('pusula_local_dreams', JSON.stringify(listToUse))
         } catch {
           setDreams(INITIAL_SAMPLE_DREAMS)
           localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
@@ -298,22 +197,62 @@ function DreamsContent() {
         localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
       }
     } else if (data && data.length > 0) {
-      const missing = INITIAL_SAMPLE_DREAMS.slice(0, 3).filter(
-        (d) =>
-          !data.some(
-            (p) =>
-              p.id === d.id ||
-              (p.title && p.title.toLowerCase() === d.title.toLowerCase())
-          )
-      )
-      const merged = missing.length > 0 ? [...missing, ...data] : data
-      setDreams(merged)
+      // Remote dreams table has rows - filter any legacy mock IDs
+      const validData = data.filter((d) => !d.id.startsWith('sample-'))
+      setDreams(validData)
       setIsDbFallback(false)
-      localStorage.setItem('pusula_local_dreams', JSON.stringify(merged))
+      localStorage.setItem('pusula_local_dreams', JSON.stringify(validData))
     } else {
-      // Empty remote table: seed with sample inspirations if completely empty
-      setDreams(INITIAL_SAMPLE_DREAMS)
-      localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
+      // Remote table returned empty (data is [])
+      setIsDbFallback(false)
+      const initKey = user ? `pusula_dreams_seeded_${user.id}` : 'pusula_dreams_seeded_local'
+      const hasSeeded = localStorage.getItem(initKey)
+
+      if (!hasSeeded && user) {
+        // First-time logged-in user: seed the 3 vision goals into remote database
+        const seedPayload = INITIAL_SAMPLE_DREAMS.map((item, idx) => ({
+          user_id: user.id,
+          title: item.title,
+          description: item.description,
+          identity_persona: item.identity_persona,
+          motivation_why: item.motivation_why,
+          horizon: item.horizon,
+          category: item.category,
+          status: item.status,
+          next_focus_note: item.next_focus_note,
+          cover_image_url: item.cover_image_url,
+          target_year: item.target_year,
+          order_index: idx,
+        }))
+
+        try {
+          const { data: seededData, error: seedErr } = await supabase
+            .from('dreams')
+            .insert(seedPayload)
+            .select()
+
+          if (!seedErr && seededData && seededData.length > 0) {
+            localStorage.setItem(initKey, 'true')
+            setDreams(seededData)
+            localStorage.setItem('pusula_local_dreams', JSON.stringify(seededData))
+            setLoading(false)
+            return
+          }
+        } catch (seedCatch) {
+          console.warn('Auto-seed dreams note:', seedCatch)
+        }
+      }
+
+      // If user has already initialized/seeded before and the table is now empty,
+      // the user explicitly deleted all goals, so do not resurrect them.
+      if (hasSeeded) {
+        setDreams([])
+        localStorage.setItem('pusula_local_dreams', JSON.stringify([]))
+      } else {
+        localStorage.setItem(initKey, 'true')
+        setDreams(INITIAL_SAMPLE_DREAMS)
+        localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
+      }
     }
     setLoading(false)
   }
@@ -385,15 +324,47 @@ function DreamsContent() {
 
     if (!isDbFallback && user) {
       if (editingDream) {
-        await supabase.from('dreams').update(payload).eq('id', editingDream.id)
+        if (isUUID(editingDream.id)) {
+          const { error } = await supabase.from('dreams').update(payload).eq('id', editingDream.id)
+          if (!error) {
+            const updated = dreams.map((d) => (d.id === editingDream.id ? ({ ...d, ...payload } as Dream) : d))
+            syncLocal(updated)
+          } else {
+            await loadDreams()
+          }
+        } else {
+          // If dream has legacy non-UUID, insert into Supabase as a real record
+          const { data: inserted } = await supabase
+            .from('dreams')
+            .insert({
+              ...payload,
+              order_index: editingDream.order_index ?? dreams.length,
+              created_at: new Date().toISOString(),
+            })
+            .select()
+          if (inserted && inserted.length > 0) {
+            const updated = dreams.map((d) => (d.id === editingDream.id ? inserted[0] : d))
+            syncLocal(updated)
+          } else {
+            await loadDreams()
+          }
+        }
       } else {
-        await supabase.from('dreams').insert({
-          ...payload,
-          order_index: dreams.length,
-          created_at: new Date().toISOString(),
-        })
+        const { data: inserted } = await supabase
+          .from('dreams')
+          .insert({
+            ...payload,
+            order_index: dreams.length,
+            created_at: new Date().toISOString(),
+          })
+          .select()
+        if (inserted && inserted.length > 0) {
+          const updated = [inserted[0], ...dreams]
+          syncLocal(updated)
+        } else {
+          await loadDreams()
+        }
       }
-      await loadDreams()
     } else {
       // Local fallback
       let updated: Dream[]
@@ -402,7 +373,7 @@ function DreamsContent() {
       } else {
         const newItem: Dream = {
           ...payload,
-          id: `dream-${Date.now()}`,
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'a0000000-0000-4000-8000-' + String(Date.now()).slice(-12).padStart(12, '0'),
           achieved_at: null,
           achieved_note: null,
           achieved_image_url: null,
@@ -422,15 +393,25 @@ function DreamsContent() {
   const confirmDeleteDream = async () => {
     if (!dreamToDelete) return
     const id = dreamToDelete.id
-    if (!isDbFallback) {
-      const supabase = createClient()
-      await supabase.from('dreams').delete().eq('id', id)
-      await loadDreams()
-    } else {
-      syncLocal(dreams.filter((d) => d.id !== id))
-    }
+
+    // 1. Optimistically update local state & local storage
+    const updated = dreams.filter((d) => d.id !== id)
+    syncLocal(updated)
     toast.success('Hedef silindi.')
     setDreamToDelete(null)
+
+    // 2. Only attempt remote DB deletion if DB is active and ID is a valid UUID
+    if (!isDbFallback && isUUID(id)) {
+      try {
+        const supabase = createClient()
+        const { error } = await supabase.from('dreams').delete().eq('id', id)
+        if (error) {
+          console.warn('Remote dream delete warning:', error.message)
+        }
+      } catch (err) {
+        console.warn('Remote dream delete error:', err)
+      }
+    }
   }
 
   // Open Celebration Modal (Mark as Achieved)
@@ -454,13 +435,16 @@ function DreamsContent() {
       updated_at: new Date().toISOString(),
     }
 
-    if (!isDbFallback) {
-      const supabase = createClient()
-      await supabase.from('dreams').update(updates).eq('id', celebratingDream.id)
-      await loadDreams()
-    } else {
-      const updated = dreams.map((d) => (d.id === celebratingDream.id ? { ...d, ...updates } : d))
-      syncLocal(updated)
+    const updated = dreams.map((d) => (d.id === celebratingDream.id ? { ...d, ...updates } : d))
+    syncLocal(updated)
+
+    if (!isDbFallback && isUUID(celebratingDream.id)) {
+      try {
+        const supabase = createClient()
+        await supabase.from('dreams').update(updates).eq('id', celebratingDream.id)
+      } catch (err) {
+        console.warn('Remote celebration update warning:', err)
+      }
     }
 
     toast.success('Tebrikler! Kişisel zafer Zafer Müzesi\'ne kaydedildi 🏆')
@@ -471,25 +455,33 @@ function DreamsContent() {
   // Move from Incubating to Active
   const handlePromoteToActive = async (dream: Dream) => {
     const updates = { status: 'active' as const, updated_at: new Date().toISOString() }
-    if (!isDbFallback) {
-      const supabase = createClient()
-      await supabase.from('dreams').update(updates).eq('id', dream.id)
-      await loadDreams()
-    } else {
-      syncLocal(dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d)))
-    }
+    const updated = dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d))
+    syncLocal(updated)
     toast.success('Hedef aktif vizyona taşındı!')
+
+    if (!isDbFallback && isUUID(dream.id)) {
+      try {
+        const supabase = createClient()
+        await supabase.from('dreams').update(updates).eq('id', dream.id)
+      } catch (err) {
+        console.warn('Remote promote warning:', err)
+      }
+    }
   }
 
   // Move from Active to Incubating
   const handleDemoteToIncubating = async (dream: Dream) => {
     const updates = { status: 'incubating' as const, updated_at: new Date().toISOString() }
-    if (!isDbFallback) {
-      const supabase = createClient()
-      await supabase.from('dreams').update(updates).eq('id', dream.id)
-      await loadDreams()
-    } else {
-      syncLocal(dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d)))
+    const updated = dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d))
+    syncLocal(updated)
+
+    if (!isDbFallback && isUUID(dream.id)) {
+      try {
+        const supabase = createClient()
+        await supabase.from('dreams').update(updates).eq('id', dream.id)
+      } catch (err) {
+        console.warn('Remote demote warning:', err)
+      }
     }
   }
 

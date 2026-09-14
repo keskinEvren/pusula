@@ -35,7 +35,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
-import { formatLocalDateInput } from '@/lib/utils'
+import { formatLocalDateInput, isUUID } from '@/lib/utils'
 import type { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
 import {
   JournalMood,
@@ -328,10 +328,12 @@ function JournalPageContent() {
       }
     }
 
-    const supabase = createClient()
-    try {
-      await supabase.from('journal_entries').delete().eq('id', id)
-    } catch {}
+    if (isUUID(id)) {
+      const supabase = createClient()
+      try {
+        await supabase.from('journal_entries').delete().eq('id', id)
+      } catch {}
+    }
     toast.success('Kayıt silindi.')
     setEntryToDelete(null)
   }
