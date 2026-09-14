@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import { matchMerchant } from './merchant-matcher'
 import { repairTurkishPdfText } from './turkish-cleaner'
 import type { ExtractedTransaction } from './types'
@@ -9,6 +8,9 @@ export async function extractFromCSVOrExcel(
   userMappings: MerchantMapping[] = []
 ): Promise<{ transactions: ExtractedTransaction[]; error?: string }> {
   try {
+    // Excel parsing is expensive and only needed after a user selects a file.
+    // Keep it out of the import page's initial JavaScript bundle.
+    const XLSX = await import('xlsx')
     const arrayBuffer = await file.arrayBuffer()
     const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
     const firstSheetName = workbook.SheetNames[0]

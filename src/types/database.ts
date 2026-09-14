@@ -817,6 +817,56 @@ export interface Database {
         }
         Relationships: []
       }
+      credentials: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          category: 'login' | 'gaming' | 'card_pin' | 'wifi' | 'identity' | 'license' | 'note'
+          email: string | null
+          username: string | null
+          url: string | null
+          is_favorite: boolean
+          encrypted_payload: string
+          encryption_iv: string
+          encryption_salt: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          category: 'login' | 'gaming' | 'card_pin' | 'wifi' | 'identity' | 'license' | 'note'
+          email?: string | null
+          username?: string | null
+          url?: string | null
+          is_favorite?: boolean
+          encrypted_payload: string
+          encryption_iv: string
+          encryption_salt: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          category?: 'login' | 'gaming' | 'card_pin' | 'wifi' | 'identity' | 'license' | 'note'
+          email?: string | null
+          username?: string | null
+          url?: string | null
+          is_favorite?: boolean
+          encrypted_payload?: string
+          encryption_iv?: string
+          encryption_salt?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -915,3 +965,6 @@ export type JournalEntry = Database['public']['Tables']['journal_entries']['Row'
 export type AgendaItem = Database['public']['Tables']['agenda_items']['Row']
 export type AgendaItemInsert = Database['public']['Tables']['agenda_items']['Insert']
 export type AgendaItemUpdate = Database['public']['Tables']['agenda_items']['Update']
+export type Credential = Database['public']['Tables']['credentials']['Row']
+export type CredentialInsert = Database['public']['Tables']['credentials']['Insert']
+export type CredentialUpdate = Database['public']['Tables']['credentials']['Update']

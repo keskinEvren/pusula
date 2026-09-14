@@ -9,7 +9,7 @@ import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { createClient } from '@/lib/supabase/client'
 import { financialBridge } from '@/lib/financial-bridge'
 import { useToast } from '@/lib/toast-context'
-import { cn } from '@/lib/utils'
+import { cn, formatLocalDateInput } from '@/lib/utils'
 import type { Account, CreditCard } from '@/types/database'
 
 interface QuickCaptureSheetProps {
@@ -117,7 +117,7 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       const userId = user?.id || 'local'
-      const today = new Date().toISOString().split('T')[0]
+      const today = formatLocalDateInput()
 
       const res = await financialBridge.recordExpense({
         userId,

@@ -32,7 +32,7 @@ declare
 begin
   -- Güvenlik: auth.uid() varsa parametre ile eşleşmeli
   v_caller_id := auth.uid();
-  if v_caller_id is not null and p_user_id is not null and v_caller_id <> p_user_id then
+  if v_caller_id is null or p_user_id is null or v_caller_id <> p_user_id then
     return jsonb_build_object('success', false, 'error', 'Yetkisiz erişim: Kullanıcı kimliği doğrulanamadı.');
   end if;
 
@@ -105,6 +105,11 @@ begin
     ) and user_id = p_user_id;
   end if;
 
+  if v_snapshot ? 'created_card_id' then
+    delete from public.credit_cards
+    where id = (v_snapshot->>'created_card_id')::uuid and user_id = p_user_id;
+  end if;
+
   -- 6. Revert any debts modified during bank account import (if tracked in snapshot)
   if v_snapshot ? 'previous_debt_states' then
     for v_debt_elem in select * from jsonb_array_elements(v_snapshot->'previous_debt_states')
@@ -142,49 +147,58 @@ $$;
 -- ------------------------------------------------------------------------------
 -- 2. SECURE RLS POLICIES — REMOVE 'local' TENANT BYPASS (F09)
 -- ------------------------------------------------------------------------------
--- Dreams
-drop policy if exists "Users can view their own dreams" on public.dreams;
-drop policy if exists "Users can insert their own dreams" on public.dreams;
-drop policy if exists "Users can update their own dreams" on public.dreams;
-drop policy if exists "Users can delete their own dreams" on public.dreams;
+DO $$
+BEGIN
+  -- Dreams
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'dreams') THEN
+    DROP POLICY IF EXISTS "Users can view their own dreams" ON public.dreams;
+    DROP POLICY IF EXISTS "Users can insert their own dreams" ON public.dreams;
+    DROP POLICY IF EXISTS "Users can update their own dreams" ON public.dreams;
+    DROP POLICY IF EXISTS "Users can delete their own dreams" ON public.dreams;
 
-create policy "Users can view their own dreams"
-  on public.dreams for select
-  using (auth.uid()::text = user_id);
+    CREATE POLICY "Users can view their own dreams"
+      ON public.dreams FOR SELECT
+      USING (auth.uid()::text = user_id);
 
-create policy "Users can insert their own dreams"
-  on public.dreams for insert
-  with check (auth.uid()::text = user_id);
+    CREATE POLICY "Users can insert their own dreams"
+      ON public.dreams FOR INSERT
+      WITH CHECK (auth.uid()::text = user_id);
 
-create policy "Users can update their own dreams"
-  on public.dreams for update
-  using (auth.uid()::text = user_id);
+    CREATE POLICY "Users can update their own dreams"
+      ON public.dreams FOR UPDATE
+      USING (auth.uid()::text = user_id);
 
-create policy "Users can delete their own dreams"
-  on public.dreams for delete
-  using (auth.uid()::text = user_id);
+    CREATE POLICY "Users can delete their own dreams"
+      ON public.dreams FOR DELETE
+      USING (auth.uid()::text = user_id);
+  END IF;
 
--- Routines & Logs
-drop policy if exists "Users can manage their own routines" on public.routines;
-drop policy if exists "Users can manage their own routine logs" on public.routine_logs;
+  -- Routines & Logs
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'routines') THEN
+    DROP POLICY IF EXISTS "Users can manage their own routines" ON public.routines;
+    CREATE POLICY "Users can manage their own routines"
+      ON public.routines FOR ALL
+      USING (auth.uid()::text = user_id)
+      WITH CHECK (auth.uid()::text = user_id);
+  END IF;
 
-create policy "Users can manage their own routines"
-  on public.routines for all
-  using (auth.uid()::text = user_id)
-  with check (auth.uid()::text = user_id);
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'routine_logs') THEN
+    DROP POLICY IF EXISTS "Users can manage their own routine logs" ON public.routine_logs;
+    CREATE POLICY "Users can manage their own routine logs"
+      ON public.routine_logs FOR ALL
+      USING (auth.uid()::text = user_id)
+      WITH CHECK (auth.uid()::text = user_id);
+  END IF;
 
-create policy "Users can manage their own routine logs"
-  on public.routine_logs for all
-  using (auth.uid()::text = user_id)
-  with check (auth.uid()::text = user_id);
-
--- Journal Entries
-drop policy if exists "Users can manage their own journal entries" on public.journal_entries;
-
-create policy "Users can manage their own journal entries"
-  on public.journal_entries for all
-  using (auth.uid()::text = user_id)
-  with check (auth.uid()::text = user_id);
+  -- Journal Entries
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'journal_entries') THEN
+    DROP POLICY IF EXISTS "Users can manage their own journal entries" ON public.journal_entries;
+    CREATE POLICY "Users can manage their own journal entries"
+      ON public.journal_entries FOR ALL
+      USING (auth.uid()::text = user_id)
+      WITH CHECK (auth.uid()::text = user_id);
+  END IF;
+END $$;
 
 -- ------------------------------------------------------------------------------
 -- 3. ATOMIC FINANCIAL MUTATION RPCS (F01, F17)
@@ -212,7 +226,7 @@ declare
   v_tx_id uuid;
   v_acc_balance numeric;
 begin
-  if v_caller_id is not null and p_user_id <> v_caller_id then
+  if v_caller_id is null or p_user_id is null or p_user_id <> v_caller_id then
     return jsonb_build_object('success', false, 'error', 'Yetkisiz erişim.');
   end if;
 
@@ -284,7 +298,7 @@ declare
   v_caller_id uuid := auth.uid();
   v_tx_id uuid;
 begin
-  if v_caller_id is not null and p_user_id <> v_caller_id then
+  if v_caller_id is null or p_user_id is null or p_user_id <> v_caller_id then
     return jsonb_build_object('success', false, 'error', 'Yetkisiz erişim.');
   end if;
 
@@ -338,7 +352,7 @@ declare
   v_first_id uuid;
   v_second_id uuid;
 begin
-  if v_caller_id is not null and p_user_id <> v_caller_id then
+  if v_caller_id is null or p_user_id is null or p_user_id <> v_caller_id then
     return jsonb_build_object('success', false, 'error', 'Yetkisiz erişim.');
   end if;
 
@@ -405,7 +419,7 @@ declare
   v_caller_id uuid := auth.uid();
   v_tx public.transactions%rowtype;
 begin
-  if v_caller_id is not null and p_user_id <> v_caller_id then
+  if v_caller_id is null or p_user_id is null or p_user_id <> v_caller_id then
     return jsonb_build_object('success', false, 'error', 'Yetkisiz erişim.');
   end if;
 
@@ -490,7 +504,7 @@ declare
   v_new_remaining numeric;
   v_new_status text;
 begin
-  if v_caller_id is not null and p_user_id <> v_caller_id then
+  if v_caller_id is null or p_user_id is null or p_user_id <> v_caller_id then
     return jsonb_build_object('success', false, 'error', 'Yetkisiz erişim.');
   end if;
 

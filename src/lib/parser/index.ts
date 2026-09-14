@@ -4,6 +4,7 @@ import { matchMerchant } from './merchant-matcher'
 import { repairTurkishPdfText } from './turkish-cleaner'
 import type { ParseResult, ExtractedTransaction, BankDetectionResult } from './types'
 import type { MerchantMapping } from '@/types/database'
+import { formatLocalDateInput } from '../utils'
 
 import { parseFlexibleAmount } from './utils'
 export * from './utils'
@@ -249,7 +250,7 @@ export function parseStatementLines(
     const isNegative = selectedAmount.isNegative || rawDesc.toLowerCase().includes('(iade)')
 
     // Normalize date
-    let parsedDate = new Date().toISOString().split('T')[0]
+    let parsedDate = formatLocalDateInput()
     const dmy = rawDate.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/)
     if (dmy) {
       const year = dmy[3] ? (dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3]) : new Date().getFullYear().toString()

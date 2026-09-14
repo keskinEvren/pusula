@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Sparkles,
   ShieldCheck,
+  ShieldAlert,
   Zap,
   Layers,
   ArrowUpRight,
@@ -22,6 +23,13 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/layout/page-header'
 import { DashboardRoutineStrip } from '@/components/routines/dashboard-routine-strip'
+import { useToast } from '@/lib/toast-context'
+import {
+  type VaultResetRequest,
+  getPendingResetRequest,
+  cancelVaultReset,
+  formatRemainingTime,
+} from '@/lib/credentials-engine'
 
 import {
   calculateNetWorth,
@@ -35,6 +43,7 @@ import { Badge } from '@/components/ui/badge'
 import type { Account, CreditCard as CardType, Debt, Transaction, Subscription, Project, Investment } from '@/types/database'
 
 export default function DashboardPage() {
+  const { toast } = useToast()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cards, setCards] = useState<CardType[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
@@ -43,6 +52,10 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Kasa Acil Durum Sıfırlama Karantinası State
+  const [vaultResetRequest, setVaultResetRequest] = useState<VaultResetRequest | null>(null)
+  const [remainingTimeDisplay, setRemainingTimeDisplay] = useState('')
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -60,7 +73,7 @@ export default function DashboardPage() {
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
           supabase.from('debts').select('*').eq('status', 'Açık'),
-          supabase.from('transactions').select('*').order('date', { ascending: false }),
+          supabase.from('transactions').select('*').order('date', { ascending: false }).limit(1000),
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
           supabase.from('investments').select('*'),
@@ -100,6 +113,30 @@ export default function DashboardPage() {
       window.removeEventListener('pusula:transaction-created', handleTxCreated)
     }
   }, [])
+
+  // Kasa Acil Durum Sıfırlama Karantinası Sayacı
+  useEffect(() => {
+    const checkReset = () => {
+      const pending = getPendingResetRequest()
+      setVaultResetRequest(pending)
+      if (pending) {
+        setRemainingTimeDisplay(formatRemainingTime(pending.target_wiping_at).formatted)
+      }
+    }
+    checkReset()
+    const interval = setInterval(checkReset, 1000)
+    window.addEventListener('pusula:vault-reset-changed', checkReset)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('pusula:vault-reset-changed', checkReset)
+    }
+  }, [])
+
+  const handleCancelVaultReset = () => {
+    cancelVaultReset()
+    setVaultResetRequest(null)
+    toast.success('Kasa sıfırlama karantinası iptal edildi! Kayıtlarınız güvende.')
+  }
 
   // 1. Calculations via Pure Financial Engine
   const { totalCash, totalReceivables, totalInvestments, totalCardDebt, totalOtherDebt, totalDebt, netWorth } =
@@ -156,6 +193,44 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      {/* Acil Durum Kasa Sıfırlama Karantinası Uyarısı */}
+      {vaultResetRequest && vaultResetRequest.is_active && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-rose-300 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-rose-500/20 text-rose-400 rounded-lg shrink-0 mt-0.5">
+              <ShieldAlert className="h-5 w-5 animate-pulse" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="font-semibold text-sm text-foreground flex items-center gap-2 flex-wrap">
+                <span className="text-rose-600 dark:text-rose-400 font-bold">⚠️ Kimlikler & Şifreler Kasası Karantinada</span>
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300 font-bold">
+                  {remainingTimeDisplay}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-snug">
+                Ana parola unutulduğu için 24 saatlik acil durum sıfırlama karantinası başlatıldı. Bu sürenin sonunda eski çözülemeyen şifreli veriler kalıcı olarak silinecektir.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCancelVaultReset}
+              className="text-xs border-rose-500/30 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex-1 sm:flex-initial font-semibold"
+            >
+              Talebi İptal Et
+            </Button>
+            <Link href="/credentials" className="flex-1 sm:flex-initial">
+              <Button size="sm" variant="destructive" className="text-xs flex-1 sm:flex-initial font-semibold">
+                Kasaya Git
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* 3-Saniyelik Günlük Rutin Şeridi */}
       <DashboardRoutineStrip />
