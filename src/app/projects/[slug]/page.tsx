@@ -314,18 +314,25 @@ export default function ProjectDetailPage({
         backLabel="Projeler Panosuna Dön"
         badge={
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="purple" className="text-xs">
+            <Badge
+              variant={
+                project.status === 'Canlı'
+                  ? 'success'
+                  : project.status === 'Geliştirmede'
+                  ? 'primary'
+                  : 'outline'
+              }
+              className="text-xs"
+            >
               {project.status}
             </Badge>
             <span
-              className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border ${
-                project.project_type === 'workplace'
-                  ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
-                  : (project.project_type === 'client' || project.slug.includes('sarioglu'))
-                  ? 'text-blue-400 border-blue-500/30 bg-blue-500/10'
+              className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border font-medium ${
+                project.project_type === 'saas'
+                  ? 'text-primary border-primary/25 bg-primary/10'
                   : project.project_type === 'internal'
-                  ? 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10'
-                  : 'text-purple-400 border-purple-500/30 bg-purple-500/10'
+                  ? 'text-muted-foreground border-border/60 bg-muted/30'
+                  : 'text-foreground/90 border-border bg-muted/40'
               }`}
             >
               {project.project_type === 'workplace' ? (
@@ -416,7 +423,7 @@ export default function ProjectDetailPage({
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-purple-400" />
+                <DollarSign className="h-5 w-5 text-primary" />
                 Proje P&L (Kâr/Zarar) Özeti
               </CardTitle>
               <CardDescription>
@@ -505,7 +512,7 @@ export default function ProjectDetailPage({
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-border/60">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="h-4 w-4 text-purple-400" />
+              <Clock className="h-4 w-4 text-primary" />
               <span>Çalışma Eforu & Odak Seansları ({agendaItems.length})</span>
             </CardTitle>
             <CardDescription>
@@ -513,7 +520,7 @@ export default function ProjectDetailPage({
             </CardDescription>
           </div>
           <Link href="/agenda">
-            <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10">
+            <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-primary/25 text-primary hover:bg-primary/10">
               <CalendarCheck className="h-3.5 w-3.5" />
               <span>Ajandada Aç</span>
             </Button>
@@ -551,7 +558,7 @@ export default function ProjectDetailPage({
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className={`h-2 w-2 rounded-full shrink-0 ${
-                          session.status === 'completed' ? 'bg-emerald-500' : 'bg-purple-400'
+                          session.status === 'completed' ? 'bg-emerald-500' : 'bg-primary'
                         }`}
                       />
                       <span className="font-medium text-foreground truncate max-w-[240px] sm:max-w-md">
@@ -561,7 +568,7 @@ export default function ProjectDetailPage({
                     <div className="flex items-center gap-3 shrink-0 font-mono text-muted-foreground">
                       <span>{formatDate(session.plan_date)}</span>
                       {session.duration_seconds > 0 && (
-                        <Badge variant="purple" className="text-[10px] px-1.5 py-0 font-mono">
+                        <Badge variant="primary" className="text-[10px] px-1.5 py-0 font-mono">
                           {formatMinutesHours(session.duration_seconds)}
                         </Badge>
                       )}
@@ -635,7 +642,7 @@ export default function ProjectDetailPage({
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                   <span className="font-mono">{formatDate(tx.date)}</span>
-                  <Badge variant="purple" className="text-[11px]">
+                  <Badge variant="outline" className="text-[11px]">
                     {tx.analysis_group}
                   </Badge>
                 </div>
@@ -669,7 +676,7 @@ export default function ProjectDetailPage({
                     <td className="p-3 text-muted-foreground font-mono">{formatDate(tx.date)}</td>
                     <td className="p-3 font-semibold text-foreground">{tx.merchant || tx.description}</td>
                     <td className="p-3">
-                      <Badge variant="purple" className="text-[11px]">
+                      <Badge variant="outline" className="text-[11px]">
                         {tx.analysis_group}
                       </Badge>
                     </td>
@@ -697,7 +704,7 @@ export default function ProjectDetailPage({
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <Repeat className="h-4 w-4 text-purple-400" />
+              <Repeat className="h-4 w-4 text-primary" />
               Bağlı Abonelikler & Altyapı Servisleri ({subscriptions.length})
             </CardTitle>
             <CardDescription>
@@ -705,7 +712,7 @@ export default function ProjectDetailPage({
             </CardDescription>
           </div>
           <Link href="/subscriptions">
-            <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10">
+            <Button size="sm" variant="outline" className="min-h-[32px] text-xs gap-1.5 border-primary/25 text-primary hover:bg-primary/10">
               <Repeat className="h-3 w-3" />
               Abonelikleri Yönet
             </Button>
