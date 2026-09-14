@@ -20,6 +20,7 @@ import {
   Sparkles,
   Orbit,
   BookOpen,
+  KeyRound,
   ShieldCheck,
   X,
 } from 'lucide-react'
@@ -69,6 +70,7 @@ const navGroups: NavGroup[] = [
       { name: 'Hedefler', href: '/dreams', icon: Sparkles },
       { name: 'Rutinler', href: '/routines', icon: Orbit },
       { name: 'Günlük', href: '/journal', icon: BookOpen },
+      { name: 'Kimlikler & Şifreler', href: '/credentials', icon: KeyRound },
     ],
   },
   {
