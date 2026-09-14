@@ -63,6 +63,33 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
+export type DayStatus = 'none' | 'all_completed' | 'has_overdue' | 'pending'
+
+const MONTH_NAMES_TR = [
+  'Ocak',
+  'Şubat',
+  'Mart',
+  'Nisan',
+  'Mayıs',
+  'Haziran',
+  'Temmuz',
+  'Ağustos',
+  'Eylül',
+  'Ekim',
+  'Kasım',
+  'Aralık',
+]
+
+const WEEKDAY_NAMES_TR = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+
+function getDayStatus(dateStr: string, dayItems: AgendaItem[], todayStr: string): DayStatus {
+  if (!dayItems || dayItems.length === 0) return 'none'
+  const isAllCompleted = dayItems.every((i) => i.status === 'completed')
+  if (isAllCompleted) return 'all_completed'
+  if (dateStr < todayStr) return 'has_overdue'
+  return 'pending'
+}
+
 function AgendaContent() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -82,7 +109,11 @@ function AgendaContent() {
     formatTime,
   } = useTimer()
 
+  const [viewMode, setViewMode] = useState<'daily' | 'calendar'>('daily')
   const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateString(new Date()))
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear())
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth()) // 0 - 11
+
   const [items, setItems] = useState<AgendaItem[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -463,6 +494,172 @@ function AgendaContent() {
     return projects.find((p) => p.id === projectId) || null
   }
 
+  // Fast map lookup of items by date
+  const itemsByDateMap = useMemo(() => {
+    const map = new Map<string, AgendaItem[]>()
+    items.forEach((item) => {
+      const list = map.get(item.plan_date) || []
+      list.push(item)
+      map.set(item.plan_date, list)
+    })
+    return map
+  }, [items])
+
+  // Calendar cells generation for calendarYear and calendarMonth
+  const calendarGrid = useMemo(() => {
+    const firstDay = new Date(calendarYear, calendarMonth, 1)
+    const lastDay = new Date(calendarYear, calendarMonth + 1, 0)
+    const totalDaysInMonth = lastDay.getDate()
+
+    // JS getDay(): 0 is Sunday, 1 is Monday ... 6 is Saturday
+    // We align Monday = 0, Tuesday = 1, ..., Sunday = 6
+    const startDayOfWeek = (firstDay.getDay() + 6) % 7
+
+    const cells: {
+      dateStr: string
+      dayNum: number
+      isCurrentMonth: boolean
+      items: AgendaItem[]
+      status: DayStatus
+      totalDurationSeconds: number
+      completedCount: number
+      totalCount: number
+    }[] = []
+
+    // Previous month padding cells
+    const prevMonthLastDay = new Date(calendarYear, calendarMonth, 0).getDate()
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const dayNum = prevMonthLastDay - i
+      const padDate = new Date(calendarYear, calendarMonth - 1, dayNum)
+      const dateStr = toLocalDateString(padDate)
+      const dayItems = itemsByDateMap.get(dateStr) || []
+      const status = getDayStatus(dateStr, dayItems, todayStr)
+      const totalDurationSeconds = dayItems.reduce((acc, it) => acc + (it.duration_seconds || 0), 0)
+      const completedCount = dayItems.filter((it) => it.status === 'completed').length
+
+      cells.push({
+        dateStr,
+        dayNum,
+        isCurrentMonth: false,
+        items: dayItems,
+        status,
+        totalDurationSeconds,
+        completedCount,
+        totalCount: dayItems.length,
+      })
+    }
+
+    // Current month cells
+    for (let dayNum = 1; dayNum <= totalDaysInMonth; dayNum++) {
+      const currDate = new Date(calendarYear, calendarMonth, dayNum)
+      const dateStr = toLocalDateString(currDate)
+      const dayItems = itemsByDateMap.get(dateStr) || []
+      const status = getDayStatus(dateStr, dayItems, todayStr)
+      const totalDurationSeconds = dayItems.reduce((acc, it) => acc + (it.duration_seconds || 0), 0)
+      const completedCount = dayItems.filter((it) => it.status === 'completed').length
+
+      cells.push({
+        dateStr,
+        dayNum,
+        isCurrentMonth: true,
+        items: dayItems,
+        status,
+        totalDurationSeconds,
+        completedCount,
+        totalCount: dayItems.length,
+      })
+    }
+
+    // Next month padding cells to complete rows of 7
+    const remaining = (7 - (cells.length % 7)) % 7
+    for (let dayNum = 1; dayNum <= remaining; dayNum++) {
+      const padDate = new Date(calendarYear, calendarMonth + 1, dayNum)
+      const dateStr = toLocalDateString(padDate)
+      const dayItems = itemsByDateMap.get(dateStr) || []
+      const status = getDayStatus(dateStr, dayItems, todayStr)
+      const totalDurationSeconds = dayItems.reduce((acc, it) => acc + (it.duration_seconds || 0), 0)
+      const completedCount = dayItems.filter((it) => it.status === 'completed').length
+
+      cells.push({
+        dateStr,
+        dayNum,
+        isCurrentMonth: false,
+        items: dayItems,
+        status,
+        totalDurationSeconds,
+        completedCount,
+        totalCount: dayItems.length,
+      })
+    }
+
+    return cells
+  }, [calendarYear, calendarMonth, itemsByDateMap, todayStr])
+
+  // Monthly stats
+  const monthStats = useMemo(() => {
+    let totalItems = 0
+    let completedItems = 0
+    let overdueDays = 0
+    let allCompletedDays = 0
+    let pendingDays = 0
+    let totalDurationSeconds = 0
+
+    calendarGrid.forEach((cell) => {
+      if (cell.isCurrentMonth && cell.items.length > 0) {
+        totalItems += cell.totalCount
+        completedItems += cell.completedCount
+        totalDurationSeconds += cell.totalDurationSeconds
+        if (cell.status === 'all_completed') allCompletedDays++
+        else if (cell.status === 'has_overdue') overdueDays++
+        else if (cell.status === 'pending') pendingDays++
+      }
+    })
+
+    return {
+      totalItems,
+      completedItems,
+      overdueDays,
+      allCompletedDays,
+      pendingDays,
+      totalDurationSeconds,
+      completionRate: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,
+    }
+  }, [calendarGrid])
+
+  // Calendar day click handler - instantly switches to daily view for that date
+  const handleCalendarDayClick = (dateStr: string) => {
+    setSelectedDate(dateStr)
+    setViewMode('daily')
+    toast.info(`📅 ${formatDisplayDate(dateStr)} odak tezgâhına geçildi`)
+  }
+
+  // Month navigation
+  const handlePrevMonth = () => {
+    setCalendarMonth((prev) => {
+      if (prev === 0) {
+        setCalendarYear((y) => y - 1)
+        return 11
+      }
+      return prev - 1
+    })
+  }
+
+  const handleNextMonth = () => {
+    setCalendarMonth((prev) => {
+      if (prev === 11) {
+        setCalendarYear((y) => y + 1)
+        return 0
+      }
+      return prev + 1
+    })
+  }
+
+  const handleGoToCurrentMonth = () => {
+    const now = new Date()
+    setCalendarYear(now.getFullYear())
+    setCalendarMonth(now.getMonth())
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Ajanda yükleniyor">
@@ -634,82 +831,418 @@ function AgendaContent() {
       )}
 
       {/* ========================================================================= */}
-      {/* 📅 SECTION: DATE SELECTOR & NAVIGATION STRIP                              */}
+      {/* 🧭 VIEW MODE SWITCHER (GÜNLÜK TEZGÂH / AYLIK TAKVİM)                       */}
       {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card border border-border rounded-xl p-3 shadow-xs">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => shiftDate(-1)}
-            title="Önceki Gün"
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-border/60 pb-3">
+        <div className="flex items-center rounded-xl border border-border bg-card p-1 shadow-xs w-fit">
+          <button
+            type="button"
+            onClick={() => setViewMode('daily')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              viewMode === 'daily'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
           >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                const yesterday = new Date()
-                yesterday.setDate(yesterday.getDate() - 1)
-                setSelectedDate(toLocalDateString(yesterday))
-              }}
-              className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium"
-            >
-              Dün
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedDate(todayStr)}
-              className={`text-xs px-3 py-1 rounded-md font-semibold transition-all ${
-                selectedDate === todayStr
-                  ? 'bg-primary text-primary-foreground shadow-xs'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              Bugün
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const tomorrow = new Date()
-                tomorrow.setDate(tomorrow.getDate() + 1)
-                setSelectedDate(toLocalDateString(tomorrow))
-              }}
-              className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium"
-            >
-              Yarın
-            </button>
-          </div>
-
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => shiftDate(1)}
-            title="Sonraki Gün"
+            <FolderKanban className="h-3.5 w-3.5" />
+            <span>Günlük Tezgâh</span>
+            {dayItems.length > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  viewMode === 'daily' ? 'bg-purple-800 text-white' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {dayItems.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedDate) {
+                const [y, m] = selectedDate.split('-').map(Number)
+                setCalendarYear(y)
+                setCalendarMonth(m - 1)
+              }
+              setViewMode('calendar')
+            }}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              viewMode === 'calendar'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
           >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+            <CalendarIcon className="h-3.5 w-3.5" />
+            <span>Aylık Takvim</span>
+            {items.length > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  viewMode === 'calendar' ? 'bg-purple-800 text-white' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {items.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* Current Selected Date Label & Date Picker */}
-        <div className="flex items-center gap-2.5">
-          <div className="text-xs font-semibold text-foreground flex items-center gap-2">
-            <CalendarIcon className="h-3.5 w-3.5 text-primary" />
-            <span>{formatDisplayDate(selectedDate)}</span>
-          </div>
-
-          <Input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-            className="h-7 text-xs w-36 py-0 px-2 bg-muted/40 font-mono"
-          />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {viewMode === 'daily' ? (
+            <div className="flex items-center gap-2">
+              <span>Seçili Gün:</span>
+              <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300 font-mono">
+                {selectedDate}
+              </Badge>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span className="hidden sm:inline">İpucu: Günlere tıklayarak doğrudan tezgâha geçebilirsiniz</span>
+              <button
+                type="button"
+                onClick={() => setViewMode('daily')}
+                className="font-mono text-purple-400 hover:underline flex items-center gap-1 font-semibold"
+              >
+                {selectedDate} Tezgâhına Dön <ExternalLink className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {viewMode === 'calendar' ? (
+        <Card className="border-border/80 bg-card/60 backdrop-blur-xs shadow-md overflow-hidden">
+          <CardHeader className="p-4 sm:p-5 pb-4 border-b border-border/40">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              {/* Month Navigation & Title */}
+              <div className="flex items-center gap-2.5">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={handlePrevMonth}
+                  title="Önceki Ay"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <h2 className="text-base sm:text-xl font-bold text-foreground min-w-[150px] text-center sm:text-left">
+                  {MONTH_NAMES_TR[calendarMonth]} {calendarYear}
+                </h2>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={handleNextMonth}
+                  title="Sonraki Ay"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs px-2.5 ml-1 text-muted-foreground hover:text-foreground"
+                  onClick={handleGoToCurrentMonth}
+                >
+                  Bugün
+                </Button>
+              </div>
+
+              {/* Month Quick Summary Pills */}
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-lg font-medium">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  <span>{monthStats.allCompletedDays} gün tamamlandı</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-lg font-medium">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" />
+                  <span>{monthStats.pendingDays} gün bekliyor</span>
+                </div>
+
+                {monthStats.overdueDays > 0 && (
+                  <div className="flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/30 text-rose-400 px-2.5 py-1 rounded-lg font-medium">
+                    <span className="h-2 w-2 rounded-full bg-rose-400" />
+                    <span>{monthStats.overdueDays} gün gecikti</span>
+                  </div>
+                )}
+
+                {monthStats.totalDurationSeconds > 0 && (
+                  <div className="flex items-center gap-1.5 bg-purple-500/10 border border-purple-500/30 text-purple-300 px-2.5 py-1 rounded-lg font-mono">
+                    <Clock className="h-3 w-3 text-purple-400" />
+                    <span>{formatMinutesHours(monthStats.totalDurationSeconds)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-3 sm:p-5 space-y-3">
+            {/* Weekday Header Row */}
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-xs font-semibold text-muted-foreground">
+              {WEEKDAY_NAMES_TR.map((dayName, idx) => (
+                <div
+                  key={dayName}
+                  className={`py-1.5 rounded-md ${idx >= 5 ? 'text-muted-foreground/60 bg-muted/20' : 'bg-muted/30'}`}
+                >
+                  {dayName}
+                </div>
+              ))}
+            </div>
+
+            {/* 7-Column Calendar Cells Grid */}
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              {calendarGrid.map((cell) => {
+                const isToday = cell.dateStr === todayStr
+                const isSelected = cell.dateStr === selectedDate
+
+                // Color themes
+                let cellTheme = 'bg-card/40 border-border/40 hover:border-border hover:bg-muted/30 text-muted-foreground'
+                let badgeStyle = ''
+                let badgeText = ''
+
+                if (cell.status === 'all_completed') {
+                  cellTheme =
+                    'bg-emerald-950/20 border-emerald-500/40 hover:bg-emerald-900/30 hover:border-emerald-400 text-foreground'
+                  badgeStyle = 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                  badgeText = `✓ ${cell.completedCount}/${cell.totalCount}`
+                } else if (cell.status === 'has_overdue') {
+                  cellTheme =
+                    'bg-rose-950/20 border-rose-500/40 hover:bg-rose-900/30 hover:border-rose-400 text-foreground'
+                  badgeStyle = 'bg-rose-500/20 border border-rose-500/40 text-rose-300'
+                  badgeText = `⚠️ ${cell.completedCount}/${cell.totalCount}`
+                } else if (cell.status === 'pending') {
+                  cellTheme =
+                    'bg-amber-950/20 border-amber-500/40 hover:bg-amber-900/30 hover:border-amber-400 text-foreground'
+                  badgeStyle = 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                  badgeText = `⏳ ${cell.completedCount}/${cell.totalCount}`
+                }
+
+                return (
+                  <div
+                    key={cell.dateStr}
+                    onClick={() => handleCalendarDayClick(cell.dateStr)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCalendarDayClick(cell.dateStr)}
+                    className={`group relative flex flex-col justify-between rounded-xl border p-1.5 sm:p-2.5 transition-all cursor-pointer min-h-[95px] sm:min-h-[115px] select-none ${cellTheme} ${
+                      !cell.isCurrentMonth ? 'opacity-35 hover:opacity-80' : ''
+                    } ${isToday ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''} ${
+                      isSelected ? 'shadow-md shadow-purple-950/40 border-purple-500 ring-1 ring-purple-500' : ''
+                    }`}
+                    title={`${formatDisplayDate(cell.dateStr)} — Detaylar için tıkla`}
+                  >
+                    {/* Top Day Header */}
+                    <div className="flex items-center justify-between gap-1 w-full">
+                      <span
+                        className={`text-xs sm:text-sm font-bold tracking-tight ${
+                          isToday
+                            ? 'text-primary'
+                            : cell.status === 'all_completed'
+                            ? 'text-emerald-400'
+                            : cell.status === 'has_overdue'
+                            ? 'text-rose-400'
+                            : cell.status === 'pending'
+                            ? 'text-amber-400'
+                            : cell.isCurrentMonth
+                            ? 'text-foreground'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {cell.dayNum}
+                      </span>
+
+                      <div className="flex items-center gap-1">
+                        {isToday && (
+                          <span className="hidden sm:inline text-[9px] font-semibold bg-primary/25 text-primary px-1 py-0.2 rounded">
+                            Bugün
+                          </span>
+                        )}
+                        {badgeText && (
+                          <span className={`text-[9px] sm:text-[10px] font-semibold px-1 sm:px-1.5 py-0.2 rounded ${badgeStyle}`}>
+                            {badgeText}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Middle: Items Preview */}
+                    <div className="space-y-1 my-1 flex-1 overflow-hidden">
+                      {cell.items.slice(0, 2).map((it) => (
+                        <div
+                          key={it.id}
+                          className={`text-[10px] sm:text-[11px] truncate flex items-center gap-1 ${
+                            it.status === 'completed'
+                              ? 'line-through text-muted-foreground/60'
+                              : 'text-foreground/90 font-medium'
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                              it.status === 'completed'
+                                ? 'bg-emerald-400'
+                                : cell.status === 'has_overdue'
+                                ? 'bg-rose-400'
+                                : 'bg-amber-400'
+                            }`}
+                          />
+                          <span className="truncate">{it.title}</span>
+                        </div>
+                      ))}
+
+                      {cell.items.length > 2 && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium pl-2.5">
+                          +{cell.items.length - 2} daha
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom Row: Time and Quick Action hint */}
+                    <div className="flex items-center justify-between text-[9px] sm:text-[10px] text-muted-foreground pt-1 border-t border-border/30 mt-auto">
+                      {cell.totalDurationSeconds > 0 ? (
+                        <span className="font-mono text-purple-300 flex items-center gap-0.5">
+                          <Clock className="h-2.5 w-2.5 text-purple-400 shrink-0" />
+                          {formatMinutesHours(cell.totalDurationSeconds)}
+                        </span>
+                      ) : (
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity text-purple-400 flex items-center gap-0.5">
+                          Aç <ExternalLink className="h-2.5 w-2.5" />
+                        </span>
+                      )}
+
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity font-sans text-purple-400 text-[10px] hidden sm:inline">
+                        Tezgâha Git →
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Bottom Color Legend */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-border/40 text-xs text-muted-foreground">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-md bg-emerald-950/40 border border-emerald-500/50" />
+                  <span className="text-emerald-400 font-medium">Yeşil:</span>
+                  <span>Tüm maddeler tamamlandı</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-md bg-amber-950/40 border border-amber-500/50" />
+                  <span className="text-amber-400 font-medium">Sarı:</span>
+                  <span>Planlanmış / bekleyen iş var</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-md bg-rose-950/40 border border-rose-500/50" />
+                  <span className="text-rose-400 font-medium">Kırmızı:</span>
+                  <span>Günü geçmiş ve atlanmış iş var</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                <Sparkles className="h-3 w-3 text-purple-400 shrink-0" />
+                <span>Herhangi bir güne tıklayarak o günün tezgâhına anında geçebilirsiniz.</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* ========================================================================= */}
+          {/* 📅 SECTION: DATE SELECTOR & NAVIGATION STRIP                              */}
+          {/* ========================================================================= */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card border border-border rounded-xl p-3 shadow-xs">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => shiftDate(-1)}
+                title="Önceki Gün"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const yesterday = new Date()
+                    yesterday.setDate(yesterday.getDate() - 1)
+                    setSelectedDate(toLocalDateString(yesterday))
+                  }}
+                  className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium"
+                >
+                  Dün
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className={`text-xs px-3 py-1 rounded-md font-semibold transition-all ${
+                    selectedDate === todayStr
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  Bugün
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tomorrow = new Date()
+                    tomorrow.setDate(tomorrow.getDate() + 1)
+                    setSelectedDate(toLocalDateString(tomorrow))
+                  }}
+                  className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-medium"
+                >
+                  Yarın
+                </button>
+              </div>
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => shiftDate(1)}
+                title="Sonraki Gün"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Current Selected Date Label & Date Picker & Quick Monthly button */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="text-xs font-semibold text-foreground flex items-center gap-2">
+                <CalendarIcon className="h-3.5 w-3.5 text-primary" />
+                <span>{formatDisplayDate(selectedDate)}</span>
+              </div>
+
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                className="h-7 text-xs w-36 py-0 px-2 bg-muted/40 font-mono"
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const [y, m] = selectedDate.split('-').map(Number)
+                  setCalendarYear(y)
+                  setCalendarMonth(m - 1)
+                  setViewMode('calendar')
+                }}
+                className="h-7 px-2.5 text-xs gap-1.5 border-purple-500/30 text-purple-300 hover:bg-purple-500/10"
+                title="Aylık Takvim Görünümünü Aç"
+              >
+                <CalendarIcon className="h-3 w-3" />
+                <span>Aylık Görünüm</span>
+              </Button>
+            </div>
+          </div>
 
       {/* ========================================================================= */}
       {/* ⚡ QUICK INLINE CAPTURE BAR (HIZLI MADDE GİRİŞİ)                           */}
@@ -1010,6 +1543,8 @@ function AgendaContent() {
           </Card>
         </div>
       </div>
+    </>
+  )}
 
       {/* ========================================================================= */}
       {/* 📝 MODAL: YENİ AJANDA MADDESİ                                             */}
