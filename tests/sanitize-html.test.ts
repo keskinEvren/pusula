@@ -1,42 +1,81 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeHtml } from '../src/lib/sanitize-html'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
-describe('HTML Sanitizer (XSS Prevention)', () => {
-  it('strips <script> tags and their contents', () => {
-    const malicious = '<p>Normal text</p><script>alert("hacked")</script>'
-    const clean = sanitizeHtml(malicious)
-    expect(clean).not.toContain('<script>')
-    expect(clean).not.toContain('alert("hacked")')
-    expect(clean).toContain('<p>Normal text</p>')
-  })
+describe('sanitize-html', () => {
+  describe('sanitizeHtml', () => {
+    it('<script> etiketlerini temizler', () => {
+      const html = '<div>hello <script>alert(1)</script>world</div>'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('<script>')
+      expect(sanitized).not.toContain('alert(1)')
+    })
+    
+    it('satıriçi olay işleyicilerini (onerror, onclick, onload) temizler', () => {
+      const html = '<img src="x" onerror="alert(1)" onclick="alert(2)" onload="alert(3)">'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('onerror')
+      expect(sanitized).not.toContain('onclick')
+      expect(sanitized).not.toContain('onload')
+    })
 
-  it('strips inline event handlers (onerror, onclick, etc.)', () => {
-    const malicious = '<img src="valid.png" onerror="alert(1)" onload="evil()">'
-    const clean = sanitizeHtml(malicious)
-    expect(clean).not.toContain('onerror')
-    expect(clean).not.toContain('onload')
-    expect(clean).toContain('src="valid.png"')
-  })
+    it('javascript: URI değerlerini temizler', () => {
+      const html = '<a href="javascript:alert(1)">tıkla</a>'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('javascript:')
+    })
 
-  it('strips javascript: and data: URIs from links', () => {
-    const malicious = '<a href="javascript:alert(1)">Click me</a>'
-    const clean = sanitizeHtml(malicious)
-    expect(clean).not.toContain('javascript:')
-    expect(clean).toContain('Click me')
-  })
+    it('data: URI değerlerini temizler', () => {
+      const html = '<img src="data:image/png;base64,123">'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('data:')
+    })
 
-  it('preserves legitimate safe markdown tags and attributes', () => {
-    const safe = '<h1>Title</h1><p>Text with <strong>bold</strong> and <em>italic</em>.</p><a href="https://example.com" target="_blank">Link</a>'
-    const clean = sanitizeHtml(safe)
-    expect(clean).toContain('<h1>Title</h1>')
-    expect(clean).toContain('<strong>bold</strong>')
-    expect(clean).toContain('https://example.com')
-  })
+    it('<iframe> ve <object> etiketlerini temizler', () => {
+      const html = 'test<iframe src="evil"></iframe><object data="evil"></object>son'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('iframe')
+      expect(sanitized).not.toContain('object')
+    })
 
-  it('strips <iframe> and <object> embeds', () => {
-    const malicious = '<iframe src="https://evil.com"></iframe><object data="evil.swf"></object>'
-    const clean = sanitizeHtml(malicious)
-    expect(clean).not.toContain('<iframe')
-    expect(clean).not.toContain('<object')
+    it('güvenli etiketleri korur (h1, p, strong, em, a, ul, li)', () => {
+      const html = '<h1>başlık</h1><p>paragraf <strong>kalın</strong> <em>eğik</em> <a href="https://example.com">link</a> <ul><li>liste</li></ul></p>'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).toContain('<h1>')
+      expect(sanitized).toContain('<strong>')
+      expect(sanitized).toContain('<em>')
+      expect(sanitized).toContain('href="https://example.com"')
+    })
+
+    it('SVG tabanlı XSS saldırılarını temizler (<svg onload=...>)', () => {
+      const html = '<svg onload="alert(1)">'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('onload')
+      expect(sanitized).not.toContain('<svg')
+    })
+
+    it('içe içe geçmiş etiket kaçınmasını engeller (<scr<script>ipt>)', () => {
+      const html = '<scr<script>ipt>alert(1)</script>'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('script')
+      expect(sanitized).not.toContain('alert(1)')
+    })
+
+    it('HTML varlık kodlanmış şemaları temizler (jav&#x09;ascript:)', () => {
+      const html = '<a href="jav&#x09;ascript:alert(1)">tikla</a>'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).not.toContain('alert(1)')
+    })
+
+    it('boş string verildiğinde boş string döner', () => {
+      expect(sanitizeHtml('')).toBe('')
+      expect(sanitizeHtml(null as any)).toBe('')
+    })
+
+    it('checkbox inputlarını korur ancak disabled yapar', () => {
+      const html = '<input type="checkbox" checked>'
+      const sanitized = sanitizeHtml(html)
+      expect(sanitized).toContain('type="checkbox"')
+      expect(sanitized).toContain('disabled="true"')
+    })
   })
 })

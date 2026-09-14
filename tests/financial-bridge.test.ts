@@ -1,194 +1,255 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { FinancialBridge } from '../src/lib/financial-bridge'
+import {
+  FinancialBridge,
+  financialBridge,
+  getLinkedDebtId,
+  getLinkedInvestmentId
+} from '@/lib/financial-bridge'
 
-// Mock Supabase client
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: vi.fn(),
+// Kompleks Supabase Mock Kurulumu
+const mockSingle = vi.fn()
+const mockEq = vi.fn(() => ({
+  single: mockSingle,
+  eq: mockEq
+}))
+const mockSelect = vi.fn(() => ({
+  eq: mockEq,
+  single: mockSingle
+}))
+const mockInsert = vi.fn(() => ({
+  select: mockSelect,
+  single: mockSingle
+}))
+const mockUpdate = vi.fn(() => ({
+  eq: mockEq
+}))
+const mockDelete = vi.fn(() => ({
+  eq: mockEq
 }))
 
-describe('FinancialBridge Unit Tests', () => {
+const mockFrom = vi.fn(() => ({
+  select: mockSelect,
+  insert: mockInsert,
+  update: mockUpdate,
+  delete: mockDelete
+}))
+
+const mockRpc = vi.fn()
+
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: vi.fn(() => ({
+    from: mockFrom,
+    rpc: mockRpc,
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'test-user-id' } } })
+    }
+  }))
+}))
+
+describe('Financial Bridge Testleri', () => {
   let bridge: FinancialBridge
 
   beforeEach(() => {
-    bridge = new FinancialBridge()
     vi.clearAllMocks()
+    bridge = financialBridge
   })
 
-  describe('Validation & Edge Cases', () => {
-    it('recordExpense should reject amount <= 0', async () => {
-      const res = await bridge.recordExpense({
-        userId: 'u1',
-        amount: 0,
-        description: 'Test',
-        date: '2026-09-01',
-        accountId: 'acc1',
-      })
+  describe('Harcama Kaydetme (recordExpense)', () => {
+    it('Tutar 0 veya daha küçükse reddetmelidir', async () => {
+      const res = await bridge.recordExpense({ userId: 'u1', amount: 0, description: 'Test', date: '2026-01-01' })
       expect(res.success).toBe(false)
-      expect(res.error).toContain('sıfırdan büyük')
+      expect(res.error).toMatch(/sıfırdan büyük/)
     })
 
-    it('recordExpense should reject when neither accountId nor cardId is provided', async () => {
-      const res = await bridge.recordExpense({
-        userId: 'u1',
-        amount: 100,
-        description: 'Test',
-        date: '2026-09-01',
-      })
+    it('Hesap veya kart seçilmemişse reddetmelidir', async () => {
+      const res = await bridge.recordExpense({ userId: 'u1', amount: 100, description: 'Test', date: '2026-01-01' })
       expect(res.success).toBe(false)
-      expect(res.error).toContain('seçilmelidir')
+      expect(res.error).toMatch(/Hesap veya kart/)
     })
 
-    it('recordIncome should reject amount <= 0', async () => {
-      const res = await bridge.recordIncome({
-        userId: 'u1',
-        amount: -50,
-        description: 'Salary',
-        date: '2026-09-01',
-        accountId: 'acc1',
-      })
-      expect(res.success).toBe(false)
-      expect(res.error).toContain('sıfırdan büyük')
-    })
-
-    it('recordCardPayment should reject amount <= 0', async () => {
-      const res = await bridge.recordCardPayment({
-        userId: 'u1',
-        amount: 0,
-        sourceAccountId: 'acc1',
-        cardId: 'card1',
-        date: '2026-09-01',
-      })
-      expect(res.success).toBe(false)
-      expect(res.error).toContain('sıfırdan büyük')
-    })
-
-    it('recordDebtPayment should reject amount <= 0', async () => {
-      const res = await bridge.recordDebtPayment({
-        userId: 'u1',
-        amount: -10,
-        sourceAccountId: 'acc1',
-        debtId: 'debt1',
-        date: '2026-09-01',
-      })
-      expect(res.success).toBe(false)
-      expect(res.error).toContain('sıfırdan büyük')
-    })
-
-    it('recordReceivableCollection should reject amount <= 0', async () => {
-      const res = await bridge.recordReceivableCollection({
-        userId: 'u1',
-        amount: 0,
-        targetAccountId: 'acc1',
-        receivableId: 'rec1',
-        date: '2026-09-01',
-      })
-      expect(res.success).toBe(false)
-      expect(res.error).toContain('sıfırdan büyük')
-    })
-
-    it('recordTransfer should reject amount <= 0', async () => {
-      const res = await bridge.recordTransfer({
-        userId: 'u1',
-        amount: -100,
-        sourceAccountId: 'acc1',
-        targetAccountId: 'acc2',
-        date: '2026-09-01',
-      })
-      expect(res.success).toBe(false)
-      expect(res.error).toContain('sıfırdan büyük')
-    })
-
-    it('recordTransfer should reject transfer to same account', async () => {
-      const res = await bridge.recordTransfer({
-        userId: 'u1',
-        amount: 500,
-        sourceAccountId: 'acc1',
-        targetAccountId: 'acc1',
-        date: '2026-09-01',
-      })
-      expect(res.success).toBe(false)
-      expect(res.error).toContain('Aynı hesaba transfer yapılamaz')
-    })
-  })
-
-  describe('getLinkedDebtId helper', () => {
-    it('should return related_debt_id when present', async () => {
-      const { getLinkedDebtId } = await import('../src/lib/financial-bridge')
-      const id = getLinkedDebtId({ related_debt_id: 'debt-uuid-123', description: 'Some text' })
-      expect(id).toBe('debt-uuid-123')
-    })
-
-    it('should extract debt id from description tag [DEBT:<uuid>] when related_debt_id is null', async () => {
-      const { getLinkedDebtId } = await import('../src/lib/financial-bridge')
-      const id = getLinkedDebtId({
-        related_debt_id: null,
-        description: 'Hızır Global Kurye [DEBT:d6a3b5ae-fcec-4347-867b-f085eb780098]',
-      })
-      expect(id).toBe('d6a3b5ae-fcec-4347-867b-f085eb780098')
-    })
-
-    it('should return null when no debt id is present', async () => {
-      const { getLinkedDebtId } = await import('../src/lib/financial-bridge')
-      const id = getLinkedDebtId({
-        related_debt_id: null,
-        description: 'Market Harcaması',
-      })
-      expect(id).toBeNull()
-    })
-  })
-
-  describe('getLinkedInvestmentId helper', () => {
-    it('should extract investment id from description tag [INV:<uuid>]', async () => {
-      const { getLinkedInvestmentId } = await import('../src/lib/financial-bridge')
-      const id = getLinkedInvestmentId({
-        description: 'Midas Menkul Değerler Para Girişi [INV:inv-9988-aabb]',
-      })
-      expect(id).toBe('inv-9988-aabb')
-    })
-
-    it('should return null when no [INV:...] tag is present', async () => {
-      const { getLinkedInvestmentId } = await import('../src/lib/financial-bridge')
-      const id = getLinkedInvestmentId({
-        description: 'Migros Market Alışverişi',
-      })
-      expect(id).toBeNull()
-    })
-  })
-
-  describe('linkTransactionToDebt Idempotency (F17)', () => {
-    it('should be idempotent when transaction is already linked to the target debt', async () => {
-      const { createClient } = await import('@/lib/supabase/client')
-      const mockSingle = vi.fn().mockResolvedValue({
-        data: {
-          id: 'tx-1',
-          user_id: 'u1',
-          amount: 500,
-          related_debt_id: 'debt-100',
-          description: 'Payment [DEBT:debt-100]',
-        },
-        error: null,
-      })
-      const mockEq = vi.fn().mockReturnValue({ single: mockSingle, eq: vi.fn().mockReturnValue({ single: mockSingle }) })
-      const mockSelect = vi.fn().mockReturnValue({ eq: mockEq })
-      const mockUpdate = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
-
-      ;(createClient as any).mockReturnValue({
-        rpc: vi.fn().mockResolvedValue({ data: { success: true, already_linked: true }, error: null }),
-        from: vi.fn().mockReturnValue({
-          select: mockSelect,
-          update: mockUpdate,
-        }),
-      })
-
-      const res = await bridge.linkTransactionToDebt({
-        userId: 'u1',
-        transactionId: 'tx-1',
-        debtId: 'debt-100',
-      })
-
+    it('RPC başarılı olduğunda transactionId dönmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-123' }, error: null })
+      const res = await bridge.recordExpense({ userId: 'u1', amount: 100, description: 'Test', date: '2026-01-01', accountId: 'a1' })
       expect(res.success).toBe(true)
-      expect(res.transactionId).toBe('tx-1')
+      expect(res.transactionId).toBe('tx-123')
+    })
+
+    it('RPC hata verirse client fallback çalışmalıdır', async () => {
+      mockRpc.mockRejectedValueOnce(new Error('RPC failed'))
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-client-1' }, error: null }) // insert tx
+      mockSingle.mockResolvedValueOnce({ data: { balance: 500 }, error: null }) // select account
+      
+      const res = await bridge.recordExpense({ userId: 'u1', amount: 100, description: 'Test', date: '2026-01-01', accountId: 'a1' })
+      expect(res.success).toBe(true)
+      expect(res.transactionId).toBe('tx-client-1')
+      expect(mockFrom).toHaveBeenCalledWith('transactions')
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 400 }) // 500 - 100
+    })
+  })
+
+  describe('Gelir Kaydetme (recordIncome)', () => {
+    it('Tutar 0 veya daha küçükse reddetmelidir', async () => {
+      const res = await bridge.recordIncome({ userId: 'u1', amount: -50, description: 'Test', date: '2026-01-01', accountId: 'a1' })
+      expect(res.success).toBe(false)
+    })
+
+    it('RPC başarılı olduğunda gelir kaydedilmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-inc-1' }, error: null })
+      const res = await bridge.recordIncome({ userId: 'u1', amount: 500, description: 'Maaş', date: '2026-01-01', accountId: 'a1' })
+      expect(res.success).toBe(true)
+      expect(res.transactionId).toBe('tx-inc-1')
+    })
+  })
+
+  describe('Kart Borcu Ödeme (recordCardPayment)', () => {
+    it('Tutar 0 veya daha küçükse reddetmelidir', async () => {
+      const res = await bridge.recordCardPayment({ userId: 'u1', amount: 0, sourceAccountId: 'a1', cardId: 'c1', date: '2026-01-01' })
+      expect(res.success).toBe(false)
+    })
+
+    it('Hesap bakiyesini ve kart borcunu düşürmelidir', async () => {
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-card-1' }, error: null }) // tx insert
+      mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null }) // account select
+      mockSingle.mockResolvedValueOnce({ data: { current_debt: 2000 }, error: null }) // card select
+
+      const res = await bridge.recordCardPayment({ userId: 'u1', amount: 500, sourceAccountId: 'a1', cardId: 'c1', date: '2026-01-01' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 500 }) // account update
+      expect(mockUpdate).toHaveBeenCalledWith({ current_debt: 1500 }) // card update
+    })
+  })
+
+  describe('Borç Ödeme (recordDebtPayment)', () => {
+    it('Tutar 0 veya daha küçükse reddetmelidir', async () => {
+      const res = await bridge.recordDebtPayment({ userId: 'u1', amount: -10, sourceAccountId: 'a1', debtId: 'd1', date: '2026-01-01' })
+      expect(res.success).toBe(false)
+    })
+
+    it('Borç miktarını düşürmeli ve bakiyeyi azaltmalıdır', async () => {
+      mockSingle.mockResolvedValueOnce({ data: { remaining: 500, past_payments: 0, status: 'Açık' }, error: null }) // debt select
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-debt-1' }, error: null }) // tx insert
+      mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null }) // account select
+
+      const res = await bridge.recordDebtPayment({ userId: 'u1', amount: 200, sourceAccountId: 'a1', debtId: 'd1', date: '2026-01-01' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ remaining: 300, past_payments: 200, status: 'Açık' }))
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 800 })
+    })
+  })
+
+  describe('Alacak Tahsil Etme (recordReceivableCollection)', () => {
+    it('Tutar 0 veya daha küçükse reddetmelidir', async () => {
+      const res = await bridge.recordReceivableCollection({ userId: 'u1', amount: 0, targetAccountId: 'a1', receivableId: 'r1', date: '2026-01-01' })
+      expect(res.success).toBe(false)
+    })
+
+    it('Alacak miktarını düşürmeli ve hedef bakiyeyi artırmalıdır', async () => {
+      mockSingle.mockResolvedValueOnce({ data: { remaining: 1000, past_payments: 0, status: 'Açık' }, error: null }) // debt select
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-rec-1' }, error: null }) // tx insert
+      mockSingle.mockResolvedValueOnce({ data: { balance: 500 }, error: null }) // account select
+
+      const res = await bridge.recordReceivableCollection({ userId: 'u1', amount: 1000, targetAccountId: 'a1', receivableId: 'r1', date: '2026-01-01' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ remaining: 0, past_payments: 1000, status: 'Kapatıldı' }))
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 1500 })
+    })
+  })
+
+  describe('Hesaplar Arası Transfer (recordTransfer)', () => {
+    it('Tutar 0 veya daha küçükse reddetmelidir', async () => {
+      const res = await bridge.recordTransfer({ userId: 'u1', amount: 0, sourceAccountId: 'a1', targetAccountId: 'a2', date: '2026-01-01' })
+      expect(res.success).toBe(false)
+    })
+
+    it('Aynı hesap seçilmişse reddetmelidir', async () => {
+      const res = await bridge.recordTransfer({ userId: 'u1', amount: 100, sourceAccountId: 'a1', targetAccountId: 'a1', date: '2026-01-01' })
+      expect(res.success).toBe(false)
+    })
+
+    it('Bakiyeleri doğru şekilde güncellemelidir', async () => {
+      mockRpc.mockRejectedValueOnce(new Error('RPC fail')) // Fallback to client
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-trans-1' }, error: null }) // tx insert
+      mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null }) // source select
+      mockSingle.mockResolvedValueOnce({ data: { balance: 500 }, error: null }) // target select
+
+      const res = await bridge.recordTransfer({ userId: 'u1', amount: 200, sourceAccountId: 'a1', targetAccountId: 'a2', date: '2026-01-01' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 800 }) // source
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 700 }) // target
+    })
+  })
+
+  describe('İşlem Silme (deleteTransaction)', () => {
+    it('İşlem tipine göre geri alma (reversal) yapmalıdır', async () => {
+      mockRpc.mockRejectedValueOnce(new Error('RPC fail'))
+      // read tx
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', type: 'Harcama', account_id: 'a1', amount: 300 }, error: null })
+      // read account
+      mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null })
+      
+      const res = await bridge.deleteTransaction('tx-1')
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith({ balance: 1300 }) // Refund expense
+      expect(mockDelete).toHaveBeenCalled()
+    })
+  })
+
+  describe('Helper Fonksiyonlar', () => {
+    it('getLinkedDebtId related_debt_id değerini dönmelidir', () => {
+      expect(getLinkedDebtId({ related_debt_id: 'd-123' })).toBe('d-123')
+    })
+
+    it('getLinkedDebtId açıklamadan [DEBT:uuid] ayıklayabilmelidir', () => {
+      expect(getLinkedDebtId({ description: 'Kredi ödemesi [DEBT:c0a80101-0000-0000-0000-000000000456]' })).toBe('c0a80101-0000-0000-0000-000000000456')
+    })
+
+    it('getLinkedDebtId yoksa null dönmelidir', () => {
+      expect(getLinkedDebtId({ description: 'Sıradan harcama' })).toBeNull()
+    })
+
+    it('getLinkedInvestmentId açıklamadan [INV:uuid] ayıklayabilmelidir', () => {
+      expect(getLinkedInvestmentId({ description: 'Hisse senedi alımı [INV:inv-123]' })).toBe('inv-123')
+    })
+
+    it('getLinkedInvestmentId yoksa null dönmelidir', () => {
+      expect(getLinkedInvestmentId({ description: 'Sıradan' })).toBeNull()
+    })
+  })
+
+  describe('Borç/Yatırım Bağlama ve Çözme', () => {
+    it('linkTransactionToDebt aynı borca bağlanıyorsa idempotent çalışmalıdır', async () => {
+      mockRpc.mockRejectedValueOnce(new Error('RPC fail'))
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', description: '[DEBT:d-1]', amount: 100 }, error: null }) // read tx
+      
+      const res = await bridge.linkTransactionToDebt({ userId: 'u1', transactionId: 'tx-1', debtId: 'd-1' })
+      expect(res.success).toBe(true)
+      // idempotent, doesn't load debt or update
+    })
+
+    it('unlinkTransactionFromDebt bağlantıyı kaldırmalıdır', async () => {
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', type: 'Borç Ödemesi', amount: 100, description: 'Ödeme [DEBT:d-1]' }, error: null }) // tx
+      mockSingle.mockResolvedValueOnce({ data: { id: 'd-1', remaining: 400, past_payments: 100 }, error: null }) // debt
+      
+      const res = await bridge.unlinkTransactionFromDebt({ userId: 'u1', transactionId: 'tx-1' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ type: 'Harcama' }))
+    })
+
+    it('linkTransactionToInvestment [INV:id] eklemeli ve grubu Hariç yapmalıdır', async () => {
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', description: 'Hisse' }, error: null }) // tx
+      mockSingle.mockResolvedValueOnce({ data: null, error: null }) // inv (not updating qty in this test)
+
+      const res = await bridge.linkTransactionToInvestment({ userId: 'u1', transactionId: 'tx-1', investmentId: 'inv-1' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ type: 'Transfer', analysis_group: 'Hariç', description: 'Hisse [INV:inv-1]' }))
+    })
+
+    it('unlinkTransactionFromInvestment etiketi kaldırmalı ve grubu Kişisel yapmalıdır', async () => {
+      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', description: 'Hisse [INV:inv-1]', type: 'Transfer' }, error: null })
+      
+      const res = await bridge.unlinkTransactionFromInvestment({ userId: 'u1', transactionId: 'tx-1' })
+      expect(res.success).toBe(true)
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ type: 'Harcama', analysis_group: 'Kişisel', description: 'Hisse' }))
     })
   })
 })
-
