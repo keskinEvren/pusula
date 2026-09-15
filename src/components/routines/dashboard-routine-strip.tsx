@@ -15,7 +15,6 @@ import {
   getCurrentTimeBlock,
   TIME_BLOCK_META,
   formatDateToYmd,
-  INITIAL_SAMPLE_ROUTINES,
 } from '@/lib/routines-engine'
 
 const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
@@ -33,7 +32,6 @@ export function DashboardRoutineStrip() {
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
 
       try {
         const { data: rData, error: rError } = await supabase
@@ -48,36 +46,30 @@ export function DashboardRoutineStrip() {
           if (localRoutines) {
             try {
               const parsed = JSON.parse(localRoutines) as Routine[]
-              const cleaned = parsed.filter((r) => !r.id.startsWith('sample-'))
-              setRoutines(cleaned.length > 0 ? cleaned : INITIAL_SAMPLE_ROUTINES)
+              const cleaned = Array.isArray(parsed) ? parsed.filter((r) => !r.id?.startsWith?.('sample-')) : []
+              setRoutines(cleaned)
             } catch {
-              setRoutines(INITIAL_SAMPLE_ROUTINES)
+              setRoutines([])
             }
           } else {
-            setRoutines(INITIAL_SAMPLE_ROUTINES)
+            setRoutines([])
           }
         } else if (rData && rData.length > 0) {
-          setRoutines(rData as Routine[])
+          const validData = rData.filter((r: any) => !r.id?.startsWith?.('sample-'))
+          setRoutines(validData as Routine[])
         } else {
-          // DB boş — seed kontrolü (ana sayfa sadece okur, seed page.tsx'de yapılır)
-          const initKey = user ? `pusula_routines_seeded_${user.id}` : 'pusula_routines_seeded_local'
-          const hasSeeded = localStorage.getItem(initKey)
-
-          if (hasSeeded) {
-            // Kullanıcı tüm rutinleri silmiş
-            setRoutines([])
-          } else {
-            // Henüz seed yapılmamış — localStorage fallback
-            const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
-            if (localRoutines) {
-              try {
-                setRoutines(JSON.parse(localRoutines))
-              } catch {
-                setRoutines(INITIAL_SAMPLE_ROUTINES)
-              }
-            } else {
-              setRoutines(INITIAL_SAMPLE_ROUTINES)
+          // DB boş — yerel kontrol
+          const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
+          if (localRoutines) {
+            try {
+              const parsed = JSON.parse(localRoutines) as Routine[]
+              const cleaned = Array.isArray(parsed) ? parsed.filter((r) => !r.id?.startsWith?.('sample-')) : []
+              setRoutines(cleaned)
+            } catch {
+              setRoutines([])
             }
+          } else {
+            setRoutines([])
           }
         }
 
@@ -95,7 +87,16 @@ export function DashboardRoutineStrip() {
       } catch (err) {
         console.error('Dashboard routine strip load error:', err)
         const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
-        setRoutines(localRoutines ? JSON.parse(localRoutines) : INITIAL_SAMPLE_ROUTINES)
+        if (localRoutines) {
+          try {
+            const parsed = JSON.parse(localRoutines) as Routine[]
+            setRoutines(Array.isArray(parsed) ? parsed.filter((r) => !r.id?.startsWith?.('sample-')) : [])
+          } catch {
+            setRoutines([])
+          }
+        } else {
+          setRoutines([])
+        }
         const localLogs = localStorage.getItem(STORAGE_KEY_LOGS)
         setLogs(localLogs ? JSON.parse(localLogs) : [])
       } finally {

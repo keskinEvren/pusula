@@ -53,69 +53,6 @@ import {
   getDefaultVisionWallpaper,
 } from '@/lib/dreams-engine'
 
-const INITIAL_SAMPLE_DREAMS: Dream[] = [
-  {
-    id: 'a1000000-0000-4000-8000-000000000001',
-    user_id: 'local',
-    title: 'İRONMAN Olmak',
-    description: '3.8 km yüzme, 180 km bisiklet ve 42.2 km maraton koşusundan oluşan dayanıklılık triatlonunu aralıksız tamamlamak.',
-    identity_persona: 'Demir İradeli Dayanıklılık Sporcusu',
-    motivation_why: 'Kendi fiziksel ve zihinsel sınırlarımı aşarak disiplin, irade ve odaklanmanın zirvesini kendi bedenimde kanıtlamak.',
-    horizon: 'horizon_1_3y',
-    category: 'Kişisel Gelişim & Sağlık',
-    status: 'active',
-    next_focus_note: '6-12 aylık disiplinli antrenman planı çıkar, triatlon bisikleti ve ekipmanlarını temin et, hedef yarışı takvime ekle.',
-    cover_image_url: 'https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2027',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'a2000000-0000-4000-8000-000000000002',
-    user_id: 'local',
-    title: 'Paraşütle Atlamak',
-    description: 'Binlerce metre irtifadan serbest düşüş ve gökyüzünde süzülerek adrenalin ve mutlak özgürlüğü deneyimlemek.',
-    identity_persona: 'Korkusuz Macera Tutkunu',
-    motivation_why: 'Konfor alanını tamamen yıkarak hayata yüksekten bakmak ve anın içindeki saf cesareti tatmak.',
-    horizon: 'horizon_1y',
-    category: 'Deneyim & Seyahat',
-    status: 'active',
-    next_focus_note: 'Efes veya Fethiye tandem paraşüt atlayış takvimini incele ve uygun mevsimde ilk randevuyu planla.',
-    cover_image_url: 'https://images.unsplash.com/photo-1521673461164-de300ebcf4d7?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2026',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'a3000000-0000-4000-8000-000000000003',
-    user_id: 'local',
-    title: 'Güzel Bir Yelkenli Sahibi Olmak',
-    description: 'Masmavi koylarda sadece rüzgarın gücüyle seyretmek, denizle baş başa bağımsız ve dingin bir yaşam kurmak.',
-    identity_persona: 'Denizci & Özgür Kaptan',
-    motivation_why: 'Denizin sağladığı mutlak bağımsızlık, doğayla uyum ve zihne kazandırdığı tarifsiz huzur.',
-    horizon: 'horizon_3_5y',
-    category: 'Maddi Hedef',
-    status: 'active',
-    next_focus_note: 'Amatör Denizci Belgesi (ADB) ve yelken eğitimini tamamla, tekne sınıfları ve marina işletim maliyetlerini araştır.',
-    cover_image_url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
-    target_year: '2029',
-    achieved_at: null,
-    achieved_note: null,
-    achieved_image_url: null,
-    order_index: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-]
-
 function DreamsContent() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -183,76 +120,41 @@ function DreamsContent() {
       if (cached) {
         try {
           const parsed: Dream[] = JSON.parse(cached)
-          // Clean legacy sample-* entries
-          const cleaned = parsed.filter((d) => !d.id.startsWith('sample-'))
-          const listToUse = cleaned.length > 0 ? cleaned : INITIAL_SAMPLE_DREAMS
-          setDreams(listToUse)
-          localStorage.setItem('pusula_local_dreams', JSON.stringify(listToUse))
+          // Clean legacy sample-* and mock entries
+          const cleaned = Array.isArray(parsed)
+            ? parsed.filter(
+                (d) =>
+                  !d.id.startsWith('sample-') &&
+                  !d.id.startsWith('a1000000-') &&
+                  !d.id.startsWith('a2000000-') &&
+                  !d.id.startsWith('a3000000-')
+              )
+            : []
+          setDreams(cleaned)
+          localStorage.setItem('pusula_local_dreams', JSON.stringify(cleaned))
         } catch {
-          setDreams(INITIAL_SAMPLE_DREAMS)
-          localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
+          setDreams([])
         }
       } else {
-        setDreams(INITIAL_SAMPLE_DREAMS)
-        localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
+        setDreams([])
       }
     } else if (data && data.length > 0) {
       // Remote dreams table has rows - filter any legacy mock IDs
-      const validData = data.filter((d) => !d.id.startsWith('sample-'))
+      const validData = data.filter(
+        (d) =>
+          !d.id.startsWith('sample-') &&
+          !d.id.startsWith('a1000000-') &&
+          !d.id.startsWith('a2000000-') &&
+          !d.id.startsWith('a3000000-')
+      )
       setDreams(validData)
       setIsDbFallback(false)
       localStorage.setItem('pusula_local_dreams', JSON.stringify(validData))
     } else {
       // Remote table returned empty (data is [])
       setIsDbFallback(false)
-      const initKey = user ? `pusula_dreams_seeded_${user.id}` : 'pusula_dreams_seeded_local'
-      const hasSeeded = localStorage.getItem(initKey)
-
-      if (!hasSeeded && user) {
-        // First-time logged-in user: seed the 3 vision goals into remote database
-        const seedPayload = INITIAL_SAMPLE_DREAMS.map((item, idx) => ({
-          user_id: user.id,
-          title: item.title,
-          description: item.description,
-          identity_persona: item.identity_persona,
-          motivation_why: item.motivation_why,
-          horizon: item.horizon,
-          category: item.category,
-          status: item.status,
-          next_focus_note: item.next_focus_note,
-          cover_image_url: item.cover_image_url,
-          target_year: item.target_year,
-          order_index: idx,
-        }))
-
-        try {
-          const { data: seededData, error: seedErr } = await supabase
-            .from('dreams')
-            .insert(seedPayload)
-            .select()
-
-          if (!seedErr && seededData && seededData.length > 0) {
-            localStorage.setItem(initKey, 'true')
-            setDreams(seededData)
-            localStorage.setItem('pusula_local_dreams', JSON.stringify(seededData))
-            setLoading(false)
-            return
-          }
-        } catch (seedCatch) {
-          console.warn('Auto-seed dreams note:', seedCatch)
-        }
-      }
-
-      // If user has already initialized/seeded before and the table is now empty,
-      // the user explicitly deleted all goals, so do not resurrect them.
-      if (hasSeeded) {
-        setDreams([])
-        localStorage.setItem('pusula_local_dreams', JSON.stringify([]))
-      } else {
-        localStorage.setItem(initKey, 'true')
-        setDreams(INITIAL_SAMPLE_DREAMS)
-        localStorage.setItem('pusula_local_dreams', JSON.stringify(INITIAL_SAMPLE_DREAMS))
-      }
+      setDreams([])
+      localStorage.setItem('pusula_local_dreams', JSON.stringify([]))
     }
     setLoading(false)
   }

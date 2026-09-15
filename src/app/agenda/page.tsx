@@ -186,35 +186,22 @@ function AgendaContent() {
         const cached = localStorage.getItem('pusula_local_agenda_items')
         if (cached) {
           try {
-            setItems(JSON.parse(cached))
+            const parsed = JSON.parse(cached)
+            const cleaned = Array.isArray(parsed)
+              ? parsed.filter((it: any) => it.title !== 'Bugünün Öncelikli Görevini Tamamla')
+              : []
+            setItems(cleaned)
           } catch {
             setItems([])
           }
         } else {
-          // Starter mock task for instant usability
-          const sampleItem: AgendaItem = {
-            id: 'local-' + Date.now(),
-            user_id: 'local',
-            title: 'Bugünün Öncelikli Görevini Tamamla',
-            plan_date: toLocalDateString(new Date()),
-            plan_time: '10:00',
-            project_id: null,
-            status: 'planned',
-            timer_mode: 'stopwatch',
-            pomodoro_target_minutes: 25,
-            duration_seconds: 0,
-            notes: null,
-            completed_at: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-          setItems([sampleItem])
-          localStorage.setItem('pusula_local_agenda_items', JSON.stringify([sampleItem]))
+          setItems([])
         }
       } else if (itemsData) {
         setIsDbFallback(false)
-        setItems(itemsData)
-        localStorage.setItem('pusula_local_agenda_items', JSON.stringify(itemsData))
+        const validItems = itemsData.filter((it: any) => it.title !== 'Bugünün Öncelikli Görevini Tamamla')
+        setItems(validItems)
+        localStorage.setItem('pusula_local_agenda_items', JSON.stringify(validItems))
       }
 
       if (projectsData) setProjects(projectsData)
@@ -224,7 +211,11 @@ function AgendaContent() {
       const cached = localStorage.getItem('pusula_local_agenda_items')
       if (cached) {
         try {
-          setItems(JSON.parse(cached))
+          const parsed = JSON.parse(cached)
+          const cleaned = Array.isArray(parsed)
+            ? parsed.filter((it: any) => it.title !== 'Bugünün Öncelikli Görevini Tamamla')
+            : []
+          setItems(cleaned)
         } catch {}
       }
     } finally {

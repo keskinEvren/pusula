@@ -54,7 +54,6 @@ import {
   formatDateToYmd,
   parseYmdToDate,
   addDays,
-  INITIAL_SAMPLE_ROUTINES,
 } from '@/lib/routines-engine'
 
 const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
@@ -133,64 +132,68 @@ function RoutinesPageContent() {
         setRoutines(validData as Routine[])
         localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(validData))
       } else if (!rError && user) {
-        // DB henüz boş ama kullanıcı giriş yapmış!
-        // LocalStorage'da kullanıcının önceden eklediği/düzenlediği rutin var mı ("Diyet" gibi)?
+        // DB henüz boş. Eğer kullanıcının daha önceden yerelde eklediği gerçek (sample olmayan) rutinler varsa aktar
         const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
-        let routinesToSync: Routine[] = INITIAL_SAMPLE_ROUTINES
+        let realLocalRoutines: Routine[] = []
         if (localRoutinesStr) {
           try {
             const parsed = JSON.parse(localRoutinesStr) as Routine[]
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              routinesToSync = parsed
+            if (Array.isArray(parsed)) {
+              realLocalRoutines = parsed.filter((r) => !r.id?.startsWith?.('sample-'))
             }
           } catch {}
         }
 
-        // Yerel rutinleri gerçek user.id ile Supabase'e aktar
-        const seedPayload = routinesToSync.map((item, idx) => ({
-          user_id: user.id,
-          title: item.title,
-          icon: item.icon || '✨',
-          time_block: item.time_block || 'morning',
-          frequency: item.frequency || 'daily',
-          target_days: Array.isArray(item.target_days) ? item.target_days : [1, 2, 3, 4, 5, 6, 7],
-          target_duration_minutes: Number(item.target_duration_minutes) || 15,
-          minimum_effective_dose: item.minimum_effective_dose || null,
-          dream_id: isUUID(item.dream_id) ? item.dream_id : null,
-          identity_persona: item.identity_persona || null,
-          is_active: item.is_active ?? true,
-          order_index: idx,
-        }))
+        if (realLocalRoutines.length > 0) {
+          // Gerçek yerel rutinleri user.id ile Supabase'e aktar
+          const seedPayload = realLocalRoutines.map((item, idx) => ({
+            user_id: user.id,
+            title: item.title,
+            icon: item.icon || '✨',
+            time_block: item.time_block || 'morning',
+            frequency: item.frequency || 'daily',
+            target_days: Array.isArray(item.target_days) ? item.target_days : [1, 2, 3, 4, 5, 6, 7],
+            target_duration_minutes: Number(item.target_duration_minutes) || 15,
+            minimum_effective_dose: item.minimum_effective_dose || null,
+            dream_id: isUUID(item.dream_id) ? item.dream_id : null,
+            identity_persona: item.identity_persona || null,
+            is_active: item.is_active ?? true,
+            order_index: idx,
+          }))
 
-        try {
-          const { data: seededData, error: seedErr } = await supabase
-            .from('routines')
-            .insert(seedPayload)
-            .select()
+          try {
+            const { data: seededData, error: seedErr } = await supabase
+              .from('routines')
+              .insert(seedPayload)
+              .select()
 
-          if (!seedErr && seededData && seededData.length > 0) {
-            setRoutines(seededData as Routine[])
-            localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(seededData))
-          } else {
-            console.warn('Auto-seed / sync routines note:', seedErr?.message)
-            setRoutines(routinesToSync)
+            if (!seedErr && seededData && seededData.length > 0) {
+              setRoutines(seededData as Routine[])
+              localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(seededData))
+            } else {
+              setRoutines(realLocalRoutines)
+            }
+          } catch {
+            setRoutines(realLocalRoutines)
           }
-        } catch (seedCatch) {
-          console.warn('Auto-seed / sync routines catch:', seedCatch)
-          setRoutines(routinesToSync)
+        } else {
+          // Sıfır kullanıcı: Hiç rutin yok, temiz başla
+          setRoutines([])
+          localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify([]))
         }
       } else {
         // Giriş yapılmamış veya DB hatası — localStorage fallback
         const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
         if (localRoutinesStr) {
           try {
-            setRoutines(JSON.parse(localRoutinesStr))
+            const parsed = JSON.parse(localRoutinesStr)
+            const cleaned = Array.isArray(parsed) ? parsed.filter((r: any) => !r.id?.startsWith?.('sample-')) : []
+            setRoutines(cleaned)
           } catch {
-            setRoutines(INITIAL_SAMPLE_ROUTINES)
+            setRoutines([])
           }
         } else {
-          setRoutines(INITIAL_SAMPLE_ROUTINES)
-          localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
+          setRoutines([])
         }
       }
 
@@ -225,7 +228,16 @@ function RoutinesPageContent() {
     } catch (err) {
       console.error('Routines load error:', err)
       const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
-      setRoutines(localRoutinesStr ? JSON.parse(localRoutinesStr) : INITIAL_SAMPLE_ROUTINES)
+      if (localRoutinesStr) {
+        try {
+          const parsed = JSON.parse(localRoutinesStr)
+          setRoutines(Array.isArray(parsed) ? parsed.filter((r: any) => !r.id?.startsWith?.('sample-')) : [])
+        } catch {
+          setRoutines([])
+        }
+      } else {
+        setRoutines([])
+      }
       const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
       if (localLogsStr) setRoutineLogs(JSON.parse(localLogsStr))
     } finally {
