@@ -110,11 +110,12 @@ function RoutinesPageContent() {
   // Timer Interval Ref
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // 1. Veri Yükleme (Supabase + LocalStorage Fallback)
+  // 1. Veri Yükleme (Supabase + LocalStorage Fallback + İlk Seed)
   useEffect(() => {
     async function loadData() {
       setIsLoading(true)
       const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
 
       try {
         // Rutinleri çek
@@ -123,14 +124,15 @@ function RoutinesPageContent() {
           .select('*')
           .order('order_index', { ascending: true })
 
-        if (!rError && dbRoutines && dbRoutines.length > 0) {
-          setRoutines(dbRoutines as Routine[])
-        } else {
-          // LocalStorage fallback
+        if (rError) {
+          // DB bağlantı hatası — localStorage fallback
+          console.warn('Routines table remote query note:', rError.message)
           const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
           if (localRoutinesStr) {
             try {
-              setRoutines(JSON.parse(localRoutinesStr))
+              const parsed = JSON.parse(localRoutinesStr) as Routine[]
+              const cleaned = parsed.filter((r) => !r.id.startsWith('sample-'))
+              setRoutines(cleaned.length > 0 ? cleaned : INITIAL_SAMPLE_ROUTINES)
             } catch {
               setRoutines(INITIAL_SAMPLE_ROUTINES)
             }
@@ -138,12 +140,79 @@ function RoutinesPageContent() {
             setRoutines(INITIAL_SAMPLE_ROUTINES)
             localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
           }
+        } else if (dbRoutines && dbRoutines.length > 0) {
+          // DB'de veri var — doğrudan kullan
+          const validData = dbRoutines.filter((r: any) => !r.id?.startsWith?.('sample-'))
+          setRoutines(validData as Routine[])
+          localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(validData))
+        } else {
+          // DB boş döndü — seed veya bilinçli silme kontrolü
+          const initKey = user ? `pusula_routines_seeded_${user.id}` : 'pusula_routines_seeded_local'
+          const hasSeeded = localStorage.getItem(initKey)
+
+          if (!hasSeeded && user) {
+            // İlk kez giriş yapan kullanıcı: örnek rutinleri DB'ye seed et
+            const seedPayload = INITIAL_SAMPLE_ROUTINES.map((item, idx) => ({
+              user_id: user.id,
+              title: item.title,
+              icon: item.icon,
+              time_block: item.time_block,
+              frequency: item.frequency,
+              target_days: item.target_days,
+              target_duration_minutes: item.target_duration_minutes,
+              minimum_effective_dose: item.minimum_effective_dose,
+              dream_id: null,
+              identity_persona: item.identity_persona,
+              is_active: true,
+              order_index: idx,
+            }))
+
+            try {
+              const { data: seededData, error: seedErr } = await supabase
+                .from('routines')
+                .insert(seedPayload)
+                .select()
+
+              if (!seedErr && seededData && seededData.length > 0) {
+                localStorage.setItem(initKey, 'true')
+                setRoutines(seededData as Routine[])
+                localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(seededData))
+              } else {
+                console.warn('Auto-seed routines note:', seedErr?.message)
+                setRoutines(INITIAL_SAMPLE_ROUTINES)
+                localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
+              }
+            } catch (seedCatch) {
+              console.warn('Auto-seed routines catch:', seedCatch)
+              setRoutines(INITIAL_SAMPLE_ROUTINES)
+              localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
+            }
+          } else if (hasSeeded) {
+            // Kullanıcı daha önce seed almış ve tüm rutinleri silmiş — boş göster
+            setRoutines([])
+            localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify([]))
+          } else {
+            // Giriş yapmamış kullanıcı — localStorage fallback
+            localStorage.setItem(initKey, 'true')
+            const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
+            if (localRoutinesStr) {
+              try {
+                setRoutines(JSON.parse(localRoutinesStr))
+              } catch {
+                setRoutines(INITIAL_SAMPLE_ROUTINES)
+              }
+            } else {
+              setRoutines(INITIAL_SAMPLE_ROUTINES)
+              localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
+            }
+          }
         }
 
         // Logları çek
         const { data: dbLogs } = await supabase.from('routine_logs').select('*')
         if (dbLogs && dbLogs.length > 0) {
           setRoutineLogs(dbLogs as RoutineLog[])
+          localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(dbLogs))
         } else {
           const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
           if (localLogsStr) {
@@ -292,12 +361,15 @@ function RoutinesPageContent() {
       saveLogsToLocal(updatedLogs)
       const supabase = createClient()
       try {
-        await supabase.from('routine_logs').update({ note: noteInput }).eq('id', log.id)
-      } catch {}
+        const { error } = await supabase.from('routine_logs').update({ note: noteInput }).eq('id', log.id)
+        if (error) console.error('Update routine log note error:', error)
+      } catch (err) {
+        console.error('Update routine log note error:', err)
+      }
     } else {
       // Önce rutini tamamla sonra not iliştir
       const newLog: RoutineLog = {
-        id: `log-${Date.now()}`,
+        id: crypto.randomUUID(),
         user_id: 'local',
         routine_id: noteRoutine.id,
         log_date: selectedDate,
@@ -311,9 +383,14 @@ function RoutinesPageContent() {
       const supabase = createClient()
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (user) newLog.user_id = user.id
-        await supabase.from('routine_logs').insert([newLog])
-      } catch {}
+        if (user) {
+          newLog.user_id = user.id
+          const { error } = await supabase.from('routine_logs').insert([newLog])
+          if (error) console.error('Insert routine log with note error:', error)
+        }
+      } catch (err) {
+        console.error('Insert routine log with note error:', err)
+      }
     }
 
     setNoteRoutine(null)
@@ -362,8 +439,14 @@ function RoutinesPageContent() {
     const userId = user?.id || 'local'
 
     if (editingRoutine) {
+      // Düzenlenen rutinin sample ID'si varsa (DB'de yok), yeni UUID ile insert et
+      const isSampleId = editingRoutine.id.startsWith('sample-') || !isUUID(editingRoutine.id)
+      const newId = isSampleId ? crypto.randomUUID() : editingRoutine.id
+
       const updated: Routine = {
         ...editingRoutine,
+        id: newId,
+        user_id: userId,
         title: formData.title,
         icon: formData.icon,
         time_block: formData.time_block,
@@ -375,12 +458,32 @@ function RoutinesPageContent() {
         updated_at: new Date().toISOString(),
       }
 
+      // Yerel state'de eski ID'yi yenisiyle değiştir
       const updatedList = routines.map((r) => (r.id === editingRoutine.id ? updated : r))
       saveRoutinesToLocal(updatedList)
 
-      try {
-        await supabase.from('routines').update(updated).eq('id', editingRoutine.id)
-      } catch {}
+      if (user) {
+        try {
+          if (isSampleId) {
+            // Sample ID → yeni UUID ile insert
+            const { error } = await supabase.from('routines').insert([updated])
+            if (error) {
+              console.error('Insert routine (from sample) error:', error)
+              toast.error('Rutin sunucuya kaydedilemedi. Yerel olarak güncellendi.')
+            }
+          } else {
+            // Gerçek UUID → update
+            const { error } = await supabase.from('routines').update(updated).eq('id', editingRoutine.id)
+            if (error) {
+              console.error('Update routine error:', error)
+              toast.error('Rutin sunucuya kaydedilemedi. Yerel olarak güncellendi.')
+            }
+          }
+        } catch (err) {
+          console.error('Save routine error:', err)
+          toast.error('Sunucu bağlantı hatası. Değişiklik yerel olarak kaydedildi.')
+        }
+      }
     } else {
       const newRoutine: Routine = {
         id: crypto.randomUUID(),
@@ -406,10 +509,14 @@ function RoutinesPageContent() {
       try {
         if (user) {
           const { error: insErr } = await supabase.from('routines').insert([newRoutine])
-          if (insErr) console.error('Insert routine error:', insErr)
+          if (insErr) {
+            console.error('Insert routine error:', insErr)
+            toast.error('Rutin sunucuya kaydedilemedi. Yerel olarak eklendi.')
+          }
         }
       } catch (err) {
         console.error('Insert routine error:', err)
+        toast.error('Sunucu bağlantı hatası. Rutin yerel olarak kaydedildi.')
       }
     }
 
@@ -427,8 +534,15 @@ function RoutinesPageContent() {
     if (isUUID(routineId)) {
       const supabase = createClient()
       try {
-        await supabase.from('routines').delete().eq('id', routineId)
-      } catch {}
+        const { error } = await supabase.from('routines').delete().eq('id', routineId)
+        if (error) {
+          console.error('Delete routine error:', error)
+          toast.error('Rutin sunucudan silinemedi. Yerel olarak kaldırıldı.')
+        }
+      } catch (err) {
+        console.error('Delete routine error:', err)
+        toast.error('Sunucu bağlantı hatası. Rutin yerel olarak kaldırıldı.')
+      }
     }
     toast.success('Rutin silindi.')
     setRoutineToDelete(null)
