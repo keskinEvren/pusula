@@ -33,18 +33,52 @@ export function DashboardRoutineStrip() {
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
       try {
-        const { data: rData } = await supabase
+        const { data: rData, error: rError } = await supabase
           .from('routines')
           .select('*')
           .eq('is_active', true)
           .order('order_index', { ascending: true })
 
-        if (rData && rData.length > 0) {
+        if (rError) {
+          // DB hatası — localStorage fallback
+          const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
+          if (localRoutines) {
+            try {
+              const parsed = JSON.parse(localRoutines) as Routine[]
+              const cleaned = parsed.filter((r) => !r.id.startsWith('sample-'))
+              setRoutines(cleaned.length > 0 ? cleaned : INITIAL_SAMPLE_ROUTINES)
+            } catch {
+              setRoutines(INITIAL_SAMPLE_ROUTINES)
+            }
+          } else {
+            setRoutines(INITIAL_SAMPLE_ROUTINES)
+          }
+        } else if (rData && rData.length > 0) {
           setRoutines(rData as Routine[])
         } else {
-          const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
-          setRoutines(localRoutines ? JSON.parse(localRoutines) : INITIAL_SAMPLE_ROUTINES)
+          // DB boş — seed kontrolü (ana sayfa sadece okur, seed page.tsx'de yapılır)
+          const initKey = user ? `pusula_routines_seeded_${user.id}` : 'pusula_routines_seeded_local'
+          const hasSeeded = localStorage.getItem(initKey)
+
+          if (hasSeeded) {
+            // Kullanıcı tüm rutinleri silmiş
+            setRoutines([])
+          } else {
+            // Henüz seed yapılmamış — localStorage fallback
+            const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
+            if (localRoutines) {
+              try {
+                setRoutines(JSON.parse(localRoutines))
+              } catch {
+                setRoutines(INITIAL_SAMPLE_ROUTINES)
+              }
+            } else {
+              setRoutines(INITIAL_SAMPLE_ROUTINES)
+            }
+          }
         }
 
         const { data: lData } = await supabase
@@ -59,12 +93,12 @@ export function DashboardRoutineStrip() {
           setLogs(localLogs ? JSON.parse(localLogs) : [])
         }
       } catch (err) {
+        console.error('Dashboard routine strip load error:', err)
         const localRoutines = localStorage.getItem(STORAGE_KEY_ROUTINES)
         setRoutines(localRoutines ? JSON.parse(localRoutines) : INITIAL_SAMPLE_ROUTINES)
         const localLogs = localStorage.getItem(STORAGE_KEY_LOGS)
         setLogs(localLogs ? JSON.parse(localLogs) : [])
       } finally {
-        setIsLoaded(false) // Wait, setIsLoaded(true)!
         setIsLoaded(true)
       }
     }
@@ -95,8 +129,11 @@ export function DashboardRoutineStrip() {
 
       const supabase = createClient()
       try {
-        await supabase.from('routine_logs').delete().eq('id', existingLog.id)
-      } catch {}
+        const { error } = await supabase.from('routine_logs').delete().eq('id', existingLog.id)
+        if (error) console.error('Delete routine log error:', error)
+      } catch (err) {
+        console.error('Delete routine log error:', err)
+      }
     } else {
       const newLog: RoutineLog = {
         id: crypto.randomUUID(),
@@ -117,9 +154,12 @@ export function DashboardRoutineStrip() {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           newLog.user_id = user.id
-          await supabase.from('routine_logs').insert([newLog])
+          const { error } = await supabase.from('routine_logs').insert([newLog])
+          if (error) console.error('Insert routine log error:', error)
         }
-      } catch {}
+      } catch (err) {
+        console.error('Insert routine log error:', err)
+      }
     }
   }
 
