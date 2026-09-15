@@ -47,7 +47,6 @@ import {
   filterJournalEntries,
   calculateJournalMetrics,
   buildDayContextSummary,
-  INITIAL_SAMPLE_JOURNAL_ENTRIES,
 } from '@/lib/journal-engine'
 
 const STORAGE_KEY_JOURNAL = 'pusula_local_journal_entries'
@@ -102,29 +101,38 @@ function JournalPageContent() {
           .order('entry_date', { ascending: false })
 
         if (!error && dbEntries && dbEntries.length > 0) {
-          setEntries(dbEntries as JournalEntry[])
-          setSelectedEntryId(dbEntries[0].id)
-          populateEditor(dbEntries[0] as JournalEntry)
+          const validData = dbEntries.filter((e: any) => !e.id?.startsWith?.('sample-'))
+          setEntries(validData as JournalEntry[])
+          if (validData.length > 0) {
+            setSelectedEntryId(validData[0].id)
+            populateEditor(validData[0] as JournalEntry)
+          } else {
+            setSelectedEntryId(null)
+            setIsEditingNew(true)
+          }
         } else {
           const localStr = localStorage.getItem(STORAGE_KEY_JOURNAL)
           if (localStr) {
             try {
               const parsed = JSON.parse(localStr)
-              setEntries(parsed)
-              if (parsed.length > 0) {
-                setSelectedEntryId(parsed[0].id)
-                populateEditor(parsed[0])
+              const cleaned = Array.isArray(parsed) ? parsed.filter((e: any) => !e.id?.startsWith?.('sample-')) : []
+              setEntries(cleaned)
+              if (cleaned.length > 0) {
+                setSelectedEntryId(cleaned[0].id)
+                populateEditor(cleaned[0])
+              } else {
+                setSelectedEntryId(null)
+                setIsEditingNew(true)
               }
             } catch {
-              setEntries(INITIAL_SAMPLE_JOURNAL_ENTRIES)
-              setSelectedEntryId(INITIAL_SAMPLE_JOURNAL_ENTRIES[0].id)
-              populateEditor(INITIAL_SAMPLE_JOURNAL_ENTRIES[0])
+              setEntries([])
+              setSelectedEntryId(null)
+              setIsEditingNew(true)
             }
           } else {
-            setEntries(INITIAL_SAMPLE_JOURNAL_ENTRIES)
-            localStorage.setItem(STORAGE_KEY_JOURNAL, JSON.stringify(INITIAL_SAMPLE_JOURNAL_ENTRIES))
-            setSelectedEntryId(INITIAL_SAMPLE_JOURNAL_ENTRIES[0].id)
-            populateEditor(INITIAL_SAMPLE_JOURNAL_ENTRIES[0])
+            setEntries([])
+            setSelectedEntryId(null)
+            setIsEditingNew(true)
           }
         }
 
@@ -148,11 +156,20 @@ function JournalPageContent() {
       } catch (err) {
         console.error('Journal data load error:', err)
         const localStr = localStorage.getItem(STORAGE_KEY_JOURNAL)
-        const initial = localStr ? JSON.parse(localStr) : INITIAL_SAMPLE_JOURNAL_ENTRIES
-        setEntries(initial)
-        if (initial.length > 0) {
-          setSelectedEntryId(initial[0].id)
-          populateEditor(initial[0])
+        if (localStr) {
+          try {
+            const parsed = JSON.parse(localStr)
+            const cleaned = Array.isArray(parsed) ? parsed.filter((e: any) => !e.id?.startsWith?.('sample-')) : []
+            setEntries(cleaned)
+            if (cleaned.length > 0) {
+              setSelectedEntryId(cleaned[0].id)
+              populateEditor(cleaned[0])
+            }
+          } catch {
+            setEntries([])
+          }
+        } else {
+          setEntries([])
         }
       } finally {
         setIsLoading(false)
@@ -595,7 +612,9 @@ function JournalPageContent() {
 
             {filteredEntries.length === 0 && (
               <div className="p-8 text-center text-xs text-muted-foreground border border-dashed border-border/60 rounded-xl">
-                Aradığınız kriterlere uygun kayıt bulunamadı.
+                {entries.length === 0
+                  ? 'Henüz günlük kaydı oluşturulmadı. "Yeni Giriş" butonuna tıklayarak ilk günlüğünüzü yazabilirsiniz.'
+                  : 'Aradığınız kriterlere uygun kayıt bulunamadı.'}
               </div>
             )}
           </div>

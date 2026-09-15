@@ -155,53 +155,20 @@ function InvestmentsContent() {
       const cached = localStorage.getItem('pusula_local_investments')
       if (cached) {
         try {
-          setInvestments(JSON.parse(cached))
+          const parsed = JSON.parse(cached)
+          const cleaned = Array.isArray(parsed) ? parsed.filter((inv: any) => !inv.id?.startsWith?.('demo-')) : []
+          setInvestments(cleaned)
         } catch {
           setInvestments([])
         }
       } else {
-        // Provide starter mock data for instant preview if empty
-        const initialSample: Investment[] = [
-          {
-            id: 'demo-1',
-            user_id: 'local',
-            name: 'Gram Altın',
-            symbol: 'GRAM_ALTIN',
-            category: 'Emtia & Altın',
-            institution: 'Fiziki Kasa',
-            quantity: 25,
-            unit_cost: 2950,
-            current_price: 3450,
-            currency: 'TRY',
-            last_price_updated_at: new Date().toISOString(),
-            note: 'Uzun vadeli tasarruf',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          {
-            id: 'demo-2',
-            user_id: 'local',
-            name: 'Türk Hava Yolları',
-            symbol: 'THYAO',
-            category: 'Hisse Senedi (BIST)',
-            institution: 'Midas',
-            quantity: 150,
-            unit_cost: 265,
-            current_price: 304.5,
-            currency: 'TRY',
-            last_price_updated_at: new Date().toISOString(),
-            note: 'BIST temettü & büyüme',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ]
-        setInvestments(initialSample)
-        localStorage.setItem('pusula_local_investments', JSON.stringify(initialSample))
+        setInvestments([])
       }
     } else if (data) {
-      setInvestments(data)
+      const validData = data.filter((inv: any) => !inv.id?.startsWith?.('demo-'))
+      setInvestments(validData)
       setIsDbFallback(false)
-      localStorage.setItem('pusula_local_investments', JSON.stringify(data))
+      localStorage.setItem('pusula_local_investments', JSON.stringify(validData))
     }
     setLoading(false)
   }
