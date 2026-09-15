@@ -27,7 +27,6 @@ interface StatementGuideSheetProps {
 interface BankItem {
   id: string
   name: string
-  color: string
   badge: string
   types: string[]
   supportedCards: string
@@ -39,30 +38,27 @@ const SUPPORTED_BANKS: BankItem[] = [
   {
     id: 'enpara',
     name: 'Enpara.com (QNB)',
-    color: 'border-purple-500/30 bg-purple-500/5 text-purple-400',
-    badge: 'Tam Entegrasyon',
+    badge: 'Doğrudan Ayrıştırma',
     types: ['PDF Ekstre', 'HTML Hesap Özeti', 'Excel/CSV'],
-    supportedCards: 'Enpara Kredi Kartı & Vadesiz TL/Döviz Hesapları',
+    supportedCards: 'Kredi Kartı & Vadesiz TL/Döviz Hesapları',
     howToExport:
-      'Enpara Cep Şubesi > Kredi Kartı veya Vadesiz Hesap > "Ekstre / Hesap Özeti" > "Ekstre Gönder" adımlarını izleyin. E-postanıza gelen PDF veya HTML dosyasını doğrudan buraya yükleyin.',
+      'Enpara Cep Şubesi > Kredi Kartı veya Vadesiz Hesap > "Ekstre / Hesap Özeti" > "Ekstre Gönder" adımlarını izleyin. E-postanıza gelen PDF veya HTML dosyasını doğrudan yükleyin.',
     tip: 'Enpara e-posta hesap özetleri HTML formatında gelir. Pusula HTML dosyasını anında ayrıştırıp FAST/EFT açıklamalarını temizler.',
   },
   {
     id: 'akbank',
     name: 'Akbank (Axess / Wings)',
-    color: 'border-red-500/30 bg-red-500/5 text-red-400',
-    badge: 'Tam Entegrasyon',
+    badge: 'Doğrudan Ayrıştırma',
     types: ['PDF Ekstre', 'Excel/CSV'],
-    supportedCards: 'Axess Platinum, Wings, Free, Akbank Banka Kartı',
+    supportedCards: 'Axess Platinum, Wings, Free, Akbank Kart',
     howToExport:
-      'Akbank Mobil > Kartlarım > Kredi Kartı seçin > "Ekstre Görüntüle" > Sağ üstteki indirme simgesinden "PDF Olarak Kaydet" deyin.',
-    tip: 'Ekstredeki faiz, kesinti ve chip-para sütunları Pusula tarafından otomatik tespit edilir.',
+      'Akbank Mobil > Kartlarım > Kredi Kartı seçin > "Ekstre Görüntüle" > Sağ üstteki indirme simgesinden "PDF Olarak Kaydet" seçeneğini kullanın.',
+    tip: 'Ekstredeki faiz, kesinti ve chip-para satırları ana harcama tutarından otomatik ayırt edilir.',
   },
   {
     id: 'garanti',
     name: 'Garanti BBVA (Bonus)',
-    color: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400',
-    badge: 'Tam Entegrasyon',
+    badge: 'Doğrudan Ayrıştırma',
     types: ['PDF Ekstre', 'Excel/CSV'],
     supportedCards: 'Bonus Trink, Bonus Platinum, Miles&Smiles, Shop&Fly',
     howToExport:
@@ -72,24 +68,22 @@ const SUPPORTED_BANKS: BankItem[] = [
   {
     id: 'ziraat',
     name: 'Ziraat Bankası (Bankkart)',
-    color: 'border-rose-500/30 bg-rose-500/5 text-rose-400',
-    badge: 'Tam Entegrasyon',
+    badge: 'Doğrudan Ayrıştırma',
     types: ['PDF Ekstre', 'Excel/CSV'],
-    supportedCards: 'Bankkart Combo, Platinum, 5349- ile başlayan tüm kartlar',
+    supportedCards: 'Bankkart Combo, Platinum, 5349- serisi kartlar',
     howToExport:
       'Ziraat Mobil > Kartlarım > Kredi Kartı > "Dönem Ekstresi" > "Ekstre Paylaş / İndir (PDF)".',
-    tip: 'Ziraat Bankası çok sütunlu döviz ve puan satırları ana TL tutarından ayrıştırılır.',
+    tip: 'Ziraat Bankası çok sütunlu döviz ve puan satırları ana TL tutarından filtrelenir.',
   },
   {
     id: 'other',
     name: 'Diğer Bankalar & Fintekler',
-    color: 'border-sky-500/30 bg-sky-500/5 text-sky-400',
-    badge: 'Excel & CSV',
+    badge: 'Standart Şablon',
     types: ['Excel (.xlsx, .xls)', 'CSV (.csv)', 'Standart PDF'],
     supportedCards: 'İş Bankası, Yapı Kredi, QNB, TEB, Papara vb.',
     howToExport:
-      'İnternet bankacılığından veya mobil uygulamadan hesap/kart hareketlerinizi "Excel (.xlsx)" veya "CSV" olarak indirin.',
-    tip: 'Pusula "Tarih", "Açıklama" ve "Tutar" sütunlarını otomatik algılar, özel bir şablon zorunluluğu yoktur.',
+      'İnternet veya mobil bankacılıktan hesap ve kart hareketlerinizi "Excel (.xlsx)" veya "CSV" olarak dışa aktarın.',
+    tip: 'Pusula "Tarih", "Açıklama" ve "Tutar" sütunlarını otomatik algılar; dosya düzenini bozmanıza gerek yoktur.',
   },
 ]
 
@@ -102,14 +96,12 @@ export function StatementGuideSheet({
   const [expandedBank, setExpandedBank] = useState<string | null>('enpara')
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null)
 
-  // Sync mode when initialMode changes or sheet opens
   useEffect(() => {
     if (isOpen) {
       setGuideMode(initialMode)
     }
   }, [isOpen, initialMode])
 
-  // Escape key handler & scroll lock
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -137,21 +129,21 @@ export function StatementGuideSheet({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl h-full border-l border-border/80 bg-card text-card-foreground shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 overflow-hidden"
+        className="w-full max-w-xl h-full border-l border-border bg-card text-card-foreground shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 overflow-hidden"
       >
-        {/* Sheet Top Header */}
+        {/* Top Header */}
         <div className="p-5 border-b border-border/60 bg-muted/20 flex items-start justify-between gap-4 shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
+              <span className="p-1.5 rounded-lg bg-muted border border-border/60 text-foreground">
+                <FileText className="h-4 w-4" />
               </span>
               <h2 id="guide-sheet-title" className="text-base sm:text-lg font-bold text-foreground">
                 Ekstre & Banka Rehberi
               </h2>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Desteklenen formatlar, banka dökümleri ve hızlı içe aktarma ipuçları
+              Desteklenen formatlar, banka dökümleri ve hızlı içe aktarma kuralları
             </p>
           </div>
           <Button
@@ -167,7 +159,7 @@ export function StatementGuideSheet({
 
         {/* Mode Selector Tabs */}
         <div className="px-5 pt-3 pb-2 border-b border-border/40 bg-card shrink-0">
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border/60">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/30 border border-border/60">
             <button
               type="button"
               onClick={() => setGuideMode('credit_card')}
@@ -203,29 +195,29 @@ export function StatementGuideSheet({
               Desteklenen Dosya Formatları
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-rose-400 shrink-0" />
+              <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center gap-2.5">
+                <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <div className="font-semibold text-foreground">.PDF</div>
                   <div className="text-[10px] text-muted-foreground">e-Ekstre</div>
                 </div>
               </div>
-              <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 flex items-center gap-2">
-                <Code className="h-4 w-4 text-amber-400 shrink-0" />
+              <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center gap-2.5">
+                <Code className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <div className="font-semibold text-foreground">.HTML</div>
                   <div className="text-[10px] text-muted-foreground">E-posta Özeti</div>
                 </div>
               </div>
-              <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-emerald-400 shrink-0" />
+              <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center gap-2.5">
+                <FileSpreadsheet className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <div className="font-semibold text-foreground">.XLSX / .XLS</div>
                   <div className="text-[10px] text-muted-foreground">Excel Tablosu</div>
                 </div>
               </div>
-              <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-sky-400 shrink-0" />
+              <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center gap-2.5">
+                <FileSpreadsheet className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <div className="font-semibold text-foreground">.CSV</div>
                   <div className="text-[10px] text-muted-foreground">Metin Dökümü</div>
@@ -235,61 +227,61 @@ export function StatementGuideSheet({
           </div>
 
           {/* Mode Specific Explanation Card */}
-          {guideMode === 'credit_card' ? (
-            <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 space-y-2">
-              <div className="font-semibold text-sm text-foreground flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span>Kredi Kartı Ekstresi Neler Yapar?</span>
-              </div>
-              <ul className="space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
-                <li className="flex items-start gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                  <span>
-                    Dönem toplam borcunu, asgari ödemeyi ve hesap kesim / son ödeme tarihlerini otomatik çıkarır.
-                  </span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                  <span>
-                    Taksitli harcamaları (örn. <strong>3/6</strong>) algılar ve kalan taksit özetini kaydeder.
-                  </span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                  <span>
-                    İadeleri negatif olarak yansıtıp toplam kart borcunu doğru dengeler.
-                  </span>
-                </li>
-              </ul>
+          <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-2.5">
+            <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span>
+                {guideMode === 'credit_card'
+                  ? 'Kredi Kartı Ekstresi Ayrıştırma Özellikleri'
+                  : 'Vadesiz Hesap Özeti Ayrıştırma Özellikleri'}
+              </span>
             </div>
-          ) : (
-            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-2">
-              <div className="font-semibold text-sm text-foreground flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-emerald-400" />
-                <span>Vadesiz Hesap Özeti Neler Yapar?</span>
-              </div>
-              <ul className="space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
-                <li className="flex items-start gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                  <span>
-                    Gelen/Giden EFT ve FAST transferlerini nakit akışınıza doğrudan bağlar.
-                  </span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                  <span>
-                    Açık borçlarınız varsa (Borç & Alacak modülü), transfer açıklamasındaki kişi ismiyle eşleştirip borcu kapatmayı önerir.
-                  </span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                  <span>
-                    Hesaptan kredi kartına yapılan ödemeleri tespit ederek mükerrer harcama yazılmasını engeller.
-                  </span>
-                </li>
-              </ul>
-            </div>
-          )}
+            <ul className="space-y-2 text-muted-foreground text-[11px] leading-relaxed">
+              {guideMode === 'credit_card' ? (
+                <>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      Dönem toplam borcu, asgari ödeme tutarı ve hesap kesim / son ödeme tarihleri otomatik okunur.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      Taksitli harcamalar (örn. <strong>3/6</strong>) algılanır ve taksit takvimi oluşturulur.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      İadeler negatif olarak yansıtılarak kart borcu ve harcama hacmi dengelenir.
+                    </span>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      Gelen ve giden EFT/FAST transferleri nakit akışınıza doğrudan entegre edilir.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      Açık borçlarınız varsa (Borç & Alacak), açıklamadaki kişi ismi taranarak borç mutabakatı önerilir.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      Hesaptan kredi kartına yapılan ödemeler tespit edilip mükerrer harcama yazılması engellenir.
+                    </span>
+                  </li>
+                </>
+              )}
+            </ul>
+          </div>
 
           {/* Banks Accordion List */}
           <div className="space-y-2.5">
@@ -307,7 +299,7 @@ export function StatementGuideSheet({
                   <div
                     key={b.id}
                     className={`rounded-xl border transition-all overflow-hidden ${
-                      isExpanded ? 'border-border bg-card shadow-sm' : 'border-border/60 bg-card/50 hover:bg-card'
+                      isExpanded ? 'border-border bg-card shadow-sm' : 'border-border/60 bg-card/40 hover:border-border hover:bg-card'
                     }`}
                   >
                     <button
@@ -316,15 +308,15 @@ export function StatementGuideSheet({
                       className="w-full p-3.5 text-left flex items-center justify-between gap-3"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold shrink-0 ${b.color}`}>
+                        <span className="font-semibold text-foreground text-xs">
                           {b.name}
-                        </div>
+                        </span>
                         <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
-                          {b.supportedCards}
+                          • {b.supportedCards}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/70 text-muted-foreground">
                           {b.badge}
                         </Badge>
                         {isExpanded ? (
@@ -338,18 +330,18 @@ export function StatementGuideSheet({
                     {isExpanded && (
                       <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-border/40 text-[11px] bg-muted/10 animate-in fade-in">
                         <div>
-                          <span className="font-semibold text-foreground block mb-0.5">Nasıl Alınır?</span>
+                          <span className="font-semibold text-foreground block mb-0.5">Nasıl Dışa Aktarılır?</span>
                           <p className="text-muted-foreground leading-relaxed">{b.howToExport}</p>
                         </div>
                         {b.tip && (
-                          <div className="p-2 rounded-lg bg-background/80 border border-border/60 text-muted-foreground">
-                            <span className="text-primary font-semibold">İpucu: </span>
+                          <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 text-muted-foreground leading-relaxed">
+                            <strong className="text-foreground">İpucu: </strong>
                             {b.tip}
                           </div>
                         )}
-                        <div className="flex flex-wrap gap-1 pt-1">
+                        <div className="flex flex-wrap gap-1.5 pt-1">
                           {b.types.map((t) => (
-                            <span key={t} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-foreground font-mono">
+                            <span key={t} className="px-2 py-0.5 rounded-md bg-muted border border-border/50 text-[10px] text-foreground font-mono">
                               {t}
                             </span>
                           ))}
@@ -363,13 +355,13 @@ export function StatementGuideSheet({
           </div>
 
           {/* Privacy & Guarantees Strip */}
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
-            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
-              <ShieldCheck className="h-4 w-4 shrink-0" />
+          <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-foreground font-semibold text-xs">
+              <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
               <span>Gizlilik & Sıfır Sunucu İletimi Güvencesi</span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Ekstre dosyalarınız (PDF, HTML, Excel) <strong>asla harici bir sunucuya veya yapay zeka servisine yüklenmez</strong>.
+              Ekstre dosyalarınız (PDF, HTML, Excel) <strong>asla harici bir sunucuya veya üçüncü taraf servisine yüklenmez</strong>.
               Tüm metin ve satır çıkarma işlemleri doğrudan tarayıcınızın belleğinde (client-side) güvenle gerçekleşir.
             </p>
           </div>
@@ -377,7 +369,7 @@ export function StatementGuideSheet({
           {/* FAQs Accordion */}
           <div className="space-y-2">
             <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <HelpCircle className="h-3.5 w-3.5 text-primary" />
+              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
               <span>Sık Sorulan Sorular</span>
             </div>
 
@@ -385,25 +377,25 @@ export function StatementGuideSheet({
               {[
                 {
                   id: 'password',
-                  q: 'Şifreli (T.C. şifreli) PDF ekstremi nasıl yüklerim?',
-                  a: 'Banka PDF’ini bilgisayarınızdaki Google Chrome veya Edge tarayıcısında açın, şifrenizi girin. Ardından klavyeden Ctrl+P (veya Cmd+P) tuşlayıp hedef yazıcı olarak "PDF Olarak Kaydet" seçin. Oluşan yeni şifresiz PDF dosyasını Pusula’ya sorunsuzca yükleyebilirsiniz.',
+                  q: 'Şifreli (T.C. kimlik şifreli) PDF ekstremi nasıl yüklerim?',
+                  a: 'Banka PDF’ini bilgisayarınızdaki Google Chrome veya Edge tarayıcısında açıp şifrenizi girin. Ardından Ctrl+P (veya Cmd+P) tuşlayıp hedef yazıcı olarak "PDF Olarak Kaydet" seçin. Oluşan yeni şifresiz PDF dosyasını Pusula’ya sorunsuzca yükleyebilirsiniz.',
                 },
                 {
                   id: 'duplicate',
                   q: 'Aynı ekstreyi tekrar yüklersem mükerrer kayıt oluşur mu?',
-                  a: 'Hayır. Pusula her yüklenen dosyanın kriptografik SHA-256 parmak izini kontrol eder. Daha önce yüklenmiş bir dosya tespit edildiğinde sistem sizi anında uyarır.',
+                  a: 'Hayır. Pusula her yüklenen dosyanın SHA-256 dijital parmak izini kontrol eder. Daha önce yüklenmiş bir dosya tespit edildiğinde sistem sizi anında uyarır.',
                 },
                 {
                   id: 'rollback',
                   q: 'Yüklediğim bir ekstreyi sonradan geri alabilir miyim?',
-                  a: 'Kesinlikle evet. "Ekstre Merkezi (/imports)" sayfasından dilediğiniz ekstre paketini bulup "Geri Al" (Atomic Rollback) butonuna basarak o ekstreyle eklenmiş tüm hareketleri ve kart bakiyelerini tek tıkla silebilirsiniz.',
+                  a: 'Evet. "Ekstre Merkezi (/imports)" sayfasından dilediğiniz ekstre paketini bulup "Geri Al" (Atomic Rollback) butonuna basarak o ekstreyle eklenmiş tüm hareketleri tek tıkla silebilirsiniz.',
                 },
               ].map((faq) => {
                 const isOpenFaq = expandedFaq === faq.id
                 return (
                   <div
                     key={faq.id}
-                    className="rounded-xl border border-border/60 bg-card/60 overflow-hidden"
+                    className="rounded-xl border border-border/60 bg-card/40 overflow-hidden"
                   >
                     <button
                       type="button"
@@ -435,7 +427,7 @@ export function StatementGuideSheet({
             Dosyanız hazırsa hemen sürükleyip bırakabilirsiniz
           </span>
           <Button size="sm" onClick={onClose} className="text-xs h-8 px-4 font-semibold">
-            Anladım, Kapat
+            Kapat
           </Button>
         </div>
       </div>

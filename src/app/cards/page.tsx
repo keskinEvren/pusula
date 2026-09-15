@@ -311,7 +311,7 @@ export default function CardsPage() {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Link href="/import?mode=credit_card" className="w-full sm:w-auto">
               <Button variant="outline" className="w-full sm:w-auto gap-2">
-                <UploadCloud className="h-4 w-4 text-primary" />
+                <UploadCloud className="h-4 w-4" />
                 <span>Ekstre İçe Aktar</span>
               </Button>
             </Link>
