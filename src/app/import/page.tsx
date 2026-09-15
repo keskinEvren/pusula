@@ -21,7 +21,9 @@ import {
   Layers,
   Receipt,
   HandCoins,
+  HelpCircle,
 } from 'lucide-react'
+import { StatementGuideSheet } from '@/components/import/statement-guide-sheet'
 import { createClient } from '@/lib/supabase/client'
 import { parseStatementFile, parseBankAccountFile } from '@/lib/parser'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -64,6 +66,7 @@ export default function ImportPage() {
 
   // Mode: credit_card vs bank_account
   const [activeMode, setActiveMode] = useState<'credit_card' | 'bank_account'>('credit_card')
+  const [isGuideOpen, setIsGuideOpen] = useState(false)
   const [switchModeTarget, setSwitchModeTarget] = useState<'credit_card' | 'bank_account' | null>(null)
   const [isClearingQueue, setIsClearingQueue] = useState(false)
 
@@ -118,6 +121,13 @@ export default function ImportPage() {
 
   useEffect(() => {
     loadMetadata()
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const modeParam = params.get('mode')
+      if (modeParam === 'bank_account' || modeParam === 'credit_card') {
+        setActiveMode(modeParam)
+      }
+    }
   }, [])
 
   async function loadMetadata() {
@@ -525,7 +535,7 @@ export default function ImportPage() {
         title="Ekstre Merkezi"
         description="Kredi kartı ve banka hesap dökümlerini yükleyin, akıllı kurallarla uzlaştırın ve sisteme aktarın."
         actions={
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/60 border border-border">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-muted/60 border border-border">
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-background text-foreground shadow-sm"
@@ -540,6 +550,14 @@ export default function ImportPage() {
               <History className="h-3.5 w-3.5 text-muted-foreground" />
               <span>Yükleme Geçmişi ({importHistoryCount})</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => setIsGuideOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+            >
+              <HelpCircle className="h-3.5 w-3.5 text-primary" />
+              <span>Format & Banka Rehberi</span>
+            </button>
           </div>
         }
       />
@@ -720,6 +738,107 @@ export default function ImportPage() {
                   }
                 }}
               />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Desteklenen Bankalar ve Format Vitrini (Showcase Hub) */}
+      {queuedFiles.length === 0 && (
+        <Card className="border-border/70 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+          <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <div>
+                  <CardTitle className="text-sm font-semibold text-foreground">
+                    Desteklenen Bankalar ve Akıllı Ayrıştırma
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    {activeMode === 'credit_card'
+                      ? 'Kredi kartı ekstreleriniz otomatik taranır, taksitler ve dönem borçları sisteme işlenir.'
+                      : 'Vadesiz hesap dökümlerinizdeki transferler nakit akışınıza ve açık borçlarınıza bağlanır.'}
+                  </CardDescription>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsGuideOpen(true)}
+                className="text-xs h-8 gap-1.5 shrink-0 border-primary/30 hover:bg-primary/10 text-foreground"
+              >
+                <HelpCircle className="h-3.5 w-3.5 text-primary" />
+                <span>Detaylı Banka Rehberi ↗</span>
+              </Button>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4 sm:p-5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left Column: Bank Chips */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Otomatik Tanınan Bankalar
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 rounded-xl border border-purple-500/30 bg-purple-500/5 flex items-center justify-between">
+                    <span className="font-semibold text-purple-300">Enpara.com</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-300">
+                      PDF + HTML
+                    </Badge>
+                  </div>
+                  <div className="p-2.5 rounded-xl border border-red-500/30 bg-red-500/5 flex items-center justify-between">
+                    <span className="font-semibold text-red-300">Akbank Axess</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/40 text-red-300">
+                      PDF + Excel
+                    </Badge>
+                  </div>
+                  <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between">
+                    <span className="font-semibold text-emerald-300">Garanti Bonus</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 text-emerald-300">
+                      PDF + Excel
+                    </Badge>
+                  </div>
+                  <div className="p-2.5 rounded-xl border border-rose-500/30 bg-rose-500/5 flex items-center justify-between">
+                    <span className="font-semibold text-rose-300">Ziraat Bankkart</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-300">
+                      PDF + Excel
+                    </Badge>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Yapı Kredi, İş Bankası, TEB ve diğer bankaların Excel/CSV dökümleri de standart formatta desteklenir.
+                </p>
+              </div>
+
+              {/* Right Column: Intelligent Capabilities */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Öne Çıkan Pusula Yetenekleri
+                </div>
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-muted/30 border border-border/50">
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-foreground">Otomatik Taksit Tespiti:</strong> Ekstredeki 2/6, 3/12 gibi taksit ibareleri okunur ve taksit takvimi oluşturulur.
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-muted/30 border border-border/50">
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-foreground">Sıfır Sunucu İletimi:</strong> Ekstreleriniz harici hiçbir sunucuya yüklenmez; tüm ayrıştırma %100 tarayıcınızda gerçekleşir.
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-muted/30 border border-border/50">
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-foreground">Mükerrerlik Koruması (SHA-256):</strong> Aynı dosyanın yanlışlıkla iki defa yüklenmesi engellenir.
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1472,6 +1591,13 @@ export default function ImportPage() {
         confirmLabel="Kuyruğu Temizle"
         cancelLabel="Vazgeç"
         variant="destructive"
+      />
+
+      {/* Slide-over Statement & Bank Guide Sheet */}
+      <StatementGuideSheet
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+        initialMode={activeMode}
       />
     </div>
   )

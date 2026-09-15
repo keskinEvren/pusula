@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import {
   Building2,
   Plus,
@@ -14,6 +15,7 @@ import {
   Edit,
   Trash2,
   Check,
+  UploadCloud,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
@@ -184,10 +186,18 @@ export default function AccountsPage() {
         title="Banka Hesapları & Kasalar"
         description="Tüm vadesiz banka hesaplarınızı, döviz/altın varlıklarınızı ve nakit kasalarınızı yönetin."
         actions={
-          <Button onClick={handleOpenAddModal} className="w-full sm:w-auto gap-2 shadow-md">
-            <Plus className="h-4 w-4" />
-            Hesap / Kasa Ekle
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Link href="/import?mode=bank_account" className="w-full sm:w-auto">
+              <Button variant="outline" className="w-full sm:w-auto gap-2">
+                <UploadCloud className="h-4 w-4 text-primary" />
+                <span>Hesap Özeti İçe Aktar</span>
+              </Button>
+            </Link>
+            <Button onClick={handleOpenAddModal} className="w-full sm:w-auto gap-2 shadow-md">
+              <Plus className="h-4 w-4" />
+              Hesap / Kasa Ekle
+            </Button>
+          </div>
         }
       />
 

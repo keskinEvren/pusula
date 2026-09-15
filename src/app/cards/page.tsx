@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   CreditCard,
   Plus,
@@ -12,6 +13,7 @@ import {
   DollarSign,
   Trash2,
   Edit2,
+  UploadCloud,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, formatLocalDateInput, cn } from '@/lib/utils'
@@ -306,7 +308,13 @@ export default function CardsPage() {
         title="Kredi Kartları & Ekstre Trendi"
         description="Dönemden döneme borç değişimi, asgari ödemeler ve faiz yükleri"
         actions={
-          <>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Link href="/import?mode=credit_card" className="w-full sm:w-auto">
+              <Button variant="outline" className="w-full sm:w-auto gap-2">
+                <UploadCloud className="h-4 w-4 text-primary" />
+                <span>Ekstre İçe Aktar</span>
+              </Button>
+            </Link>
             <Button onClick={() => setIsStmtModalOpen(true)} variant="outline" className="w-full sm:w-auto gap-2">
               <Calendar className="h-4 w-4" />
               Ekstre Kaydı Gir
@@ -315,7 +323,7 @@ export default function CardsPage() {
               <Plus className="h-4 w-4" />
               Yeni Kart Ekle
             </Button>
-          </>
+          </div>
         }
       />
 
