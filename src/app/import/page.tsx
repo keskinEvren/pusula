@@ -783,27 +783,27 @@ export default function ImportPage() {
                   Otomatik Tanınan Bankalar
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl border border-purple-500/30 bg-purple-500/5 flex items-center justify-between">
-                    <span className="font-semibold text-purple-300">Enpara.com</span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-300">
+                  <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between">
+                    <span className="font-semibold text-foreground">Enpara.com</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/60 text-muted-foreground">
                       PDF + HTML
                     </Badge>
                   </div>
-                  <div className="p-2.5 rounded-xl border border-red-500/30 bg-red-500/5 flex items-center justify-between">
-                    <span className="font-semibold text-red-300">Akbank Axess</span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-500/40 text-red-300">
+                  <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between">
+                    <span className="font-semibold text-foreground">Akbank Axess</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/60 text-muted-foreground">
                       PDF + Excel
                     </Badge>
                   </div>
-                  <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between">
-                    <span className="font-semibold text-emerald-300">Garanti Bonus</span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 text-emerald-300">
+                  <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between">
+                    <span className="font-semibold text-foreground">Garanti Bonus</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/60 text-muted-foreground">
                       PDF + Excel
                     </Badge>
                   </div>
-                  <div className="p-2.5 rounded-xl border border-rose-500/30 bg-rose-500/5 flex items-center justify-between">
-                    <span className="font-semibold text-rose-300">Ziraat Bankkart</span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-300">
+                  <div className="p-2.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between">
+                    <span className="font-semibold text-foreground">Ziraat Bankkart</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/60 text-muted-foreground">
                       PDF + Excel
                     </Badge>
                   </div>

@@ -189,7 +189,7 @@ export default function AccountsPage() {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Link href="/import?mode=bank_account" className="w-full sm:w-auto">
               <Button variant="outline" className="w-full sm:w-auto gap-2">
-                <UploadCloud className="h-4 w-4 text-primary" />
+                <UploadCloud className="h-4 w-4" />
                 <span>Hesap Özeti İçe Aktar</span>
               </Button>
             </Link>
