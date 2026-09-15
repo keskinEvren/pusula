@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Compass, Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react'
+import Image from 'next/image'
+import { Compass, Lock, Mail, ArrowRight, Eye, EyeOff, ChartNoAxesColumnIncreasing, Folder, CalendarDays, Target, ShieldCheck, Github, Sun, Moon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import styles from './login.module.css'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lightTheme, setLightTheme] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,95 +45,78 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 bg-[#090d16] overflow-hidden">
-      {/* Ambient Radial Glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute -bottom-20 -right-20 w-[400px] h-[400px] bg-blue-600/5 rounded-full blur-[100px] pointer-events-none" />
-
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#121622]/85 p-6 sm:p-8 backdrop-blur-2xl shadow-[0_24px_64px_-12px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-        {/* Brand Header */}
-        <div className="text-center space-y-2 pb-6">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25 border border-white/20">
-            <Compass className="h-6 w-6" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground pt-1">Pusula</h1>
-          <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-            Kişisel finans ve proje komuta merkezinize giriş yapın
-          </p>
-        </div>
-
-        {error && (
-          <div role="alert" className="mb-5 rounded-xl bg-destructive/15 border border-destructive/30 p-3 text-xs text-destructive font-medium">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="space-y-1.5">
-            <label htmlFor="login-email" className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
-              E-posta Adresi
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="login-email"
-                type="email"
-                required
-                placeholder="kurucu@sirket.com"
-                className="pl-10 h-10 rounded-xl bg-white/[0.03] border-white/[0.08] text-xs focus:border-primary/50 focus:bg-white/[0.05]"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label htmlFor="login-password" className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
-                Şifre
-              </label>
-            </div>
-            <div className="relative">
-              <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="login-password"
-                type={showPassword ? 'text' : 'password'}
-                required
-                placeholder="••••••••"
-                className="pl-10 pr-10 h-10 rounded-xl bg-white/[0.03] border-white/[0.08] text-xs focus:border-primary/50 focus:bg-white/[0.05]"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 transition-colors"
-                aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="pt-2">
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-11 text-xs font-semibold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2"
-            >
-              <span>{loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}</span>
-              <ArrowRight className="h-4 w-4 shrink-0" />
-            </Button>
-          </div>
-        </form>
-
-        <div className="mt-6 pt-5 border-t border-white/[0.06] text-center text-xs text-muted-foreground">
-          Hesabınız yok mu?{' '}
-          <Link href="/signup" className="font-semibold text-primary hover:underline ml-1">
-            Kayıt Olun
-          </Link>
-        </div>
+    <main className={styles.page} data-theme={lightTheme ? 'light' : 'dark'}>
+      <div className={styles.background} aria-hidden="true">
+        <Image src="/images/login-background.webp" alt="" fill priority unoptimized sizes="100vw" />
       </div>
-    </div>
+      <header className={styles.header}>
+        <div className={styles.brand}>
+          <span className={styles.brandIcon}><Compass aria-hidden="true" /></span>
+          <div><p>Pusula</p><span>Kişisel Yönetim Sistemi</span></div>
+        </div>
+        <Button type="button" variant="ghost" size="icon" className={styles.themeToggle}
+          onClick={() => setLightTheme(!lightTheme)}
+          aria-label={lightTheme ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={lightTheme}>
+          {lightTheme ? <Moon size={22} /> : <Sun size={22} />}
+        </Button>
+      </header>
+
+      <div className={styles.content}>
+        <section className={styles.hero} aria-labelledby="hero-title">
+          <h1 id="hero-title">Her şeyin yönü<br /><span>tek yerde.</span></h1>
+          <p className={styles.description}>Finansını, projelerini, hedeflerini ve rutinlerini<br className={styles.desktopBreak} /> tek merkezden yönet.</p>
+          <ul className={styles.features}>
+            {[
+              { icon: ChartNoAxesColumnIncreasing, label: 'Finans' },
+              { icon: Folder, label: 'Projeler' },
+              { icon: CalendarDays, label: 'Rutinler' },
+              { icon: Target, label: 'Hedefler' },
+            ].map(({ icon: Icon, label }) => <li key={label}><Icon aria-hidden="true" /><span>{label}</span></li>)}
+          </ul>
+        </section>
+
+        <section className={styles.panel} aria-labelledby="login-title">
+          <div className={styles.panelHeading}>
+            <h2 id="login-title">Tekrar hoş geldin</h2>
+            <p>Kaldığın yerden devam etmek için hesabına giriş yap.</p>
+          </div>
+          {error && <div role="alert" className={styles.error}>{error}</div>}
+          <form onSubmit={handleLogin} className={styles.form}>
+            <div className={styles.field}>
+              <label htmlFor="login-email">E-posta adresi</label>
+              <div className={styles.inputWrap}>
+                <Mail aria-hidden="true" className={styles.fieldIcon} />
+                <Input id="login-email" type="email" required autoComplete="email" placeholder="ornek@sirket.com"
+                  className={styles.input} value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="login-password">Şifre</label>
+              <div className={styles.inputWrap}>
+                <Lock aria-hidden="true" className={styles.fieldIcon} />
+                <Input id="login-password" type={showPassword ? 'text' : 'password'} required autoComplete="current-password"
+                  placeholder="••••••••" className={styles.input} value={password} onChange={(e) => setPassword(e.target.value)} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className={styles.visibility}
+                  aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'} aria-pressed={showPassword}>
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+              <button type="button" disabled className={styles.forgot} aria-describedby="unavailable-auth">Şifremi unuttum?</button>
+            </div>
+            <Button type="submit" disabled={loading} className={styles.submit}>
+              <span>{loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}</span><ArrowRight size={21} aria-hidden="true" />
+            </Button>
+          </form>
+          <div className={styles.divider}><span>veya</span></div>
+          <Button type="button" variant="outline" disabled className={styles.github} aria-describedby="unavailable-auth">
+            <Github size={21} aria-hidden="true" />GitHub ile Devam Et
+          </Button>
+          <p id="unavailable-auth" className={styles.availability}>GitHub girişi ve şifre sıfırlama henüz kullanılamıyor.</p>
+          <p className={styles.signup}>Hesabın yok mu? <Link href="/signup">Kayıt Ol</Link></p>
+          <p className={styles.security}><ShieldCheck size={19} aria-hidden="true" /><span>Verilerin şifreli ve güvenli şekilde saklanır.</span></p>
+        </section>
+      </div>
+      <blockquote className={styles.quote}>“Daha planlı,<br />daha güçlü bir sen.”</blockquote>
+    </main>
   )
 }
