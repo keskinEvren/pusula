@@ -28,8 +28,6 @@ import {
   Check,
   X,
   Target,
-  UploadCloud,
-  RefreshCw,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -111,7 +109,6 @@ function RoutinesPageContent() {
 
   // Timer Interval Ref
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [isSyncing, setIsSyncing] = useState(false)
 
   // 1. Veri Yükleme (Supabase + Otomatik Yerel-Bulut Senkronizasyonu)
   useEffect(() => {
@@ -550,60 +547,7 @@ function RoutinesPageContent() {
     setRoutineToDelete(null)
   }
 
-  // -------------------------------------------------------------------------
-  // Manuel Buluta Eşitleme (Sync)
-  // -------------------------------------------------------------------------
-  async function handleManualSyncToCloud() {
-    setIsSyncing(true)
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) {
-      toast.error('Buluta eşitlemek için lütfen önce giriş yapın.')
-      setIsSyncing(false)
-      return
-    }
-
-    try {
-      const payload = routines.map((r, idx) => ({
-        id: isUUID(r.id) ? r.id : crypto.randomUUID(),
-        user_id: user.id,
-        title: r.title,
-        icon: r.icon || '✨',
-        time_block: r.time_block || 'morning',
-        frequency: r.frequency || 'daily',
-        target_days: Array.isArray(r.target_days) ? r.target_days : [1, 2, 3, 4, 5, 6, 7],
-        target_duration_minutes: Number(r.target_duration_minutes) || 15,
-        minimum_effective_dose: r.minimum_effective_dose || null,
-        dream_id: isUUID(r.dream_id) ? r.dream_id : null,
-        identity_persona: r.identity_persona || null,
-        is_active: r.is_active ?? true,
-        order_index: idx,
-        updated_at: new Date().toISOString(),
-      }))
-
-      const { data: synced, error: syncErr } = await supabase
-        .from('routines')
-        .upsert(payload)
-        .select()
-
-      if (syncErr) {
-        console.error('Manual sync error:', syncErr)
-        toast.error(`Eşitleme hatası: ${syncErr.message}`)
-      } else if (synced && synced.length > 0) {
-        setRoutines(synced as Routine[])
-        localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(synced))
-        toast.success(`${synced.length} rutin başarıyla buluta eşitlendi!`)
-      } else {
-        toast.info('Eşitlenecek yeni rutin bulunamadı.')
-      }
-    } catch (err: any) {
-      console.error('Manual sync catch error:', err)
-      toast.error(`Eşitleme bağlantı hatası: ${err?.message || 'Bilinmeyen hata'}`)
-    } finally {
-      setIsSyncing(false)
-    }
-  }
 
   // -------------------------------------------------------------------------
   // Timer Başlatma
@@ -679,18 +623,6 @@ function RoutinesPageContent() {
               )}
               <span>{isLowBattery ? 'Düşük Enerji Modu Aktif' : 'Düşük Enerji Modu'}</span>
             </button>
-
-            {/* Buluta Eşitle Butonu */}
-            <Button
-              variant="outline"
-              onClick={handleManualSyncToCloud}
-              disabled={isSyncing}
-              className="gap-2 min-h-[36px] border-primary/40 text-primary hover:bg-primary/10"
-              title="Mevcut rutinlerinizi (örneğin yerel eklediğiniz rutinleri) doğrudan Supabase bulut veritabanına eşitler."
-            >
-              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Eşitleniyor...' : 'Buluta Eşitle'}</span>
-            </Button>
 
             {/* Yeni Rutin Ekle Butonu */}
             <Button onClick={handleOpenCreateModal} className="gap-2 min-h-[36px]">
