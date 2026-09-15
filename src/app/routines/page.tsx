@@ -28,6 +28,8 @@ import {
   Check,
   X,
   Target,
+  UploadCloud,
+  RefreshCw,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -109,146 +111,130 @@ function RoutinesPageContent() {
 
   // Timer Interval Ref
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
 
-  // 1. Veri Yükleme (Supabase + LocalStorage Fallback + İlk Seed)
+  // 1. Veri Yükleme (Supabase + Otomatik Yerel-Bulut Senkronizasyonu)
   useEffect(() => {
-    async function loadData() {
-      setIsLoading(true)
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      try {
-        // Rutinleri çek
-        const { data: dbRoutines, error: rError } = await supabase
-          .from('routines')
-          .select('*')
-          .order('order_index', { ascending: true })
-
-        if (rError) {
-          // DB bağlantı hatası — localStorage fallback
-          console.warn('Routines table remote query note:', rError.message)
-          const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
-          if (localRoutinesStr) {
-            try {
-              const parsed = JSON.parse(localRoutinesStr) as Routine[]
-              const cleaned = parsed.filter((r) => !r.id.startsWith('sample-'))
-              setRoutines(cleaned.length > 0 ? cleaned : INITIAL_SAMPLE_ROUTINES)
-            } catch {
-              setRoutines(INITIAL_SAMPLE_ROUTINES)
-            }
-          } else {
-            setRoutines(INITIAL_SAMPLE_ROUTINES)
-            localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
-          }
-        } else if (dbRoutines && dbRoutines.length > 0) {
-          // DB'de veri var — doğrudan kullan
-          const validData = dbRoutines.filter((r: any) => !r.id?.startsWith?.('sample-'))
-          setRoutines(validData as Routine[])
-          localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(validData))
-        } else {
-          // DB boş döndü — seed veya bilinçli silme kontrolü
-          const initKey = user ? `pusula_routines_seeded_${user.id}` : 'pusula_routines_seeded_local'
-          const hasSeeded = localStorage.getItem(initKey)
-
-          if (!hasSeeded && user) {
-            // İlk kez giriş yapan kullanıcı: örnek rutinleri DB'ye seed et
-            const seedPayload = INITIAL_SAMPLE_ROUTINES.map((item, idx) => ({
-              user_id: user.id,
-              title: item.title,
-              icon: item.icon,
-              time_block: item.time_block,
-              frequency: item.frequency,
-              target_days: item.target_days,
-              target_duration_minutes: item.target_duration_minutes,
-              minimum_effective_dose: item.minimum_effective_dose,
-              dream_id: null,
-              identity_persona: item.identity_persona,
-              is_active: true,
-              order_index: idx,
-            }))
-
-            try {
-              const { data: seededData, error: seedErr } = await supabase
-                .from('routines')
-                .insert(seedPayload)
-                .select()
-
-              if (!seedErr && seededData && seededData.length > 0) {
-                localStorage.setItem(initKey, 'true')
-                setRoutines(seededData as Routine[])
-                localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(seededData))
-              } else {
-                console.warn('Auto-seed routines note:', seedErr?.message)
-                setRoutines(INITIAL_SAMPLE_ROUTINES)
-                localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
-              }
-            } catch (seedCatch) {
-              console.warn('Auto-seed routines catch:', seedCatch)
-              setRoutines(INITIAL_SAMPLE_ROUTINES)
-              localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
-            }
-          } else if (hasSeeded) {
-            // Kullanıcı daha önce seed almış ve tüm rutinleri silmiş — boş göster
-            setRoutines([])
-            localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify([]))
-          } else {
-            // Giriş yapmamış kullanıcı — localStorage fallback
-            localStorage.setItem(initKey, 'true')
-            const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
-            if (localRoutinesStr) {
-              try {
-                setRoutines(JSON.parse(localRoutinesStr))
-              } catch {
-                setRoutines(INITIAL_SAMPLE_ROUTINES)
-              }
-            } else {
-              setRoutines(INITIAL_SAMPLE_ROUTINES)
-              localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
-            }
-          }
-        }
-
-        // Logları çek
-        const { data: dbLogs } = await supabase.from('routine_logs').select('*')
-        if (dbLogs && dbLogs.length > 0) {
-          setRoutineLogs(dbLogs as RoutineLog[])
-          localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(dbLogs))
-        } else {
-          const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
-          if (localLogsStr) {
-            try {
-              setRoutineLogs(JSON.parse(localLogsStr))
-            } catch {
-              setRoutineLogs([])
-            }
-          }
-        }
-
-        // Hayaller tablosundan kimlik ve hedefleri al (bağlantı için)
-        const { data: dbDreams } = await supabase.from('dreams').select('*')
-        if (dbDreams) {
-          setDreams(dbDreams as Dream[])
-        } else {
-          const localDreams = localStorage.getItem('pusula_local_dreams')
-          if (localDreams) {
-            try {
-              setDreams(JSON.parse(localDreams))
-            } catch {}
-          }
-        }
-      } catch (err) {
-        console.error('Routines load error:', err)
-        const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
-        setRoutines(localRoutinesStr ? JSON.parse(localRoutinesStr) : INITIAL_SAMPLE_ROUTINES)
-        const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
-        if (localLogsStr) setRoutineLogs(JSON.parse(localLogsStr))
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     loadData()
   }, [])
+
+  async function loadData() {
+    setIsLoading(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    try {
+      // Rutinleri çek
+      const { data: dbRoutines, error: rError } = await supabase
+        .from('routines')
+        .select('*')
+        .order('order_index', { ascending: true })
+
+      if (!rError && dbRoutines && dbRoutines.length > 0) {
+        // DB'de doğrulanmış rutinler var — doğrudan kullan
+        const validData = dbRoutines.filter((r: any) => !r.id?.startsWith?.('sample-'))
+        setRoutines(validData as Routine[])
+        localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(validData))
+      } else if (!rError && user) {
+        // DB henüz boş ama kullanıcı giriş yapmış!
+        // LocalStorage'da kullanıcının önceden eklediği/düzenlediği rutin var mı ("Diyet" gibi)?
+        const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
+        let routinesToSync: Routine[] = INITIAL_SAMPLE_ROUTINES
+        if (localRoutinesStr) {
+          try {
+            const parsed = JSON.parse(localRoutinesStr) as Routine[]
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              routinesToSync = parsed
+            }
+          } catch {}
+        }
+
+        // Yerel rutinleri gerçek user.id ile Supabase'e aktar
+        const seedPayload = routinesToSync.map((item, idx) => ({
+          user_id: user.id,
+          title: item.title,
+          icon: item.icon || '✨',
+          time_block: item.time_block || 'morning',
+          frequency: item.frequency || 'daily',
+          target_days: Array.isArray(item.target_days) ? item.target_days : [1, 2, 3, 4, 5, 6, 7],
+          target_duration_minutes: Number(item.target_duration_minutes) || 15,
+          minimum_effective_dose: item.minimum_effective_dose || null,
+          dream_id: isUUID(item.dream_id) ? item.dream_id : null,
+          identity_persona: item.identity_persona || null,
+          is_active: item.is_active ?? true,
+          order_index: idx,
+        }))
+
+        try {
+          const { data: seededData, error: seedErr } = await supabase
+            .from('routines')
+            .insert(seedPayload)
+            .select()
+
+          if (!seedErr && seededData && seededData.length > 0) {
+            setRoutines(seededData as Routine[])
+            localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(seededData))
+          } else {
+            console.warn('Auto-seed / sync routines note:', seedErr?.message)
+            setRoutines(routinesToSync)
+          }
+        } catch (seedCatch) {
+          console.warn('Auto-seed / sync routines catch:', seedCatch)
+          setRoutines(routinesToSync)
+        }
+      } else {
+        // Giriş yapılmamış veya DB hatası — localStorage fallback
+        const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
+        if (localRoutinesStr) {
+          try {
+            setRoutines(JSON.parse(localRoutinesStr))
+          } catch {
+            setRoutines(INITIAL_SAMPLE_ROUTINES)
+          }
+        } else {
+          setRoutines(INITIAL_SAMPLE_ROUTINES)
+          localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(INITIAL_SAMPLE_ROUTINES))
+        }
+      }
+
+      // Logları çek
+      const { data: dbLogs } = await supabase.from('routine_logs').select('*')
+      if (dbLogs && dbLogs.length > 0) {
+        setRoutineLogs(dbLogs as RoutineLog[])
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(dbLogs))
+      } else {
+        const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
+        if (localLogsStr) {
+          try {
+            setRoutineLogs(JSON.parse(localLogsStr))
+          } catch {
+            setRoutineLogs([])
+          }
+        }
+      }
+
+      // Hayaller tablosundan kimlik ve hedefleri al (bağlantı için)
+      const { data: dbDreams } = await supabase.from('dreams').select('*')
+      if (dbDreams) {
+        setDreams(dbDreams as Dream[])
+      } else {
+        const localDreams = localStorage.getItem('pusula_local_dreams')
+        if (localDreams) {
+          try {
+            setDreams(JSON.parse(localDreams))
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error('Routines load error:', err)
+      const localRoutinesStr = localStorage.getItem(STORAGE_KEY_ROUTINES)
+      setRoutines(localRoutinesStr ? JSON.parse(localRoutinesStr) : INITIAL_SAMPLE_ROUTINES)
+      const localLogsStr = localStorage.getItem(STORAGE_KEY_LOGS)
+      if (localLogsStr) setRoutineLogs(JSON.parse(localLogsStr))
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // URL'de ?new=true varsa otomatik modal aç
   useEffect(() => {
@@ -436,116 +422,187 @@ function RoutinesPageContent() {
 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    const userId = user?.id || 'local'
 
-    if (editingRoutine) {
-      // Düzenlenen rutinin sample ID'si varsa (DB'de yok), yeni UUID ile insert et
-      const isSampleId = editingRoutine.id.startsWith('sample-') || !isUUID(editingRoutine.id)
-      const newId = isSampleId ? crypto.randomUUID() : editingRoutine.id
-
-      const updated: Routine = {
-        ...editingRoutine,
-        id: newId,
-        user_id: userId,
-        title: formData.title,
-        icon: formData.icon,
-        time_block: formData.time_block,
-        frequency: formData.frequency as any,
-        target_duration_minutes: Number(formData.target_duration_minutes) || 15,
-        minimum_effective_dose: formData.minimum_effective_dose || null,
-        dream_id: formData.dream_id || null,
-        identity_persona: formData.identity_persona || null,
-        updated_at: new Date().toISOString(),
-      }
-
-      // Yerel state'de eski ID'yi yenisiyle değiştir
-      const updatedList = routines.map((r) => (r.id === editingRoutine.id ? updated : r))
-      saveRoutinesToLocal(updatedList)
-
-      if (user) {
-        try {
-          if (isSampleId) {
-            // Sample ID → yeni UUID ile insert
-            const { error } = await supabase.from('routines').insert([updated])
-            if (error) {
-              console.error('Insert routine (from sample) error:', error)
-              toast.error('Rutin sunucuya kaydedilemedi. Yerel olarak güncellendi.')
-            }
-          } else {
-            // Gerçek UUID → update
-            const { error } = await supabase.from('routines').update(updated).eq('id', editingRoutine.id)
-            if (error) {
-              console.error('Update routine error:', error)
-              toast.error('Rutin sunucuya kaydedilemedi. Yerel olarak güncellendi.')
-            }
-          }
-        } catch (err) {
-          console.error('Save routine error:', err)
-          toast.error('Sunucu bağlantı hatası. Değişiklik yerel olarak kaydedildi.')
-        }
-      }
-    } else {
-      const newRoutine: Routine = {
-        id: crypto.randomUUID(),
-        user_id: userId,
-        title: formData.title,
-        icon: formData.icon,
+    if (!user) {
+      toast.error('Buluta kaydedilemedi: Oturum açık değil! Lütfen önce giriş yapın.')
+      // Çevrimdışı/oturumsuz yerel fallback
+      const localId = editingRoutine ? editingRoutine.id : `local-${Date.now()}`
+      const localItem: Routine = {
+        id: localId,
+        user_id: 'local',
+        title: formData.title.trim(),
+        icon: formData.icon || '✨',
         time_block: formData.time_block,
         frequency: formData.frequency as any,
         target_days: [1, 2, 3, 4, 5, 6, 7],
         target_duration_minutes: Number(formData.target_duration_minutes) || 15,
         minimum_effective_dose: formData.minimum_effective_dose || null,
-        dream_id: formData.dream_id || null,
+        dream_id: null,
         identity_persona: formData.identity_persona || null,
         is_active: true,
         order_index: routines.length,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
-
-      const updatedList = [...routines, newRoutine]
+      const updatedList = editingRoutine
+        ? routines.map((r) => (r.id === editingRoutine.id ? localItem : r))
+        : [...routines, localItem]
       saveRoutinesToLocal(updatedList)
-
-      try {
-        if (user) {
-          const { error: insErr } = await supabase.from('routines').insert([newRoutine])
-          if (insErr) {
-            console.error('Insert routine error:', insErr)
-            toast.error('Rutin sunucuya kaydedilemedi. Yerel olarak eklendi.')
-          }
-        }
-      } catch (err) {
-        console.error('Insert routine error:', err)
-        toast.error('Sunucu bağlantı hatası. Rutin yerel olarak kaydedildi.')
-      }
+      setIsFormOpen(false)
+      setEditingRoutine(null)
+      return
     }
 
-    toast.success(editingRoutine ? 'Rutin başarıyla güncellendi!' : 'Yeni rutin başarıyla eklendi!')
-    setIsFormOpen(false)
-    setEditingRoutine(null)
+    // Kullanıcı oturumu açık — Supabase için temiz payload
+    const routinePayload = {
+      user_id: user.id,
+      title: formData.title.trim(),
+      icon: formData.icon || '✨',
+      time_block: formData.time_block,
+      frequency: formData.frequency as any,
+      target_days: editingRoutine?.target_days || [1, 2, 3, 4, 5, 6, 7],
+      target_duration_minutes: Number(formData.target_duration_minutes) || 15,
+      minimum_effective_dose: formData.minimum_effective_dose || null,
+      dream_id: isUUID(formData.dream_id) ? formData.dream_id : null,
+      identity_persona: formData.identity_persona || null,
+      is_active: editingRoutine?.is_active ?? true,
+      updated_at: new Date().toISOString(),
+    }
+
+    try {
+      if (editingRoutine && isUUID(editingRoutine.id)) {
+        // Mevcut UUID'li rutini güncelle
+        const { data: updData, error: updErr } = await supabase
+          .from('routines')
+          .update(routinePayload)
+          .eq('id', editingRoutine.id)
+          .select()
+
+        if (!updErr && updData && updData.length > 0) {
+          const updatedRoutine = updData[0] as Routine
+          const updatedList = routines.map((r) => (r.id === editingRoutine.id ? updatedRoutine : r))
+          saveRoutinesToLocal(updatedList)
+          toast.success('Rutin başarıyla güncellendi ve buluta kaydedildi!')
+          setIsFormOpen(false)
+          setEditingRoutine(null)
+          return
+        }
+        // Eğer update 0 satır güncellediyse (veritabanında henüz o id yoksa), insert ile kaydet!
+      }
+
+      // Yeni rutin ekle veya sample-id'den kalıcı UUID ile veritabanına kaydet
+      const { data: insData, error: insErr } = await supabase
+        .from('routines')
+        .insert([{
+          ...routinePayload,
+          order_index: editingRoutine?.order_index ?? routines.length,
+          created_at: new Date().toISOString(),
+        }])
+        .select()
+
+      if (insErr) {
+        console.error('Supabase save routine error:', insErr)
+        toast.error(`Buluta kaydedilemedi: ${insErr.message}`)
+        return
+      }
+
+      if (insData && insData.length > 0) {
+        const savedRoutine = insData[0] as Routine
+        const updatedList = editingRoutine
+          ? routines.map((r) => (r.id === editingRoutine.id ? savedRoutine : r))
+          : [...routines, savedRoutine]
+        saveRoutinesToLocal(updatedList)
+        toast.success(editingRoutine ? 'Rutin başarıyla güncellendi ve buluta kaydedildi!' : 'Yeni rutin başarıyla eklendi ve buluta kaydedildi!')
+        setIsFormOpen(false)
+        setEditingRoutine(null)
+      }
+    } catch (err: any) {
+      console.error('Save routine catch error:', err)
+      toast.error(`Bağlantı hatası: ${err?.message || 'Bilinmeyen hata'}`)
+    }
   }
 
   async function confirmDeleteRoutine() {
     if (!routineToDelete) return
     const routineId = routineToDelete.id
-    const updated = routines.filter((r) => r.id !== routineId)
-    saveRoutinesToLocal(updated)
 
-    if (isUUID(routineId)) {
-      const supabase = createClient()
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (isUUID(routineId) && user) {
       try {
         const { error } = await supabase.from('routines').delete().eq('id', routineId)
         if (error) {
           console.error('Delete routine error:', error)
-          toast.error('Rutin sunucudan silinemedi. Yerel olarak kaldırıldı.')
+          toast.error(`Sunucudan silinemedi: ${error.message}`)
+          return
         }
       } catch (err) {
         console.error('Delete routine error:', err)
         toast.error('Sunucu bağlantı hatası. Rutin yerel olarak kaldırıldı.')
+        return
       }
     }
+
+    const updated = routines.filter((r) => r.id !== routineId)
+    saveRoutinesToLocal(updated)
     toast.success('Rutin silindi.')
     setRoutineToDelete(null)
+  }
+
+  // -------------------------------------------------------------------------
+  // Manuel Buluta Eşitleme (Sync)
+  // -------------------------------------------------------------------------
+  async function handleManualSyncToCloud() {
+    setIsSyncing(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      toast.error('Buluta eşitlemek için lütfen önce giriş yapın.')
+      setIsSyncing(false)
+      return
+    }
+
+    try {
+      const payload = routines.map((r, idx) => ({
+        id: isUUID(r.id) ? r.id : crypto.randomUUID(),
+        user_id: user.id,
+        title: r.title,
+        icon: r.icon || '✨',
+        time_block: r.time_block || 'morning',
+        frequency: r.frequency || 'daily',
+        target_days: Array.isArray(r.target_days) ? r.target_days : [1, 2, 3, 4, 5, 6, 7],
+        target_duration_minutes: Number(r.target_duration_minutes) || 15,
+        minimum_effective_dose: r.minimum_effective_dose || null,
+        dream_id: isUUID(r.dream_id) ? r.dream_id : null,
+        identity_persona: r.identity_persona || null,
+        is_active: r.is_active ?? true,
+        order_index: idx,
+        updated_at: new Date().toISOString(),
+      }))
+
+      const { data: synced, error: syncErr } = await supabase
+        .from('routines')
+        .upsert(payload)
+        .select()
+
+      if (syncErr) {
+        console.error('Manual sync error:', syncErr)
+        toast.error(`Eşitleme hatası: ${syncErr.message}`)
+      } else if (synced && synced.length > 0) {
+        setRoutines(synced as Routine[])
+        localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(synced))
+        toast.success(`${synced.length} rutin başarıyla buluta eşitlendi!`)
+      } else {
+        toast.info('Eşitlenecek yeni rutin bulunamadı.')
+      }
+    } catch (err: any) {
+      console.error('Manual sync catch error:', err)
+      toast.error(`Eşitleme bağlantı hatası: ${err?.message || 'Bilinmeyen hata'}`)
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -622,6 +679,18 @@ function RoutinesPageContent() {
               )}
               <span>{isLowBattery ? 'Düşük Enerji Modu Aktif' : 'Düşük Enerji Modu'}</span>
             </button>
+
+            {/* Buluta Eşitle Butonu */}
+            <Button
+              variant="outline"
+              onClick={handleManualSyncToCloud}
+              disabled={isSyncing}
+              className="gap-2 min-h-[36px] border-primary/40 text-primary hover:bg-primary/10"
+              title="Mevcut rutinlerinizi (örneğin yerel eklediğiniz rutinleri) doğrudan Supabase bulut veritabanına eşitler."
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Eşitleniyor...' : 'Buluta Eşitle'}</span>
+            </Button>
 
             {/* Yeni Rutin Ekle Butonu */}
             <Button onClick={handleOpenCreateModal} className="gap-2 min-h-[36px]">
