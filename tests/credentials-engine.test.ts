@@ -214,14 +214,21 @@ describe('Credentials Engine Testleri', () => {
 
   describe('Zaman Formatlama', () => {
     it('formatRemainingTime kalan zamanı formatlamalıdır', () => {
-      // 2 saat, 30 dakika sonra
-      const targetTime = new Date(Date.now() + 2 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString()
-      const result = formatRemainingTime(targetTime)
-      
-      expect(result.isExpired).toBe(false)
-      expect(result.hours).toBe(2)
-      expect(result.minutes).toBe(30)
-      expect(result.formatted).toMatch(/2 sa 30 dk/)
+      vi.useFakeTimers()
+      try {
+        const now = 1700000000000
+        vi.setSystemTime(now)
+        // 2 saat, 30 dakika sonra
+        const targetTime = new Date(now + 2 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString()
+        const result = formatRemainingTime(targetTime)
+        
+        expect(result.isExpired).toBe(false)
+        expect(result.hours).toBe(2)
+        expect(result.minutes).toBe(30)
+        expect(result.formatted).toMatch(/2 sa 30 dk/)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('formatRemainingTime geçmiş tarih (past date) için sıfır (zero) ve isExpired dönmelidir', () => {

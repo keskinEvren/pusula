@@ -17,6 +17,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [needsConfirmation, setNeedsConfirmation] = useState(false)
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,7 +26,7 @@ export default function SignupPage() {
 
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -39,10 +40,11 @@ export default function SignupPage() {
         setError(error.message || 'Kayıt oluşturulamadı.')
       } else {
         setSuccess(true)
-        setTimeout(() => {
+        setNeedsConfirmation(!data.session)
+        if (data.session) {
           router.push('/')
           router.refresh()
-        }, 1500)
+        }
       }
     } catch {
       setError('Bir hata oluştu. Lütfen tekrar deneyin.')
@@ -77,7 +79,9 @@ export default function SignupPage() {
 
         {success && (
           <div role="status" aria-live="polite" className="mb-5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 p-3 text-xs text-emerald-400 font-medium">
-            Hesabınız başarıyla oluşturuldu. Yönlendiriliyorsunuz...
+            {needsConfirmation
+              ? 'Kayıt isteğiniz alındı. Hesabınızı doğrulamak için e-postanızı kontrol edin; ardından giriş yapabilirsiniz.'
+              : 'Hesabınız başarıyla oluşturuldu. Yönlendiriliyorsunuz...'}
           </div>
         )}
 
