@@ -50,7 +50,7 @@ describe('Financial Bridge Testleri', () => {
   let bridge: FinancialBridge
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     bridge = financialBridge
   })
 
@@ -74,16 +74,14 @@ describe('Financial Bridge Testleri', () => {
       expect(res.transactionId).toBe('tx-123')
     })
 
-    it('RPC hata verirse client fallback çalışmalıdır', async () => {
+    it('RPC hata verirse ayrı tablo mutasyonu yapmadan hata dönmelidir', async () => {
       mockRpc.mockRejectedValueOnce(new Error('RPC failed'))
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-client-1' }, error: null }) // insert tx
       mockSingle.mockResolvedValueOnce({ data: { balance: 500 }, error: null }) // select account
       
       const res = await bridge.recordExpense({ userId: 'u1', amount: 100, description: 'Test', date: '2026-01-01', accountId: 'a1' })
-      expect(res.success).toBe(true)
-      expect(res.transactionId).toBe('tx-client-1')
-      expect(mockFrom).toHaveBeenCalledWith('transactions')
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 400 }) // 500 - 100
+      expect(res.success).toBe(false)
+      expect(mockFrom).not.toHaveBeenCalled()
     })
   })
 
@@ -108,14 +106,15 @@ describe('Financial Bridge Testleri', () => {
     })
 
     it('Hesap bakiyesini ve kart borcunu düşürmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-card-1' }, error: null })
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-card-1' }, error: null }) // tx insert
       mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null }) // account select
       mockSingle.mockResolvedValueOnce({ data: { current_debt: 2000 }, error: null }) // card select
 
       const res = await bridge.recordCardPayment({ userId: 'u1', amount: 500, sourceAccountId: 'a1', cardId: 'c1', date: '2026-01-01' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 500 }) // account update
-      expect(mockUpdate).toHaveBeenCalledWith({ current_debt: 1500 }) // card update
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({ p_type: 'Kart Ödemesi', p_amount: 500 }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
   })
 
@@ -126,14 +125,14 @@ describe('Financial Bridge Testleri', () => {
     })
 
     it('Borç miktarını düşürmeli ve bakiyeyi azaltmalıdır', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-debt-1' }, error: null })
       mockSingle.mockResolvedValueOnce({ data: { remaining: 500, past_payments: 0, status: 'Açık' }, error: null }) // debt select
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-debt-1' }, error: null }) // tx insert
       mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null }) // account select
 
       const res = await bridge.recordDebtPayment({ userId: 'u1', amount: 200, sourceAccountId: 'a1', debtId: 'd1', date: '2026-01-01' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ remaining: 300, past_payments: 200, status: 'Açık' }))
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 800 })
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({ p_type: 'Borç Ödemesi', p_amount: 200 }))
     })
   })
 
@@ -144,14 +143,14 @@ describe('Financial Bridge Testleri', () => {
     })
 
     it('Alacak miktarını düşürmeli ve hedef bakiyeyi artırmalıdır', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-rec-1' }, error: null })
       mockSingle.mockResolvedValueOnce({ data: { remaining: 1000, past_payments: 0, status: 'Açık' }, error: null }) // debt select
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-rec-1' }, error: null }) // tx insert
       mockSingle.mockResolvedValueOnce({ data: { balance: 500 }, error: null }) // account select
 
       const res = await bridge.recordReceivableCollection({ userId: 'u1', amount: 1000, targetAccountId: 'a1', receivableId: 'r1', date: '2026-01-01' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ remaining: 0, past_payments: 1000, status: 'Kapatıldı' }))
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 1500 })
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({ p_type: 'Tahsilat', p_amount: 1000 }))
     })
   })
 
@@ -167,21 +166,21 @@ describe('Financial Bridge Testleri', () => {
     })
 
     it('Bakiyeleri doğru şekilde güncellemelidir', async () => {
-      mockRpc.mockRejectedValueOnce(new Error('RPC fail')) // Fallback to client
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-trans-1' }, error: null })
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-trans-1' }, error: null }) // tx insert
       mockSingle.mockResolvedValueOnce({ data: { balance: 1000 }, error: null }) // source select
       mockSingle.mockResolvedValueOnce({ data: { balance: 500 }, error: null }) // target select
 
       const res = await bridge.recordTransfer({ userId: 'u1', amount: 200, sourceAccountId: 'a1', targetAccountId: 'a2', date: '2026-01-01' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 800 }) // source
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 700 }) // target
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_transfer_atomic', expect.objectContaining({ p_amount: 200 }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
   })
 
   describe('İşlem Silme (deleteTransaction)', () => {
     it('İşlem tipine göre geri alma (reversal) yapmalıdır', async () => {
-      mockRpc.mockRejectedValueOnce(new Error('RPC fail'))
+      mockRpc.mockResolvedValueOnce({ data: { success: true }, error: null })
       // read tx
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', type: 'Harcama', account_id: 'a1', amount: 300 }, error: null })
       // read account
@@ -189,8 +188,8 @@ describe('Financial Bridge Testleri', () => {
       
       const res = await bridge.deleteTransaction('tx-1')
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith({ balance: 1300 }) // Refund expense
-      expect(mockDelete).toHaveBeenCalled()
+      expect(mockRpc).toHaveBeenCalledWith('fn_delete_transaction_atomic', expect.objectContaining({ p_tx_id: 'tx-1' }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
   })
 
@@ -218,7 +217,7 @@ describe('Financial Bridge Testleri', () => {
 
   describe('Borç/Yatırım Bağlama ve Çözme', () => {
     it('linkTransactionToDebt aynı borca bağlanıyorsa idempotent çalışmalıdır', async () => {
-      mockRpc.mockRejectedValueOnce(new Error('RPC fail'))
+      mockRpc.mockResolvedValueOnce({ data: { success: true, already_linked: true }, error: null })
       mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', description: '[DEBT:d-1]', amount: 100 }, error: null }) // read tx
       
       const res = await bridge.linkTransactionToDebt({ userId: 'u1', transactionId: 'tx-1', debtId: 'd-1' })

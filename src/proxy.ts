@@ -37,8 +37,8 @@ export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl
 
     // Protected routes check
-    const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/auth')
-    const isPublicFile = pathname.includes('.') || pathname.startsWith('/_next')
+    const isAuthRoute = pathname === '/login' || pathname === '/signup' || pathname === '/auth/callback'
+    const isPublicFile = pathname === '/manifest.json' || pathname === '/icon.svg' || pathname.startsWith('/_next/')
 
     if (!user && !isAuthRoute && !isPublicFile) {
       const url = request.nextUrl.clone()
@@ -61,6 +61,13 @@ export async function proxy(request: NextRequest) {
     }
   } catch (err) {
     console.error('Proxy auth error:', err)
+    const pathname = request.nextUrl.pathname
+    if (pathname !== '/login' && pathname !== '/signup' && pathname !== '/auth/callback' && pathname !== '/manifest.json') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
