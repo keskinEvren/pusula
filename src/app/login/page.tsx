@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import styles from './login.module.css'
+import { LoginBackgroundEffects } from './LoginBackgroundEffects'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -48,6 +49,7 @@ export default function LoginPage() {
     <main className={styles.page} data-theme={lightTheme ? 'light' : 'dark'}>
       <div className={styles.background} aria-hidden="true">
         <Image src="/images/login-background.webp" alt="" fill priority unoptimized sizes="100vw" />
+        <LoginBackgroundEffects />
       </div>
       <header className={styles.header}>
         <div className={styles.brand}>
