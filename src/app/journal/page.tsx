@@ -249,110 +249,56 @@ function JournalPageContent() {
   }
 
   async function handleSaveEntry() {
-    if (!editorTitle.trim() && !editorContent.trim()) return
-
+    if (saveStatus === 'saving' || (!editorTitle.trim() && !editorContent.trim())) return
     setSaveStatus('saving')
-    const finalTitle = editorTitle.trim() || 'Başlıksız Seyir Notu'
-    const wordCount = countWords(editorContent)
-
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    const userId = user?.id || 'local'
-
-    if (isEditingNew || !selectedEntryId) {
-      // Yeni Giriş
-      const newEntry: JournalEntry = {
-        id: crypto.randomUUID(),
-        user_id: userId,
-        entry_date: editorDate,
-        title: finalTitle,
-        content: editorContent,
-        mood: editorMood,
-        template_type: editorTemplate,
-        tags: editorTags,
-        weather_note: editorWeather || null,
-        pinned: editorPinned,
-        word_count: wordCount,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      const updated = [newEntry, ...entries]
-      saveEntriesToLocal(updated)
-      setSelectedEntryId(newEntry.id)
-      setIsEditingNew(false)
-
-      try {
-        if (user) {
-          const { error: insErr } = await supabase.from('journal_entries').insert([newEntry])
-          if (insErr) {
-            console.error('Insert journal error:', insErr)
-            toast.error('Seyir notu buluta kaydedilemedi: ' + insErr.message)
-          }
-        }
-      } catch (err) {
-        console.error('Insert journal error:', err)
-      }
-    } else {
-      // Güncelleme
-      const current = entries.find((e) => e.id === selectedEntryId)
-      if (!current) return
-
-      const updatedEntry: JournalEntry = {
+    const isNew = isEditingNew || !selectedEntryId
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış.')
+      const current = entries.find((entry) => entry.id === selectedEntryId)
+      const entry: JournalEntry = {
         ...current,
-        entry_date: editorDate,
-        title: finalTitle,
-        content: editorContent,
-        mood: editorMood,
-        template_type: editorTemplate,
-        tags: editorTags,
-        weather_note: editorWeather || null,
-        pinned: editorPinned,
-        word_count: wordCount,
-        updated_at: new Date().toISOString(),
+        id: isNew ? crypto.randomUUID() : selectedEntryId!, user_id: user.id,
+        entry_date: editorDate, title: editorTitle.trim() || 'Başlıksız Seyir Notu', content: editorContent,
+        mood: editorMood, template_type: editorTemplate, tags: editorTags,
+        weather_note: editorWeather || null, pinned: editorPinned, word_count: countWords(editorContent),
+        created_at: current?.created_at || new Date().toISOString(), updated_at: new Date().toISOString(),
       }
-
-      const updated = entries.map((e) => (e.id === selectedEntryId ? updatedEntry : e))
-      saveEntriesToLocal(updated)
-
-      try {
-        await supabase
-          .from('journal_entries')
-          .update(updatedEntry)
-          .eq('id', selectedEntryId)
-      } catch (err) {
-        console.error('Update journal error:', err)
-      }
+      // Commit remotely first; failure leaves the editor and saved list unchanged.
+      const { error } = await supabase.from('journal_entries').upsert(entry)
+      if (error) throw error
+      saveEntriesToLocal(isNew ? [entry, ...entries] : entries.map((item) => item.id === entry.id ? entry : item))
+      setSelectedEntryId(entry.id)
+      setIsEditingNew(false)
+      setSaveStatus('saved')
+      toast.success(isNew ? 'Yeni kayıt eklendi.' : 'Kayıt güncellendi.')
+      setTimeout(() => setSaveStatus('idle'), 2000)
+    } catch (error: any) {
+      setSaveStatus('idle')
+      toast.error('Kayıt kaydedilemedi: ' + (error.message || 'Bağlantı hatası'))
     }
-
-    setSaveStatus('saved')
-    toast.success(isEditingNew || !selectedEntryId ? 'Yeni kayıt eklendi.' : 'Kayıt güncellendi.')
-    setTimeout(() => setSaveStatus('idle'), 2000)
   }
 
   async function confirmDeleteEntry() {
     if (!entryToDelete) return
     const id = entryToDelete
-    const updated = entries.filter((e) => e.id !== id)
-    saveEntriesToLocal(updated)
-
-    if (selectedEntryId === id) {
-      if (updated.length > 0) {
-        setSelectedEntryId(updated[0].id)
-        populateEditor(updated[0])
-      } else {
-        handleCreateNewEntry()
+    try {
+      if (isUUID(id)) {
+        const { error } = await createClient().from('journal_entries').delete().eq('id', id)
+        if (error) throw error
       }
+      const updated = entries.filter((entry) => entry.id !== id)
+      saveEntriesToLocal(updated)
+      if (selectedEntryId === id) {
+        if (updated.length > 0) { setSelectedEntryId(updated[0].id); populateEditor(updated[0]) }
+        else handleCreateNewEntry()
+      }
+      toast.success('Kayıt silindi.')
+      setEntryToDelete(null)
+    } catch (error: any) {
+      toast.error('Kayıt silinemedi: ' + (error.message || 'Bağlantı hatası'))
     }
-
-    if (isUUID(id)) {
-      const supabase = createClient()
-      try {
-        await supabase.from('journal_entries').delete().eq('id', id)
-      } catch {}
-    }
-    toast.success('Kayıt silindi.')
-    setEntryToDelete(null)
   }
 
   function handleAddTag() {

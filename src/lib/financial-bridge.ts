@@ -69,574 +69,78 @@ export interface RecordTransferParams {
 // --- Bridge Class ---
 
 export class FinancialBridge {
-  /**
-   * 1. Harcama Kaydet
-   * - transactions tablosuna yaz
-   * - accountId varsa -> accounts.balance düş
-   * - cardId varsa -> credit_cards.current_debt artırma (ekstre zaten içerir, bu durumda artirma) 
-   * NOT: Kredi kartı harcaması ekstre üzerinden geldiğinde bakiye zaten güncellidir.
-   * Manuel kart harcaması eklenirse current_debt artabilir.
-   */
+  // A failed/ambiguous RPC must never be retried as separate table mutations.
+  private async atomic(name: string, params: Record<string, unknown>): Promise<FinancialEventResult> {
+    try {
+      const { data, error } = await createClient().rpc(name, params)
+      if (error) return { success: false, error: error.message || 'Finans işlemi doğrulanamadı.' }
+      if (!data?.success) return { success: false, error: data?.error || 'Finans işlemi doğrulanamadı.' }
+      return { success: true, transactionId: data.transaction_id }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Finans servisine ulaşılamadı.' }
+    }
+  }
+
+  private validAmount(amount: number): boolean { return Number.isFinite(amount) && amount > 0 }
+
   async recordExpense(params: RecordExpenseParams): Promise<FinancialEventResult> {
-    if (params.amount <= 0) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
+    if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
     if (!params.accountId && !params.cardId) return { success: false, error: 'Hesap veya kart seçilmelidir.' }
-
-    try {
-      const supabase = createClient()
-
-      // 1. Primary: Atomic PostgreSQL RPC
-      try {
-        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_record_expense_atomic', {
-          p_user_id: params.userId,
-          p_date: params.date,
-          p_amount: params.amount,
-          p_description: params.description,
-          p_analysis_group: params.analysisGroup || 'Kişisel',
-          p_merchant: params.merchant || null,
-          p_account_id: params.accountId || null,
-          p_card_id: params.cardId || null,
-          p_project_id: params.projectId || null,
-        })
-
-        if (!rpcErr && rpcRes) {
-          if (!rpcRes.success) {
-            return { success: false, error: rpcRes.error || 'Harcama kaydedilemedi.' }
-          }
-          return { success: true, transactionId: rpcRes.transaction_id }
-        }
-      } catch {
-        // Fallback below if RPC is unavailable in current client/environment
-      }
-
-      // 2. Transaction defterine yaz
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: params.userId,
-          date: params.date,
-          type: 'Harcama',
-          description: params.description,
-          amount: params.amount,
-          analysis_group: params.analysisGroup || 'Kişisel',
-          merchant: params.merchant || null,
-          account_id: params.accountId || null,
-          card_id: params.cardId || null,
-          project_id: params.projectId || null,
-        })
-        .select('id')
-        .single()
-
-      if (txErr) throw txErr
-
-      // 3. Hesap bakiyesi düşür (vadesiz hesaptan harcama)
-      if (params.accountId) {
-        const { data: acc } = await supabase
-          .from('accounts')
-          .select('balance')
-          .eq('id', params.accountId)
-          .single()
-
-        if (acc) {
-          await supabase
-            .from('accounts')
-            .update({ balance: Number(acc.balance) - params.amount })
-            .eq('id', params.accountId)
-        }
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Harcama kaydedilemedi.' }
-    }
+    if (params.accountId && params.cardId) return { success: false, error: 'Tek bir hesap veya kart seçilmelidir.' }
+    return this.atomic('fn_record_expense_atomic', {
+      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description,
+      p_analysis_group: params.analysisGroup || 'Kişisel', p_merchant: params.merchant || null,
+      p_account_id: params.accountId || null, p_card_id: params.cardId || null, p_project_id: params.projectId || null,
+    })
   }
 
-  /**
-   * 2. Gelir Kaydet
-   * - transactions tablosuna yaz
-   * - accounts.balance artır
-   */
   async recordIncome(params: RecordIncomeParams): Promise<FinancialEventResult> {
-    if (params.amount <= 0) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
-
-    try {
-      const supabase = createClient()
-
-      // 1. Primary: Atomic PostgreSQL RPC
-      try {
-        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_record_income_atomic', {
-          p_user_id: params.userId,
-          p_date: params.date,
-          p_amount: params.amount,
-          p_description: params.description,
-          p_analysis_group: 'Kişisel',
-          p_merchant: params.merchant || null,
-          p_account_id: params.accountId,
-          p_project_id: params.projectId || null,
-        })
-
-        if (!rpcErr && rpcRes) {
-          if (!rpcRes.success) {
-            return { success: false, error: rpcRes.error || 'Gelir kaydedilemedi.' }
-          }
-          return { success: true, transactionId: rpcRes.transaction_id }
-        }
-      } catch {
-        // Fallback below
-      }
-
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: params.userId,
-          date: params.date,
-          type: 'Gelir',
-          description: params.description,
-          amount: params.amount,
-          analysis_group: 'Kişisel',
-          merchant: params.merchant || null,
-          account_id: params.accountId,
-          project_id: params.projectId || null,
-        })
-        .select('id')
-        .single()
-
-      if (txErr) throw txErr
-
-      // Hesap bakiyesi artır
-      const { data: acc } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', params.accountId)
-        .single()
-
-      if (acc) {
-        await supabase
-          .from('accounts')
-          .update({ balance: Number(acc.balance) + params.amount })
-          .eq('id', params.accountId)
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Gelir kaydedilemedi.' }
-    }
+    if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
+    return this.atomic('fn_record_income_atomic', {
+      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description,
+      p_analysis_group: 'Kişisel', p_merchant: params.merchant || null, p_account_id: params.accountId, p_project_id: params.projectId || null,
+    })
   }
 
-  /**
-   * 3. Kart Borcu Öde
-   * - transactions tablosuna 'Kart Ödemesi' yaz
-   * - accounts.balance düşür (kaynak vadesiz hesap)
-   * - credit_cards.current_debt düşür
-   */
   async recordCardPayment(params: RecordCardPaymentParams): Promise<FinancialEventResult> {
-    if (params.amount <= 0) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
-
-    try {
-      const supabase = createClient()
-
-      // 1. Transaction defterine yaz
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: params.userId,
-          date: params.date,
-          type: 'Kart Ödemesi',
-          description: params.description || 'Kart Ödemesi',
-          amount: params.amount,
-          analysis_group: 'Hariç',
-          account_id: params.sourceAccountId,
-          card_id: params.cardId,
-        })
-        .select('id')
-        .single()
-
-      if (txErr) throw txErr
-
-      // 2. Vadesiz hesap bakiyesi düş
-      const { data: acc } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', params.sourceAccountId)
-        .single()
-
-      if (acc) {
-        await supabase
-          .from('accounts')
-          .update({ balance: Number(acc.balance) - params.amount })
-          .eq('id', params.sourceAccountId)
-      }
-
-      // 3. Kart borcu düş
-      const { data: card } = await supabase
-        .from('credit_cards')
-        .select('current_debt')
-        .eq('id', params.cardId)
-        .single()
-
-      if (card) {
-        await supabase
-          .from('credit_cards')
-          .update({ current_debt: Math.max(0, Number(card.current_debt) - params.amount) })
-          .eq('id', params.cardId)
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Kart ödemesi kaydedilemedi.' }
-    }
+    if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
+    return this.atomic('fn_record_payment_atomic', {
+      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Kart Ödemesi',
+      p_type: 'Kart Ödemesi', p_account_id: params.sourceAccountId, p_target_id: params.cardId,
+    })
   }
 
-  /**
-   * 4. Borç Öde
-   * - transactions tablosuna 'Borç Ödemesi' yaz
-   * - accounts.balance düşür (kaynak hesap)
-   * - debts.remaining düşür, 0 ise status: 'Kapatıldı'
-   */
   async recordDebtPayment(params: RecordDebtPaymentParams): Promise<FinancialEventResult> {
-    if (params.amount <= 0) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
-
-    try {
-      const supabase = createClient()
-
-      // Mevcut borcu oku
-      const { data: debt } = await supabase
-        .from('debts')
-        .select('remaining, past_payments, status')
-        .eq('id', params.debtId)
-        .single()
-
-      if (!debt) return { success: false, error: 'Borç kaydı bulunamadı.' }
-      if (debt.status === 'Kapatıldı') return { success: false, error: 'Bu borç zaten kapatılmış.' }
-
-      const newRemaining = Math.max(0, Number(debt.remaining) - params.amount)
-      const isClosed = newRemaining <= 0
-
-      // 1. Transaction defterine yaz
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: params.userId,
-          date: params.date,
-          type: 'Borç Ödemesi',
-          description: params.description || 'Borç Ödemesi',
-          amount: params.amount,
-          analysis_group: 'Hariç',
-          account_id: params.sourceAccountId,
-          related_debt_id: params.debtId,
-        })
-        .select('id')
-        .single()
-
-      if (txErr) throw txErr
-
-      // 2. Borç güncelle
-      await supabase
-        .from('debts')
-        .update({
-          past_payments: Number(debt.past_payments) + params.amount,
-          remaining: newRemaining,
-          status: isClosed ? 'Kapatıldı' : 'Açık',
-        })
-        .eq('id', params.debtId)
-
-      // 3. Hesap bakiyesi düş
-      const { data: acc } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', params.sourceAccountId)
-        .single()
-
-      if (acc) {
-        await supabase
-          .from('accounts')
-          .update({ balance: Number(acc.balance) - params.amount })
-          .eq('id', params.sourceAccountId)
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Borç ödemesi kaydedilemedi.' }
-    }
+    if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
+    return this.atomic('fn_record_payment_atomic', {
+      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Borç Ödemesi',
+      p_type: 'Borç Ödemesi', p_account_id: params.sourceAccountId, p_target_id: params.debtId,
+    })
   }
 
-  /**
-   * 5. Alacak Tahsil Et
-   * - transactions tablosuna 'Tahsilat' yaz
-   * - accounts.balance artır (hedef hesap)
-   * - debts.remaining düşür, 0 ise status: 'Kapatıldı'
-   */
   async recordReceivableCollection(params: RecordReceivableCollectionParams): Promise<FinancialEventResult> {
-    if (params.amount <= 0) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
-
-    try {
-      const supabase = createClient()
-
-      // Mevcut alacak oku
-      const { data: debt } = await supabase
-        .from('debts')
-        .select('remaining, past_payments, status')
-        .eq('id', params.receivableId)
-        .single()
-
-      if (!debt) return { success: false, error: 'Alacak kaydı bulunamadı.' }
-      if (debt.status === 'Kapatıldı') return { success: false, error: 'Bu alacak zaten kapatılmış.' }
-
-      const newRemaining = Math.max(0, Number(debt.remaining) - params.amount)
-      const isClosed = newRemaining <= 0
-
-      // 1. Transaction defterine yaz
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: params.userId,
-          date: params.date,
-          type: 'Tahsilat',
-          description: params.description || 'Alacak Tahsilatı',
-          amount: params.amount,
-          analysis_group: 'Hariç',
-          account_id: params.targetAccountId,
-          related_debt_id: params.receivableId,
-        })
-        .select('id')
-        .single()
-
-      if (txErr) throw txErr
-
-      // 2. Alacak güncelle
-      await supabase
-        .from('debts')
-        .update({
-          past_payments: Number(debt.past_payments) + params.amount,
-          remaining: newRemaining,
-          status: isClosed ? 'Kapatıldı' : 'Açık',
-        })
-        .eq('id', params.receivableId)
-
-      // 3. Hesap bakiyesi artır
-      const { data: acc } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', params.targetAccountId)
-        .single()
-
-      if (acc) {
-        await supabase
-          .from('accounts')
-          .update({ balance: Number(acc.balance) + params.amount })
-          .eq('id', params.targetAccountId)
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Tahsilat kaydedilemedi.' }
-    }
+    if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
+    return this.atomic('fn_record_payment_atomic', {
+      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Alacak Tahsilatı',
+      p_type: 'Tahsilat', p_account_id: params.targetAccountId, p_target_id: params.receivableId,
+    })
   }
 
-  /**
-   * 6. Hesaplar Arası Transfer
-   * - transactions tablosuna 'Transfer' yaz
-   * - kaynak accounts.balance düş
-   * - hedef accounts.balance art
-   */
   async recordTransfer(params: RecordTransferParams): Promise<FinancialEventResult> {
-    if (params.amount <= 0) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
+    if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
     if (params.sourceAccountId === params.targetAccountId) return { success: false, error: 'Aynı hesaba transfer yapılamaz.' }
-
-    try {
-      const supabase = createClient()
-
-      // 1. Primary: Atomic PostgreSQL RPC
-      try {
-        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_record_transfer_atomic', {
-          p_user_id: params.userId,
-          p_date: params.date,
-          p_amount: params.amount,
-          p_description: params.description || 'Hesaplar Arası Transfer',
-          p_source_account_id: params.sourceAccountId,
-          p_target_account_id: params.targetAccountId,
-        })
-
-        if (!rpcErr && rpcRes) {
-          if (!rpcRes.success) {
-            return { success: false, error: rpcRes.error || 'Transfer kaydedilemedi.' }
-          }
-          return { success: true, transactionId: rpcRes.transaction_id }
-        }
-      } catch {
-        // Fallback below
-      }
-
-      // 1. Transaction defterine yaz
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: params.userId,
-          date: params.date,
-          type: 'Transfer',
-          description: params.description || 'Hesaplar Arası Transfer',
-          amount: params.amount,
-          analysis_group: 'Hariç',
-          source_account_id: params.sourceAccountId,
-          target_account_id: params.targetAccountId,
-        })
-        .select('id')
-        .single()
-
-      if (txErr) throw txErr
-
-      // 2. Kaynak hesap düş
-      const { data: srcAcc } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', params.sourceAccountId)
-        .single()
-
-      if (srcAcc) {
-        await supabase
-          .from('accounts')
-          .update({ balance: Number(srcAcc.balance) - params.amount })
-          .eq('id', params.sourceAccountId)
-      }
-
-      // 3. Hedef hesap artır
-      const { data: tgtAcc } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', params.targetAccountId)
-        .single()
-
-      if (tgtAcc) {
-        await supabase
-          .from('accounts')
-          .update({ balance: Number(tgtAcc.balance) + params.amount })
-          .eq('id', params.targetAccountId)
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Transfer kaydedilemedi.' }
-    }
+    return this.atomic('fn_record_transfer_atomic', {
+      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Hesaplar Arası Transfer',
+      p_source_account_id: params.sourceAccountId, p_target_account_id: params.targetAccountId,
+    })
   }
 
-  /**
-   * 7. İşlem Sil ve Geri Al
-   * - Mevcut işlemi oku, tipine göre ilgili bakiyeleri ters yönde güncelle
-   * - transactions tablosundan sil
-   */
   async deleteTransaction(transactionId: string): Promise<FinancialEventResult> {
     try {
-      const supabase = createClient()
-
-      // 1. Primary: Atomic PostgreSQL RPC
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_delete_transaction_atomic', {
-            p_tx_id: transactionId,
-            p_user_id: user.id,
-          })
-
-          if (!rpcErr && rpcRes) {
-            if (!rpcRes.success) {
-              return { success: false, error: rpcRes.error || 'İşlem silinemedi.' }
-            }
-            return { success: true }
-          }
-        }
-      } catch {
-        // Fallback below
-      }
-
-      // Önce mevcut işlemi oku
-      const { data: tx, error: readErr } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', transactionId)
-        .single()
-
-      if (readErr || !tx) return { success: false, error: 'İşlem bulunamadı.' }
-
-      // Tip bazlı geri alma
-      switch (tx.type) {
-        case 'Harcama':
-          if (tx.account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) + tx.amount }).eq('id', tx.account_id)
-          }
-          break
-
-        case 'Gelir':
-          if (tx.account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) - tx.amount }).eq('id', tx.account_id)
-          }
-          break
-
-        case 'Kart Ödemesi':
-          if (tx.account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) + tx.amount }).eq('id', tx.account_id)
-          }
-          if (tx.card_id) {
-            const { data: card } = await supabase.from('credit_cards').select('current_debt').eq('id', tx.card_id).single()
-            if (card) await supabase.from('credit_cards').update({ current_debt: Number(card.current_debt) + tx.amount }).eq('id', tx.card_id)
-          }
-          break
-
-        case 'Borç Ödemesi':
-          if (tx.account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) + tx.amount }).eq('id', tx.account_id)
-          }
-          if (tx.related_debt_id) {
-            const { data: debt } = await supabase.from('debts').select('remaining, past_payments').eq('id', tx.related_debt_id).single()
-            if (debt) {
-              await supabase.from('debts').update({
-                past_payments: Math.max(0, Number(debt.past_payments) - tx.amount),
-                remaining: Number(debt.remaining) + tx.amount,
-                status: 'Açık',
-              }).eq('id', tx.related_debt_id)
-            }
-          }
-          break
-
-        case 'Tahsilat':
-          if (tx.account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) - tx.amount }).eq('id', tx.account_id)
-          }
-          if (tx.related_debt_id) {
-            const { data: debt } = await supabase.from('debts').select('remaining, past_payments').eq('id', tx.related_debt_id).single()
-            if (debt) {
-              await supabase.from('debts').update({
-                past_payments: Math.max(0, Number(debt.past_payments) - tx.amount),
-                remaining: Number(debt.remaining) + tx.amount,
-                status: 'Açık',
-              }).eq('id', tx.related_debt_id)
-            }
-          }
-          break
-
-        case 'Transfer':
-          if (tx.source_account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.source_account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) + tx.amount }).eq('id', tx.source_account_id)
-          }
-          if (tx.target_account_id) {
-            const { data: acc } = await supabase.from('accounts').select('balance').eq('id', tx.target_account_id).single()
-            if (acc) await supabase.from('accounts').update({ balance: Number(acc.balance) - tx.amount }).eq('id', tx.target_account_id)
-          }
-          break
-      }
-
-      // İşlemi sil
-      const { error: delErr } = await supabase.from('transactions').delete().eq('id', transactionId)
-      if (delErr) throw delErr
-
-      return { success: true }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'İşlem silinemedi.' }
-    }
+      const { data: { user } } = await createClient().auth.getUser()
+      if (!user) return { success: false, error: 'Oturum açılmamış.' }
+      return this.atomic('fn_delete_transaction_atomic', { p_user_id: user.id, p_tx_id: transactionId })
+    } catch { return { success: false, error: 'İşlem silinemedi.' } }
   }
 
   /**
@@ -647,107 +151,10 @@ export class FinancialBridge {
     transactionId: string
     debtId: string
   }): Promise<FinancialEventResult> {
-    try {
-      const supabase = createClient()
-
-      // 1. Primary: Atomic PostgreSQL RPC
-      try {
-        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('fn_link_transaction_to_debt_atomic', {
-          p_user_id: params.userId,
-          p_transaction_id: params.transactionId,
-          p_debt_id: params.debtId,
-        })
-
-        if (!rpcErr && rpcRes) {
-          if (!rpcRes.success) {
-            return { success: false, error: rpcRes.error || 'Borç eşlenemedi.' }
-          }
-          return { success: true, transactionId: params.transactionId }
-        }
-      } catch {
-        // Fallback below
-      }
-
-      // 1. Oku: Transaction
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', params.transactionId)
-        .eq('user_id', params.userId)
-        .single()
-
-      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
-
-      // F17 Idempotency: Zaten bu borca bağlıysa işlem yapma, başarı dön
-      const oldDebtId = getLinkedDebtId(tx)
-      if (oldDebtId && oldDebtId === params.debtId) {
-        return { success: true, transactionId: params.transactionId }
-      }
-
-      // 2. Oku: Debt
-      const { data: debt, error: debtErr } = await supabase
-        .from('debts')
-        .select('*')
-        .eq('id', params.debtId)
-        .eq('user_id', params.userId)
-        .single()
-
-      if (debtErr || !debt) return { success: false, error: 'Borç/Alacak kaydı bulunamadı.' }
-
-      // Eğer hareket önceden başka bir borca bağlıysa, önce eski borçtan çıkar
-      if (oldDebtId && oldDebtId !== params.debtId) {
-        await this.unlinkTransactionFromDebt({ userId: params.userId, transactionId: params.transactionId })
-      }
-
-      // Yeni tip ve etiket
-      const isReceivable = debt.type === 'Alacak'
-      const newType = isReceivable ? 'Tahsilat' : 'Borç Ödemesi'
-      const merchantTag = isReceivable
-        ? `Tahsilat: ${debt.person_or_entity}`
-        : `Ödeme: ${debt.person_or_entity}`
-
-      // Borç güncelle
-      const newPast = Number(debt.past_payments) + Number(tx.amount)
-      const newRemaining = Math.max(0, Number(debt.remaining) - Number(tx.amount))
-      const newStatus = newRemaining <= 0 ? 'Kapatıldı' : 'Açık'
-
-      const { error: dUpdateErr } = await supabase
-        .from('debts')
-        .update({
-          past_payments: newPast,
-          remaining: newRemaining,
-          status: newStatus,
-        })
-        .eq('id', debt.id)
-
-      if (dUpdateErr) throw dUpdateErr
-
-      // Transaction güncelle (güvenli fallback: related_debt_id varsa sütuna, yoksa [DEBT:id] tag'i açıklamaya)
-      const cleanDesc = (tx.description || '').replace(/\s*\[DEBT:[a-f0-9-]+\]/gi, '').trim()
-      const updatePayload: any = {
-        type: newType,
-        merchant: merchantTag,
-        analysis_group: 'Hariç',
-        description: `${cleanDesc} [DEBT:${debt.id}]`,
-      }
-
-      const res1 = await supabase
-        .from('transactions')
-        .update({ ...updatePayload, related_debt_id: debt.id })
-        .eq('id', tx.id)
-
-      if (res1.error) {
-        const res2 = await supabase
-          .from('transactions')
-          .update(updatePayload)
-          .eq('id', tx.id)
-        if (res2.error) throw res2.error
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Hareket borca bağlanamadı.' }
-    }
+    const result = await this.atomic('fn_link_transaction_to_debt_atomic', {
+      p_user_id: params.userId, p_transaction_id: params.transactionId, p_debt_id: params.debtId,
+    })
+    return result.success ? { ...result, transactionId: params.transactionId } : result
   }
 
   /**

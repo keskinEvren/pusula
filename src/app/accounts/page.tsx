@@ -62,10 +62,12 @@ export default function AccountsPage() {
   async function loadData() {
     setLoading(true)
     const supabase = createClient()
-    const [{ data: accs }, { data: txs }] = await Promise.all([
+    const [{ data: accs, error: accountError }, { data: txs, error: txError }] = await Promise.all([
       supabase.from('accounts').select('*').order('created_at', { ascending: true }),
       supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
     ])
+
+    if (accountError || txError) toast.error('Hesap verileri yüklenemedi. Lütfen tekrar deneyin.')
 
     if (accs) setAccounts(accs)
     if (txs) setTransactions(txs)

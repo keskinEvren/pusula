@@ -59,8 +59,7 @@ async function fetchAllRows(supabase: any, tableName: string): Promise<any[]> {
       .select('*')
       .range(from, from + PAGE_SIZE - 1)
     if (error) {
-      console.warn(`Could not fetch table ${tableName}:`, error.message)
-      return []
+      throw new Error(`${tableName}: ${error.message}`)
     }
     if (!data || data.length === 0) break
     allRows = allRows.concat(data)
@@ -83,6 +82,7 @@ function VaultPageContent() {
   const { toast } = useToast()
   const [vaultData, setVaultData] = useState<PusulaVaultData>(EMPTY_VAULT_DATA)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'export' | 'restore' | 'diagnostics'>('export')
 
   // Dışa Aktarma Formu
@@ -200,6 +200,7 @@ function VaultPageContent() {
         setVaultData(data)
       } catch (err) {
         console.error('Vault data fetch error:', err)
+        setLoadError('Yedek verileri eksiksiz yüklenemedi. Bağlantıyı kontrol edip sayfayı yenileyin.')
       } finally {
         setIsLoading(false)
       }
@@ -212,6 +213,7 @@ function VaultPageContent() {
   // DIŞA AKTARMA (EXPORT)
   // -------------------------------------------------------------------------
   async function handleExportVault() {
+    if (loadError) { toast.error(loadError); return }
     if (isEncrypted) {
       if (!exportPassword || exportPassword.length < 6) {
         toast.warning('Şifreli yedek için en az 6 karakterli bir parola belirlemelisiniz.')
@@ -311,6 +313,7 @@ function VaultPageContent() {
   }
 
   function handleExecuteRestore() {
+    if (loadError) { toast.error(loadError); return }
     if (!validationResult?.isValid || !validationResult.payload) return
     setIsConfirmRestoreOpen(true)
   }
@@ -465,6 +468,7 @@ function VaultPageContent() {
 
   return (
     <div className="space-y-6">
+      {loadError && <p role="alert" className="text-destructive">{loadError}</p>}
       {/* 1. Üst Başlık ve Rozet */}
       <PageHeader
         title="Veri ve Yedekleme"
