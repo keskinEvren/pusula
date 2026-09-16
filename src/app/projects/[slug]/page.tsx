@@ -52,6 +52,17 @@ export default function ProjectDetailPage({
   const [markdownDoc, setMarkdownDoc] = useState<string>('')
   const [savingDoc, setSavingDoc] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [projectSummary, setProjectSummary] = useState<{
+    direct_cost_total: number
+    direct_expense: number
+    direct_revenue: number
+    total_count: number
+  }>({
+    direct_cost_total: 0,
+    direct_expense: 0,
+    direct_revenue: 0,
+    total_count: 0,
+  })
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
@@ -90,7 +101,7 @@ export default function ProjectDetailPage({
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
-      await financialBridge.recordExpense({
+      const res = await financialBridge.recordExpense({
         userId: user.id,
         amount: parseFloat(expenseForm.amount),
         merchant: project.name + ' Proje Gideri',
@@ -100,6 +111,9 @@ export default function ProjectDetailPage({
         projectId: project.id,
         analysisGroup: 'İş'
       })
+      if (!res.success) {
+        throw new Error(res.error || 'Harcama kaydedilemedi.')
+      }
 
       setIsExpenseModalOpen(false)
       setExpenseForm({ amount: '', description: '', accountId: '' })
@@ -131,12 +145,13 @@ export default function ProjectDetailPage({
         const savedDraft = typeof window !== 'undefined' ? localStorage.getItem(`pusula_project_doc_${slug}`) : null
         setMarkdownDoc(savedDraft !== null ? savedDraft : (pData.description || ''))
 
-        const [{ data: txs }, { data: subs }, { data: accs }, { data: agendaData }] = await Promise.all([
+        const [{ data: txs }, { data: subs }, { data: accs }, { data: agendaData }, { data: sumData }] = await Promise.all([
           supabase
             .from('transactions')
             .select('*')
             .eq('project_id', pData.id)
-            .order('date', { ascending: false }),
+            .order('date', { ascending: false })
+            .limit(50),
           supabase
             .from('subscriptions')
             .select('*')
@@ -151,9 +166,18 @@ export default function ProjectDetailPage({
             .eq('project_id', pData.id)
             .order('plan_date', { ascending: false })
             .order('created_at', { ascending: false }),
+          supabase.rpc('fn_project_finance_summary', { p_project_id: pData.id }),
         ])
 
         if (txs) setTransactions(txs)
+        if (sumData) {
+          setProjectSummary({
+            direct_cost_total: Number(sumData.direct_cost_total || 0),
+            direct_expense: Number(sumData.direct_expense || 0),
+            direct_revenue: Number(sumData.direct_revenue || 0),
+            total_count: Number(sumData.total_count || 0),
+          })
+        }
         if (subs) setSubscriptions(subs)
         if (accs) setAccounts(accs)
         if (agendaData && agendaData.length > 0) {
@@ -285,9 +309,9 @@ export default function ProjectDetailPage({
     )
   }
 
-  // Cost & Bridge Calculation via Pure Finance Engine
-  const totalRevenue = transactions.filter(t => t.type === 'Gelir').reduce((s, t) => s + t.amount, 0)
-  const totalExpense = transactions.filter(t => t.type === 'Harcama').reduce((s, t) => s + t.amount, 0)
+  // Cost & Bridge Calculation via Pure Finance Engine (Decoupled from paginated transactions)
+  const totalRevenue = Number(projectSummary.direct_revenue)
+  const totalExpense = Number(projectSummary.direct_expense)
   
   const monthlySubCost = subscriptions
     .filter((s) => s.status === 'Aktif')
@@ -295,7 +319,11 @@ export default function ProjectDetailPage({
     
   const netStatus = totalRevenue - totalExpense
   
-  const totalCost = calculateProjectTotalCost(project.id, transactions, subscriptions)
+  const totalCost = calculateProjectTotalCost(
+    project.id,
+    [{ project_id: project.id, amount: Number(projectSummary.direct_cost_total) }],
+    subscriptions
+  )
   const budgetEvaluation = evaluateProjectBudget(totalCost, project.budget_limit)
 
   // Timeline calculation
@@ -619,7 +647,7 @@ export default function ProjectDetailPage({
       <Card className="border-border bg-card shadow-sm overflow-hidden">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <CardTitle className="text-base">Bu Projeye Ait Harcamalar ({transactions.length})</CardTitle>
+            <CardTitle className="text-base">Bu Projeye Ait Harcamalar ({projectSummary.total_count})</CardTitle>
             <CardDescription>Ekstrelerden veya manuel defterden bu projeye bağlanan giderler</CardDescription>
           </div>
           {transactions.length > 0 && project && (
