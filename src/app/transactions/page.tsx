@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, Suspense } from 'react'
+import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Plus,
@@ -22,7 +22,13 @@ import {
   ArrowDown,
   RotateCcw,
   X,
+  Loader2,
 } from 'lucide-react'
+import {
+  parsePageResults,
+  deduplicateById,
+  type KeysetCursor,
+} from '@/lib/keyset-pagination'
 import { createClient } from '@/lib/supabase/client'
 import {
   formatCurrency,
@@ -57,6 +63,21 @@ function TransactionsContent() {
   const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Keyset Pagination & Server-Side States
+  const [cursor, setCursor] = useState<KeysetCursor | null>(null)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [stats, setStats] = useState<{
+    total_count: number
+    total_volume: number
+    total_spent: number
+  }>({
+    total_count: 0,
+    total_volume: 0,
+    total_spent: 0,
+  })
+  const [statsLoading, setStatsLoading] = useState(false)
+
   // Mobile filters collapsible panel
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
 
@@ -86,6 +107,15 @@ function TransactionsContent() {
   // Filters
   const searchParams = useSearchParams()
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
   const [groupFilter, setGroupFilter] = useState<string>('ALL')
   const [typeFilter, setTypeFilter] = useState<string>('ALL')
   const [projectFilter, setProjectFilter] = useState<string>('ALL')
@@ -105,9 +135,14 @@ function TransactionsContent() {
     }
   }
 
-  // Dynamic available months extracted from loaded transactions
+  // Dynamic available months extracted from calendar + loaded transactions
   const availableMonths = useMemo(() => {
     const months = new Set<string>()
+    const now = new Date()
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
     transactions.forEach((t) => {
       if (t.date && t.date.length >= 7) {
         months.add(t.date.slice(0, 7))
@@ -160,6 +195,8 @@ function TransactionsContent() {
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [targetAccountId, setTargetAccountId] = useState('')
+  const [targetCardId, setTargetCardId] = useState('')
   const [newTx, setNewTx] = useState({
     date: formatLocalDateInput(),
     account_or_card: 'Enpara Vadesiz',
@@ -266,56 +303,186 @@ function TransactionsContent() {
     }
   }
 
+  // Load metadata (cards, accounts, debts, projects, investments) once on mount
   useEffect(() => {
-    loadTransactions()
+    async function loadMetadata() {
+      try {
+        const supabase = createClient()
+        const [{ data: prjs }, { data: crds }, { data: accs }, { data: dbts }] = await Promise.all([
+          supabase.from('projects').select('*'),
+          supabase.from('credit_cards').select('*'),
+          supabase.from('accounts').select('*'),
+          supabase.from('debts').select('*').order('created_at', { ascending: false }),
+        ])
 
-    const handleTxCreated = () => {
-      loadTransactions()
-    }
-    window.addEventListener('pusula:transaction-created', handleTxCreated)
-    return () => {
-      window.removeEventListener('pusula:transaction-created', handleTxCreated)
-    }
-  }, [])
+        if (prjs) setProjects(prjs)
+        if (crds) setCards(crds)
+        if (accs) setAccounts(accs)
+        if (dbts) setDebts(dbts)
 
-  async function loadTransactions() {
-    setLoading(true)
-    try {
-      const supabase = createClient()
-      const [{ data: txs }, { data: prjs }, { data: crds }, { data: accs }, { data: dbts }] = await Promise.all([
-        supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
-        supabase.from('projects').select('*'),
-        supabase.from('credit_cards').select('*'),
-        supabase.from('accounts').select('*'),
-        supabase.from('debts').select('*').order('created_at', { ascending: false }),
-      ])
-
-      if (txs) setTransactions(txs)
-      if (prjs) setProjects(prjs)
-      if (crds) setCards(crds)
-      if (accs) setAccounts(accs)
-      if (dbts) setDebts(dbts)
-
-      // Load investments for financial bridge
-      const { data: invs, error: invErr } = await supabase.from('investments').select('*')
-      if (invs && !invErr) {
-        setInvestments(invs)
-      } else {
-        const cached = localStorage.getItem('pusula_local_investments')
-        if (cached) {
-          try {
-            setInvestments(JSON.parse(cached))
-          } catch {
-            setInvestments([])
+        const { data: invs, error: invErr } = await supabase.from('investments').select('*')
+        if (invs && !invErr) {
+          setInvestments(invs)
+        } else {
+          const cached = localStorage.getItem('pusula_local_investments')
+          if (cached) {
+            try {
+              setInvestments(JSON.parse(cached))
+            } catch {
+              setInvestments([])
+            }
           }
         }
+      } catch (err) {
+        console.error('Error loading metadata:', err)
+      }
+    }
+    loadMetadata()
+  }, [])
+
+  const fetchTransactionsBatch = useCallback(
+    async (opts: { isInitial: boolean; activeCursor: KeysetCursor | null }) => {
+      const supabase = createClient()
+
+      const activeCursor = !opts.isInitial ? opts.activeCursor : null
+      const cursorDate = activeCursor && activeCursor.field === 'date' ? activeCursor.date : null
+      const cursorAmount = activeCursor && activeCursor.field === 'amount' ? activeCursor.amount : null
+      const cursorId = activeCursor ? activeCursor.id : null
+
+      const { data, error } = await supabase.rpc('fn_transactions_page', {
+        p_search: debouncedSearchTerm.trim() || null,
+        p_group: groupFilter !== 'ALL' ? groupFilter : null,
+        p_type: typeFilter !== 'ALL' ? typeFilter : null,
+        p_project_id: projectFilter !== 'ALL' ? projectFilter : null,
+        p_month: monthFilter !== 'ALL' ? monthFilter : null,
+        p_import_id: importFilter !== 'ALL' ? importFilter : null,
+        p_segment_tab: segmentTab,
+        p_entity_id: selectedEntityId,
+        p_sort_field: sortField,
+        p_sort_order: sortOrder,
+        p_cursor_date: cursorDate,
+        p_cursor_amount: cursorAmount,
+        p_cursor_id: cursorId,
+        p_limit: 51,
+      })
+
+      if (error) {
+        console.error('Transactions query error:', error)
+        return { items: [] as Transaction[], hasMore: false, nextCursor: null }
+      }
+
+      return parsePageResults<Transaction>((data as unknown as Transaction[]) || [], 50, sortField)
+    },
+    [
+      segmentTab,
+      selectedEntityId,
+      monthFilter,
+      debouncedSearchTerm,
+      groupFilter,
+      typeFilter,
+      projectFilter,
+      importFilter,
+      sortField,
+      sortOrder,
+    ]
+  )
+
+  const fetchTransactionsStats = useCallback(async () => {
+    setStatsLoading(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('fn_transactions_stats', {
+        p_search: debouncedSearchTerm.trim() || null,
+        p_group: groupFilter !== 'ALL' ? groupFilter : null,
+        p_type: typeFilter !== 'ALL' ? typeFilter : null,
+        p_project_id: projectFilter !== 'ALL' ? projectFilter : null,
+        p_month: monthFilter !== 'ALL' ? monthFilter : null,
+        p_import_id: importFilter !== 'ALL' ? importFilter : null,
+        p_segment_tab: segmentTab,
+        p_entity_id: selectedEntityId,
+      })
+      if (!error && data) {
+        setStats({
+          total_count: Number(data.total_count || 0),
+          total_volume: Number(data.total_volume || 0),
+          total_spent: Number(data.total_spent || 0),
+        })
       }
     } catch (err) {
-      console.error('Error loading transactions:', err)
+      console.error('Error fetching stats:', err)
+    } finally {
+      setStatsLoading(false)
+    }
+  }, [
+    debouncedSearchTerm,
+    groupFilter,
+    typeFilter,
+    projectFilter,
+    monthFilter,
+    importFilter,
+    segmentTab,
+    selectedEntityId,
+  ])
+
+  // Reset and reload initial page when any filter or sorting changes
+  const resetAndReload = useCallback(async () => {
+    setLoading(true)
+    setCursor(null)
+    setHasMore(true)
+    try {
+      const [parsed] = await Promise.all([
+        fetchTransactionsBatch({ isInitial: true, activeCursor: null }),
+        fetchTransactionsStats(),
+      ])
+      setTransactions(parsed.items)
+      setCursor(parsed.nextCursor)
+      setHasMore(parsed.hasMore)
     } finally {
       setLoading(false)
     }
+  }, [fetchTransactionsBatch, fetchTransactionsStats])
+
+  useEffect(() => {
+    resetAndReload()
+  }, [resetAndReload])
+
+  const loadMoreTransactions = async () => {
+    if (!hasMore || loadingMore || !cursor) return
+    setLoadingMore(true)
+    try {
+      const parsed = await fetchTransactionsBatch({ isInitial: false, activeCursor: cursor })
+      setTransactions((prev) => deduplicateById(prev, parsed.items))
+      setCursor(parsed.nextCursor)
+      setHasMore(parsed.hasMore)
+    } finally {
+      setLoadingMore(false)
+    }
   }
+
+  // Alias loadTransactions for backward compatibility
+  const loadTransactions = resetAndReload
+
+  // Same-tab & cross-tab mutation event listeners
+  useEffect(() => {
+    const handleTxMutated = () => {
+      resetAndReload()
+    }
+    window.addEventListener('pusula:transaction-created', handleTxMutated)
+    window.addEventListener('pusula:transaction-mutated', handleTxMutated)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        resetAndReload()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.removeEventListener('pusula:transaction-created', handleTxMutated)
+      window.removeEventListener('pusula:transaction-mutated', handleTxMutated)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [resetAndReload])
 
   const handleOpenLinkModal = (tx: Transaction) => {
     const isIncome = tx.type === 'Gelir' || tx.type === 'Tahsilat'
@@ -558,33 +725,28 @@ function TransactionsContent() {
           description: newTx.description || newTx.merchant,
           projectId: newTx.project_id || undefined,
         })
-      } else if (newTx.type === 'Kart Ödemesi' && accountId && cardId) {
+      } else if (newTx.type === 'Kart Ödemesi') {
+        if (!accountId || !targetCardId) throw new Error('Kaynak hesap ve ödenecek kart seçilmelidir.')
         res = await financialBridge.recordCardPayment({
           userId: user.id,
           amount: amountNum,
           sourceAccountId: accountId,
-          cardId: cardId,
+          cardId: targetCardId,
+          date: newTx.date,
+          description: newTx.description || newTx.merchant,
+        })
+      } else if (newTx.type === 'Transfer') {
+        if (!accountId || !targetAccountId) throw new Error('Kaynak ve hedef hesap seçilmelidir.')
+        res = await financialBridge.recordTransfer({
+          userId: user.id,
+          amount: amountNum,
+          sourceAccountId: accountId,
+          targetAccountId,
           date: newTx.date,
           description: newTx.description || newTx.merchant,
         })
       } else {
-        // Fallback for Transfer or other types
-        const { error } = await supabase
-          .from('transactions')
-          .insert({
-            user_id: user.id,
-            date: newTx.date,
-            account_or_card: newTx.account_or_card,
-            type: newTx.type as any,
-            description: newTx.description || newTx.merchant,
-            merchant: newTx.merchant || newTx.description,
-            amount: amountNum,
-            analysis_group: newTx.analysis_group as any,
-            project_id: newTx.project_id || null,
-            account_id: accountId,
-            card_id: cardId,
-          })
-        if (error) res = { success: false, error: error.message }
+        throw new Error('Geçersiz işlem türü.')
       }
 
       if (!res.success) {
@@ -592,6 +754,8 @@ function TransactionsContent() {
       }
 
       setIsAddModalOpen(false)
+      setTargetAccountId('')
+      setTargetCardId('')
       setNewTx({
         date: formatLocalDateInput(),
         account_or_card: 'Enpara Vadesiz',
@@ -632,75 +796,10 @@ function TransactionsContent() {
     })
   }
 
-  // Filter pipeline
-  const filteredTransactions = transactions.filter((t) => {
-    // 1. Segment Tab Filter
-    if (segmentTab === 'cards') {
-      // Must be credit card spending or linked to a card
-      if (!t.card_id && t.type === 'Gelir') return false
-      if (t.account_id && t.type !== 'Harcama') return false
-    } else if (segmentTab === 'accounts') {
-      // Must be bank account cashflow
-      if (t.card_id && !t.account_id && t.type === 'Harcama') return false
-    }
-
-    // 2. Specific Entity Selector Filter
-    if (selectedEntityId !== 'ALL') {
-      const matchCard = t.card_id === selectedEntityId || t.account_or_card?.includes(selectedEntityId)
-      const matchAccount = t.account_id === selectedEntityId || t.account_or_card?.includes(selectedEntityId)
-      if (!matchCard && !matchAccount) return false
-    }
-
-    // 3. Month Filter
-    if (monthFilter !== 'ALL') {
-      if (!t.date.startsWith(monthFilter)) return false
-    }
-
-    // 4. Search Filter
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase()
-      const matchDesc = t.description?.toLowerCase().includes(q)
-      const matchMerchant = t.merchant?.toLowerCase().includes(q)
-      const matchAcc = t.account_or_card?.toLowerCase().includes(q)
-      if (!matchDesc && !matchMerchant && !matchAcc) return false
-    }
-
-    // 5. Group Filter
-    if (groupFilter !== 'ALL' && t.analysis_group !== groupFilter) return false
-
-    // 6. Type Filter
-    if (typeFilter !== 'ALL' && t.type !== typeFilter) return false
-
-    // 7. Project Filter
-    if (projectFilter !== 'ALL' && t.project_id !== projectFilter) return false
-
-    // 8. Import Batch Filter
-    if (importFilter !== 'ALL' && t.import_id !== importFilter) return false
-
-    return true
-  })
-
-  // Sort pipeline
-  const sortedTransactions = useMemo(() => {
-    return [...filteredTransactions].sort((a, b) => {
-      if (sortField === 'date') {
-        const cmp = (a.date || '').localeCompare(b.date || '')
-        return sortOrder === 'asc' ? cmp : -cmp
-      }
-      if (sortField === 'amount') {
-        const aAmt = Number(a.amount || 0)
-        const bAmt = Number(b.amount || 0)
-        return sortOrder === 'asc' ? aAmt - bAmt : bAmt - aAmt
-      }
-      return 0
-    })
-  }, [filteredTransactions, sortField, sortOrder])
-
-  // Quick stats for filtered list
-  const totalVolume = filteredTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0)
-  const totalSpent = filteredTransactions
-    .filter((t) => t.analysis_group !== 'Hariç' && t.type !== 'Gelir' && t.type !== 'Tahsilat')
-    .reduce((sum, t) => sum + (t.type === 'İade' ? -Number(t.amount || 0) : Number(t.amount || 0)), 0)
+  // Server-filtered & keyset-paginated transactions list
+  const sortedTransactions = transactions
+  const totalVolume = stats.total_volume
+  const totalSpent = stats.total_spent
 
   if (loading) {
     return (
@@ -918,7 +1017,7 @@ function TransactionsContent() {
           <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span>Filtreler aktif ({sortedTransactions.length} hareket listeleniyor)</span>
+              <span>Filtreler aktif ({stats.total_count} hareket bulundu)</span>
             </div>
             <Button
               type="button"
@@ -938,7 +1037,7 @@ function TransactionsContent() {
       <Card className="border-border bg-card shadow-sm overflow-hidden">
         <CardHeader className="border-b border-border py-3 px-4 flex flex-row items-center justify-between bg-muted/20">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <span>Listelenen: <strong className="text-foreground">{sortedTransactions.length}</strong> hareket</span>
+            <span>Listelenen: <strong className="text-foreground">{sortedTransactions.length}</strong> / {stats.total_count} hareket</span>
             {hasActiveFilters && (
               <button
                 type="button"
@@ -950,8 +1049,9 @@ function TransactionsContent() {
             )}
           </div>
           <div className="flex items-center gap-4 text-xs font-mono">
-            <span>
+            <span className="flex items-center gap-1.5">
               Tüketim Toplamı: <strong className="text-foreground">{formatCurrency(totalSpent)}</strong>
+              {statsLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
             </span>
           </div>
         </CardHeader>
@@ -1303,6 +1403,35 @@ function TransactionsContent() {
             </tbody>
           </table>
         </div>
+
+        {/* Keyset Pagination & Load More Footer */}
+        <div className="border-t border-border p-4 bg-muted/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+          <div>
+            <span>
+              Toplam <strong className="text-foreground">{stats.total_count}</strong> hareketten{' '}
+              <strong className="text-foreground">{sortedTransactions.length}</strong> tanesi listeleniyor
+            </span>
+          </div>
+          {hasMore && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={loadMoreTransactions}
+              disabled={loadingMore}
+              className="w-full sm:w-auto min-w-[150px] text-xs font-semibold gap-2 border-primary/30 text-primary hover:bg-primary/10"
+            >
+              {loadingMore ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Yükleniyor...
+                </>
+              ) : (
+                <>Daha Fazla Yükle ({Math.min(50, Math.max(0, stats.total_count - sortedTransactions.length))})</>
+              )}
+            </Button>
+          )}
+        </div>
       </Card>
 
       {/* Add Transaction Modal */}
@@ -1371,6 +1500,30 @@ function TransactionsContent() {
               </Select>
             </div>
           </div>
+
+          {newTx.type === 'Transfer' && (
+            <div className="space-y-1.5">
+              <label htmlFor="add-tx-target-account" className="text-xs font-semibold text-foreground">Hedef Hesap</label>
+              <Select id="add-tx-target-account" value={targetAccountId} onChange={(e) => setTargetAccountId(e.target.value)} required aria-label="Hedef Hesap">
+                <option value="">Hedef hesap seçin</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>{account.name}</option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {newTx.type === 'Kart Ödemesi' && (
+            <div className="space-y-1.5">
+              <label htmlFor="add-tx-target-card" className="text-xs font-semibold text-foreground">Ödenecek Kart</label>
+              <Select id="add-tx-target-card" value={targetCardId} onChange={(e) => setTargetCardId(e.target.value)} required aria-label="Ödenecek Kart">
+                <option value="">Kart seçin</option>
+                {cards.map((card) => (
+                  <option key={card.id} value={card.id}>{card.bank} - {card.card_name}</option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
