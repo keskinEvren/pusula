@@ -225,9 +225,7 @@ export default function CardsPage() {
       const prevDebt = prevStmt ? Number(prevStmt.period_debt) : null
       const { changeAmount, changePct } = calculateStatementChange(currentPeriodDebt, prevDebt)
 
-      const { data, error } = await supabase
-        .from('card_statements')
-        .insert({
+      const { data: result, error } = await supabase.rpc('fn_add_card_statement_atomic', { p_statement: {
           card_id: stmtForm.card_id,
           statement_date: stmtForm.statement_date,
           period_debt: currentPeriodDebt,
@@ -240,24 +238,12 @@ export default function CardsPage() {
           prev_debt: prevDebt,
           change_amount: changeAmount,
           change_pct: changePct ? changePct / 100 : null,
-        })
-        .select()
-        .single()
+        } })
 
       if (error) throw error
+      if (!result?.success) throw new Error(result?.error || 'Ekstre kaydedilemedi.')
+      const data = result.statement
       if (data) {
-        // Also update card's current and statement debt
-        await supabase
-          .from('credit_cards')
-          .update({
-            statement_debt: currentPeriodDebt,
-            current_debt: currentPeriodDebt,
-            minimum_payment: parseFloat(stmtForm.minimum || '0'),
-            statement_date: stmtForm.statement_date,
-            due_date: stmtForm.due_date || null,
-          })
-          .eq('id', stmtForm.card_id)
-
         setStatements([data, ...statements])
         setIsStmtModalOpen(false)
         toast.success('Yeni ekstre başarıyla kaydedildi!')

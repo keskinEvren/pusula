@@ -103,7 +103,7 @@ function ProjectsContent() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [projectCosts, setProjectCosts] = useState<Record<string, number>>({})
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -140,14 +140,14 @@ function ProjectsContent() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: pData }, { data: tData }, { data: sData }] = await Promise.all([
+      const [{ data: pData }, { data: costsData }, { data: sData }] = await Promise.all([
         supabase.from('projects').select('*').order('created_at', { ascending: false }),
-        supabase.from('transactions').select('*').limit(1000),
+        supabase.rpc('fn_all_projects_direct_costs'),
         supabase.from('subscriptions').select('*'),
       ])
 
       if (pData) setProjects(pData)
-      if (tData) setTransactions(tData)
+      if (costsData) setProjectCosts(costsData as Record<string, number>)
       if (sData) setSubscriptions(sData)
     } catch (err) {
       console.error('Error loading projects:', err)
@@ -361,7 +361,7 @@ function ProjectsContent() {
             {workbenchProjects.map((project) => {
               const totalCost = calculateProjectTotalCost(
                 project.id,
-                transactions,
+                [{ project_id: project.id, amount: Number(projectCosts[project.id] || 0) }],
                 subscriptions
               )
               const budgetEvaluation = evaluateProjectBudget(
@@ -650,7 +650,7 @@ function ProjectsContent() {
               {filteredInventory.map((project) => {
                 const totalCost = calculateProjectTotalCost(
                   project.id,
-                  transactions,
+                  [{ project_id: project.id, amount: Number(projectCosts[project.id] || 0) }],
                   subscriptions
                 )
                 const typeConfig = TYPE_CONFIG[getProjectType(project)]
@@ -738,7 +738,7 @@ function ProjectsContent() {
                   {filteredInventory.map((project) => {
                     const totalCost = calculateProjectTotalCost(
                       project.id,
-                      transactions,
+                      [{ project_id: project.id, amount: Number(projectCosts[project.id] || 0) }],
                       subscriptions
                     )
                     const typeConfig = TYPE_CONFIG[getProjectType(project)]

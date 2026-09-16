@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { fileURLToPath } from 'node:url';
 
 // Supabase dizinine giden yolu bul (tests klasörünün bir üstü)
-const supabaseMigrationsDir = new URL('../supabase/migrations', import.meta.url).pathname;
+const supabaseMigrationsDir = fileURLToPath(new URL('../supabase/migrations', import.meta.url));
 
 describe('Security Migrations Tests', () => {
   describe('Migration Files and Rules', () => {
