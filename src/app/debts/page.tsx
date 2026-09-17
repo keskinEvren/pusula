@@ -179,43 +179,25 @@ function DebtsContent() {
       const amt = parseFloat(deductAmount || '0')
       if (amt <= 0) throw new Error('Geçerli bir tutar giriniz.')
 
-      const newRemaining = Math.max(0, Math.round((Number(selectedDebt.remaining) - amt) * 100) / 100)
-      const newStatus = newRemaining <= 0 ? 'Kapatıldı' : 'Açık'
-
-      // Update debt in DB
-      const { error: dErr } = await supabase
-        .from('debts')
-        .update({
-          remaining: newRemaining,
-          status: newStatus,
-        })
-        .eq('id', selectedDebt.id)
-
-      if (dErr) throw dErr
-
-      // If account selected, record transaction via financialBridge
-      if (targetAccountId) {
-        if (selectedDebt.type === 'Alacak') {
-          await financialBridge.recordIncome({
+      const result = selectedDebt.type === 'Alacak'
+        ? await financialBridge.recordReceivableCollection({
             userId: user.id,
             amount: amt,
-            accountId: targetAccountId,
+            targetAccountId: targetAccountId || undefined,
+            receivableId: selectedDebt.id,
             date: formatLocalDateInput(),
-            merchant: 'Tahsilat: ' + selectedDebt.person_or_entity,
             description: (selectedDebt.description || selectedDebt.person_or_entity) + ' Tahsilatı',
           })
-        } else {
-          await financialBridge.recordExpense({
+        : await financialBridge.recordDebtPayment({
             userId: user.id,
             amount: amt,
-            accountId: targetAccountId,
+            sourceAccountId: targetAccountId || undefined,
+            debtId: selectedDebt.id,
             date: formatLocalDateInput(),
-            merchant: 'Ödeme: ' + selectedDebt.person_or_entity,
             description: (selectedDebt.description || selectedDebt.person_or_entity) + ' Borç Ödemesi',
-            analysisGroup: 'Hariç',
           })
-        }
-      }
+
+      if (!result.success) throw new Error(result.error || 'Ödeme işlenemedi.')
 
       setIsDeductModalOpen(false)
       setSelectedDebt(null)

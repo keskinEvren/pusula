@@ -74,6 +74,63 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     expect((await db.query('select balance from accounts where id=$1',[source])).rows).toEqual(before)
     expect((await db.query('select current_debt from credit_cards where id=$1', ['77777777-7777-4777-8777-777777777777'])).rows).toEqual([{ current_debt:'500.00' }])
   })
+  it('debt adjustments and existing transaction links are atomic and idempotent', async () => {
+    await asUser(userA)
+    const debt = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    await db.query(
+      `insert into debts(id,user_id,type,category,person_or_entity,principal,past_payments,remaining,status)
+       values($1,$2,'Borç','Test','Test Borcu',300,0,300,'Açık')`,
+      [debt,userA]
+    )
+    const accountBefore = await db.query('select balance from accounts where id=$1',[source])
+
+    const tableOnly = await db.query<{ result: any }>(
+      'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
+      [userA,'2026-09-17',100,'Tablodan düş','Borç Ödemesi',null,debt]
+    )
+    expect(tableOnly.rows[0].result.success).toBe(true)
+    expect(tableOnly.rows[0].result.transaction_id).toBeNull()
+    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
+      .toEqual([{remaining:'200.00',past_payments:'100.00'}])
+    expect((await db.query('select balance from accounts where id=$1',[source])).rows).toEqual(accountBefore.rows)
+
+    const tx = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    await db.query(
+      `insert into transactions(id,user_id,date,type,description,amount,analysis_group,account_id)
+       values($1,$2,'2026-09-17','Harcama','Mevcut banka hareketi',50,'Kişisel',$3)`,
+      [tx,userA,source]
+    )
+    const linked = await db.query<{ result: any }>(
+      'select fn_link_transaction_to_debt_atomic($1,$2,$3) as result',[userA,tx,debt]
+    )
+    expect(linked.rows[0].result.success).toBe(true)
+    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
+      .toEqual([{remaining:'150.00',past_payments:'150.00'}])
+    expect((await db.query('select type,related_debt_id from transactions where id=$1',[tx])).rows)
+      .toEqual([{type:'Borç Ödemesi',related_debt_id:debt}])
+
+    const repeated = await db.query<{ result: any }>(
+      'select fn_link_transaction_to_debt_atomic($1,$2,$3) as result',[userA,tx,debt]
+    )
+    expect(repeated.rows[0].result.already_linked).toBe(true)
+    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
+      .toEqual([{remaining:'150.00',past_payments:'150.00'}])
+
+    const accountPayment = await db.query<{ result: any }>(
+      'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
+      [userA,'2026-09-17',50,'Hesaptan borç ödeme','Borç Ödemesi',source,debt]
+    )
+    expect(accountPayment.rows[0].result.success).toBe(true)
+    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
+      .toEqual([{remaining:'100.00',past_payments:'200.00'}])
+    const accountAfter = await db.query<{balance:string}>('select balance from accounts where id=$1',[source])
+    expect(Number(accountAfter.rows[0].balance)).toBe(Number((accountBefore.rows[0] as any).balance)-50)
+
+    // Keep later aggregate/pagination tests isolated from this scenario.
+    await db.query('delete from transactions where related_debt_id=$1',[debt])
+    await db.query('delete from debts where id=$1',[debt])
+    await db.query('update accounts set balance=$1 where id=$2',[(accountBefore.rows[0] as any).balance,source])
+  })
   it('statement persists atomically, rejects duplicates, and preserves newest summary', async () => {
     await asUser(userA)
     const payload={card_id:'77777777-7777-4777-8777-777777777777',statement_date:'2026-09-01',period_debt:600}
