@@ -42,7 +42,7 @@ export interface RecordCardPaymentParams {
 export interface RecordDebtPaymentParams {
   userId: string
   amount: number
-  sourceAccountId: string
+  sourceAccountId?: string
   debtId: string
   date: string
   description?: string
@@ -51,7 +51,7 @@ export interface RecordDebtPaymentParams {
 export interface RecordReceivableCollectionParams {
   userId: string
   amount: number
-  targetAccountId: string
+  targetAccountId?: string
   receivableId: string
   date: string
   description?: string
@@ -114,7 +114,7 @@ export class FinancialBridge {
     if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
     return this.atomic('fn_record_payment_atomic', {
       p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Borç Ödemesi',
-      p_type: 'Borç Ödemesi', p_account_id: params.sourceAccountId, p_target_id: params.debtId,
+      p_type: 'Borç Ödemesi', p_account_id: params.sourceAccountId || null, p_target_id: params.debtId,
     })
   }
 
@@ -122,7 +122,7 @@ export class FinancialBridge {
     if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
     return this.atomic('fn_record_payment_atomic', {
       p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Alacak Tahsilatı',
-      p_type: 'Tahsilat', p_account_id: params.targetAccountId, p_target_id: params.receivableId,
+      p_type: 'Tahsilat', p_account_id: params.targetAccountId || null, p_target_id: params.receivableId,
     })
   }
 

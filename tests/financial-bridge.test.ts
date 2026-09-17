@@ -134,6 +134,20 @@ describe('Financial Bridge Testleri', () => {
       expect(res.success).toBe(true)
       expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({ p_type: 'Borç Ödemesi', p_amount: 200 }))
     })
+
+    it('Hesap seçilmeden yalnızca borç tablosunu atomik RPC ile güncellemelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: null }, error: null })
+
+      const res = await bridge.recordDebtPayment({ userId: 'u1', amount: 50, debtId: 'd1', date: '2026-01-01' })
+
+      expect(res.success).toBe(true)
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({
+        p_type: 'Borç Ödemesi',
+        p_account_id: null,
+        p_target_id: 'd1',
+      }))
+      expect(mockFrom).not.toHaveBeenCalled()
+    })
   })
 
   describe('Alacak Tahsil Etme (recordReceivableCollection)', () => {
@@ -151,6 +165,19 @@ describe('Financial Bridge Testleri', () => {
       const res = await bridge.recordReceivableCollection({ userId: 'u1', amount: 1000, targetAccountId: 'a1', receivableId: 'r1', date: '2026-01-01' })
       expect(res.success).toBe(true)
       expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({ p_type: 'Tahsilat', p_amount: 1000 }))
+    })
+
+    it('Hesap seçilmeden alacağı yalnızca atomik RPC ile düşürmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: null }, error: null })
+
+      const res = await bridge.recordReceivableCollection({ userId: 'u1', amount: 100, receivableId: 'r1', date: '2026-01-01' })
+
+      expect(res.success).toBe(true)
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({
+        p_type: 'Tahsilat',
+        p_account_id: null,
+        p_target_id: 'r1',
+      }))
     })
   })
 

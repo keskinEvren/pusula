@@ -961,6 +961,18 @@ export interface Database {
         }
         Returns: Json
       }
+      fn_record_payment_atomic: {
+        Args: {
+          p_user_id: string
+          p_date: string
+          p_amount: number
+          p_description: string
+          p_type: 'Kart Ödemesi' | 'Borç Ödemesi' | 'Tahsilat'
+          p_account_id: string | null
+          p_target_id: string
+        }
+        Returns: Json
+      }
       fn_record_transfer_atomic: {
         Args: {
           p_user_id: string
