@@ -10,7 +10,6 @@ const DEFAULT_PATTERNS: Array<{
 }> = [
   // Payments / Transfers (Hariç - Excluded from spending)
   { pattern: /ÖDEME\s*-\s*ENPARA|ODEME\s*-\s*ENPARA/i, name: 'Kart Ödemesi (Enpara)', group: 'Hariç', type: 'Kart Ödemesi' },
-  { pattern: /ÖDEME|ODEME/i, name: 'Kart / Borç Ödemesi', group: 'Hariç', type: 'Kart Ödemesi' },
 
   // Investments / Brokerages / Precious Metals / Crypto (Hariç - Capital / Asset Transfer)
   { pattern: /MİDAS\s*MENKUL|MIDAS\s*MENKUL|\bMİDAS\b|\bMIDAS\b/i, name: 'Midas Yatırım', group: 'Hariç', type: 'Transfer' },
@@ -117,9 +116,6 @@ export function matchMerchant(
 
   // 2. Check built-in patterns
   for (const p of DEFAULT_PATTERNS) {
-    if (p.name === 'Kart / Borç Ödemesi' && /FATURA/i.test(rawDescription)) {
-      continue
-    }
     if (p.pattern.test(rawDescription)) {
       return {
         merchant: p.name,

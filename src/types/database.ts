@@ -45,6 +45,7 @@ export interface Database {
           name: string
           type: string
           balance: number
+          balance_as_of: string | null
           note: string | null
           created_at: string
           updated_at: string
@@ -55,6 +56,7 @@ export interface Database {
           name: string
           type?: string
           balance?: number
+          balance_as_of?: string | null
           note?: string | null
           created_at?: string
           updated_at?: string
@@ -65,6 +67,7 @@ export interface Database {
           name?: string
           type?: string
           balance?: number
+          balance_as_of?: string | null
           note?: string | null
           updated_at?: string
         }
@@ -343,8 +346,13 @@ export interface Database {
           total_transactions: number
           total_amount: number
           file_hash: string | null
-          status: 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
+          status: 'PROCESSING' | 'COMPLETED' | 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
           import_type: 'credit_card' | 'bank_account' | null
+          idempotency_key: string | null
+          source_account_id: string | null
+          source_account_ref: string | null
+          parser_version: string | null
+          completed_at: string | null
           snapshot_data: Json | null
           raw_text: string | null
           created_at: string
@@ -361,8 +369,13 @@ export interface Database {
           total_transactions?: number
           total_amount?: number
           file_hash?: string | null
-          status?: 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
+          status?: 'PROCESSING' | 'COMPLETED' | 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
           import_type?: 'credit_card' | 'bank_account' | null
+          idempotency_key?: string | null
+          source_account_id?: string | null
+          source_account_ref?: string | null
+          parser_version?: string | null
+          completed_at?: string | null
           snapshot_data?: Json | null
           raw_text?: string | null
           created_at?: string
@@ -379,8 +392,13 @@ export interface Database {
           total_transactions?: number
           total_amount?: number
           file_hash?: string | null
-          status?: 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
+          status?: 'PROCESSING' | 'COMPLETED' | 'COMMITTED' | 'ROLLED_BACK' | 'FAILED' | null
           import_type?: 'credit_card' | 'bank_account' | null
+          idempotency_key?: string | null
+          source_account_id?: string | null
+          source_account_ref?: string | null
+          parser_version?: string | null
+          completed_at?: string | null
           snapshot_data?: Json | null
           raw_text?: string | null
         }
@@ -406,6 +424,16 @@ export interface Database {
           target_account_id: string | null
           related_debt_id: string | null
           import_id: string | null
+          source_bank: string | null
+          source_account_ref: string | null
+          source_external_id: string | null
+          source_fingerprint: string | null
+          weak_fingerprint: string | null
+          fingerprint_strength: 'strong' | 'weak' | null
+          classification_status: 'CONFIRMED' | 'HIGH_CONFIDENCE' | 'NEEDS_REVIEW' | 'UNKNOWN' | 'CONFLICTING_RULES'
+          classification_confidence: 'high' | 'medium' | 'low' | null
+          classification_reason: Json
+          import_row_index: number | null
           created_at: string
           updated_at: string
         }
@@ -428,6 +456,16 @@ export interface Database {
           target_account_id?: string | null
           related_debt_id?: string | null
           import_id?: string | null
+          source_bank?: string | null
+          source_account_ref?: string | null
+          source_external_id?: string | null
+          source_fingerprint?: string | null
+          weak_fingerprint?: string | null
+          fingerprint_strength?: 'strong' | 'weak' | null
+          classification_status?: 'CONFIRMED' | 'HIGH_CONFIDENCE' | 'NEEDS_REVIEW' | 'UNKNOWN' | 'CONFLICTING_RULES'
+          classification_confidence?: 'high' | 'medium' | 'low' | null
+          classification_reason?: Json
+          import_row_index?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -450,6 +488,16 @@ export interface Database {
           target_account_id?: string | null
           related_debt_id?: string | null
           import_id?: string | null
+          source_bank?: string | null
+          source_account_ref?: string | null
+          source_external_id?: string | null
+          source_fingerprint?: string | null
+          weak_fingerprint?: string | null
+          fingerprint_strength?: 'strong' | 'weak' | null
+          classification_status?: 'CONFIRMED' | 'HIGH_CONFIDENCE' | 'NEEDS_REVIEW' | 'UNKNOWN' | 'CONFLICTING_RULES'
+          classification_confidence?: 'high' | 'medium' | 'low' | null
+          classification_reason?: Json
+          import_row_index?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -872,6 +920,10 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      fn_commit_statement_import_atomic: {
+        Args: { p_payload: Json }
+        Returns: Json
+      }
       rollback_statement_import: {
         Args: {
           p_import_id: string

@@ -196,6 +196,112 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const pUserB = await db.query('select id from fn_transactions_page()')
     expect(pUserB.rows.length).toBe(0)
   })
+
+  it('statement import is atomic, idempotent and reverses its recorded delta', async () => {
+    await asUser(userA)
+    const before = await db.query<{ balance: string }>('select balance from accounts where id=$1', [source])
+    const payload = {
+      user_id: userA,
+      idempotency_key: 'db-test-import-v1',
+      parser_version: 'db-test-parser-v1',
+      file_name: 'hesap.csv',
+      file_hash: 'db-test-file-hash-v1',
+      import_type: 'bank_account',
+      bank: 'Test Bankası',
+      account_id: source,
+      source_account_ref: 'TR-TEST-1',
+      transactions: [{
+        row_index: 0,
+        date: '2026-09-17',
+        direction: 'outflow',
+        type: 'Harcama',
+        description: 'Atomik import testi',
+        merchant: 'Test',
+        amount: 25,
+        analysis_group: 'Kişisel',
+        action: 'DIRECT_EXPENSE',
+        classification_status: 'HIGH_CONFIDENCE',
+        confidence: 'high',
+        classification_reasons: ['test'],
+        external_reference: 'BANK-REF-ATOMIC-1',
+        source_fingerprint: 'strong-fingerprint-db-test-1',
+        weak_fingerprint: 'weak-fingerprint-db-test-1',
+        fingerprint_strength: 'strong',
+        duplicate_status: 'NEW',
+      }],
+    }
+
+    const first = await db.query<{ result: any }>(
+      'select fn_commit_statement_import_atomic($1::jsonb) as result',
+      [JSON.stringify(payload)]
+    )
+    expect(first.rows[0].result.success).toBe(true)
+    expect(first.rows[0].result.inserted_transactions).toBe(1)
+
+    const after = await db.query<{ balance: string }>('select balance from accounts where id=$1', [source])
+    expect(Number(after.rows[0].balance)).toBe(Number(before.rows[0].balance) - 25)
+
+    const repeated = await db.query<{ result: any }>(
+      'select fn_commit_statement_import_atomic($1::jsonb) as result',
+      [JSON.stringify(payload)]
+    )
+    expect(repeated.rows[0].result.success).toBe(true)
+    expect(repeated.rows[0].result.already_committed).toBe(true)
+
+    const renamedPayload = {
+      ...payload,
+      idempotency_key: 'db-test-import-renamed-v1',
+      file_name: 'hesap-yeniden.csv',
+      file_hash: 'db-test-file-hash-renamed-v1',
+    }
+    const duplicateRows = await db.query<{ result: any }>(
+      'select fn_commit_statement_import_atomic($1::jsonb) as result',
+      [JSON.stringify(renamedPayload)]
+    )
+    expect(duplicateRows.rows[0].result.success).toBe(true)
+    expect(duplicateRows.rows[0].result.inserted_transactions).toBe(0)
+    expect(duplicateRows.rows[0].result.skipped_duplicates).toBe(1)
+
+    const rollbackDuplicateObservation = await db.query<{ result: any }>(
+      'select rollback_statement_import($1::uuid,$2::uuid) as result',
+      [duplicateRows.rows[0].result.import_id, userA]
+    )
+    expect(rollbackDuplicateObservation.rows[0].result.success).toBe(true)
+
+    const rollback = await db.query<{ result: any }>(
+      'select rollback_statement_import($1::uuid,$2::uuid) as result',
+      [first.rows[0].result.import_id, userA]
+    )
+    expect(rollback.rows[0].result.success).toBe(true)
+    expect(rollback.rows[0].result.deleted_transactions).toBe(1)
+
+    const restored = await db.query<{ balance: string }>('select balance from accounts where id=$1', [source])
+    expect(Number(restored.rows[0].balance)).toBe(Number(before.rows[0].balance))
+
+    const foreignProject = '77777777-7777-4777-8777-777777777777'
+    await asUser(userB)
+    await db.query(
+      'insert into projects(id,user_id,name,slug) values ($1,$2,$3,$4)',
+      [foreignProject, userB, 'Foreign Project', 'foreign-project']
+    )
+    await asUser(userA)
+    const crossTenantPayload = {
+      ...payload,
+      idempotency_key: 'db-test-cross-tenant-v1',
+      file_hash: 'db-test-cross-tenant-file-v1',
+      transactions: [{
+        ...payload.transactions[0],
+        project_id: foreignProject,
+        external_reference: 'BANK-REF-CROSS-TENANT-1',
+        source_fingerprint: 'strong-fingerprint-cross-tenant-1',
+        weak_fingerprint: 'weak-fingerprint-cross-tenant-1',
+      }],
+    }
+    await expect(db.query(
+      'select fn_commit_statement_import_atomic($1::jsonb)',
+      [JSON.stringify(crossTenantPayload)]
+    )).rejects.toThrow(/kullanıcıya ait değil/)
+  })
 })
 
 

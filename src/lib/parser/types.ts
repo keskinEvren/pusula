@@ -10,6 +10,21 @@ export type ReconciliationActionType =
   | 'CASH_ADVANCE'        // Kredi Kartından Nakit Avans Çekimi (Borç Artışı)
   | 'INVESTMENT_TRANSFER' // Yatırım & Varlık Transferi (Hariç - Portföy / Sermaye)
 
+export type ClassificationStatus =
+  | 'CONFIRMED'
+  | 'HIGH_CONFIDENCE'
+  | 'NEEDS_REVIEW'
+  | 'UNKNOWN'
+  | 'CONFLICTING_RULES'
+
+export type DuplicateStatus =
+  | 'NEW'
+  | 'EXACT_DUPLICATE'
+  | 'POSSIBLE_DUPLICATE'
+  | 'USER_CONFIRMED_NEW'
+
+export type FingerprintStrength = 'strong' | 'weak'
+
 export interface ExtractedTransaction {
   id: string
   date: string
@@ -23,6 +38,18 @@ export interface ExtractedTransaction {
   project_id?: string
   confidence: 'high' | 'medium' | 'low'
   selected: boolean
+
+  // Source identity & import safety
+  external_reference?: string
+  balance_after?: number
+  source_fingerprint?: string
+  weak_fingerprint?: string
+  fingerprint_strength?: FingerprintStrength
+  duplicate_status?: DuplicateStatus
+
+  // Explainable, risk-aware classification
+  classification_status?: ClassificationStatus
+  classification_reasons?: string[]
 
   // Reconciliation Target References
   action?: ReconciliationActionType
@@ -43,6 +70,7 @@ export interface BankDetectionResult {
   prev_debt?: number
   interest_fees?: number
   closing_balance?: number
+  source_account_ref?: string
 }
 
 export interface ParseResult {
@@ -59,6 +87,7 @@ export interface ParseResult {
   prev_debt?: number
   interest_fees?: number
   closing_balance?: number
+  source_account_ref?: string
   transactions: ExtractedTransaction[]
   error?: string
 }

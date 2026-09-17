@@ -1,4 +1,4 @@
-import type { ExtractedTransaction, ReconciliationActionType } from './types'
+import type { ClassificationStatus, ExtractedTransaction, ReconciliationActionType } from './types'
 import { matchMerchant } from './merchant-matcher'
 import type { Debt, CreditCard, Project, MerchantMapping } from '@/types/database'
 
@@ -11,6 +11,24 @@ export interface ReconciliationSuggestion {
   target_debt_id?: string
   project_id?: string
   confidence: 'high' | 'medium' | 'low'
+  classification_status: ClassificationStatus
+  reasons: string[]
+}
+
+function findUniqueCardMatch(description: string, creditCards: CreditCard[]): {
+  card?: CreditCard
+  ambiguous: boolean
+} {
+  const matchLevels = [
+    creditCards.filter((card) => card.last_four && description.includes(card.last_four)),
+    creditCards.filter((card) => card.card_name && description.includes(card.card_name.toUpperCase())),
+    creditCards.filter((card) => card.bank && description.includes(card.bank.toUpperCase())),
+  ]
+  const strongestMatches = matchLevels.find((matches) => matches.length > 0) || []
+  return {
+    card: strongestMatches.length === 1 ? strongestMatches[0] : undefined,
+    ambiguous: strongestMatches.length > 1,
+  }
 }
 
 /**
@@ -26,6 +44,7 @@ export function reconcileBankMovement(
   userMappings: MerchantMapping[] = []
 ): ReconciliationSuggestion {
   const upper = rawDescription.toUpperCase().trim()
+  const hasKkToken = /(?:^|\s|[-/])KK(?:$|\s|[-/])/.test(upper)
 
   // =========================================================================
   // 1. GELEN PARA (INFLOW) UZLAŞTIRMASI
@@ -48,6 +67,8 @@ export function reconcileBankMovement(
         analysis_group: 'Hariç',
         merchant: 'Aile Desteği / Transfer',
         confidence: 'high',
+        classification_status: 'HIGH_CONFIDENCE',
+        reasons: ['Gelen hareket aile desteği anahtar kelimeleriyle eşleşti.'],
       }
     }
 
@@ -55,18 +76,10 @@ export function reconcileBankMovement(
     if (
       upper.includes('NAKİT AVANS') ||
       upper.includes('NAKIT AVANS') ||
-      (upper.includes('KK') && upper.includes('AVANS'))
+          (hasKkToken && upper.includes('AVANS'))
     ) {
-      let matchedCard = creditCards.find(
-        (c) =>
-          (c.last_four && upper.includes(c.last_four)) ||
-          upper.includes(c.bank.toUpperCase()) ||
-          upper.includes(c.card_name.toUpperCase())
-      )
-
-      if (!matchedCard && creditCards.length > 0) {
-        matchedCard = creditCards[0]
-      }
+      const cardMatch = findUniqueCardMatch(upper, creditCards)
+      const matchedCard = cardMatch.card
 
       return {
         action: 'CASH_ADVANCE',
@@ -74,7 +87,13 @@ export function reconcileBankMovement(
         analysis_group: 'Hariç',
         merchant: matchedCard ? `Nakit Avans (${matchedCard.bank})` : 'Kredi Kartı Nakit Avans',
         target_card_id: matchedCard?.id,
-        confidence: 'high',
+        confidence: matchedCard ? 'high' : 'low',
+        classification_status: matchedCard ? 'HIGH_CONFIDENCE' : 'NEEDS_REVIEW',
+        reasons: matchedCard
+          ? ['Nakit avans ifadesi ve benzersiz kart kimliği eşleşti.']
+          : [cardMatch.ambiguous
+              ? 'Nakit avans ifadesi birden fazla kartla eşleşti; hedef kart seçilmelidir.'
+              : 'Nakit avans ifadesi bulundu ancak hedef kart doğrulanamadı.'],
       }
     }
 
@@ -99,6 +118,8 @@ export function reconcileBankMovement(
           merchant: `Tahsilat: ${rec.person_or_entity}`,
           target_debt_id: rec.id,
           confidence: 'high',
+          classification_status: 'NEEDS_REVIEW',
+          reasons: ['Alacak adı/kategorisi eşleşti; finansal etki kullanıcı onayı gerektirir.'],
         }
       }
 
@@ -111,6 +132,8 @@ export function reconcileBankMovement(
           merchant: `Tahsilat: ${rec.person_or_entity}`,
           target_debt_id: rec.id,
           confidence: 'high',
+          classification_status: 'NEEDS_REVIEW',
+          reasons: ['Yalnızca tutar eşleşti; birden fazla gerçek işlem olabileceği için onay gerekir.'],
         }
       }
     }
@@ -122,6 +145,8 @@ export function reconcileBankMovement(
       analysis_group: 'Hariç',
       merchant: rawDescription.replace(/^(?:GELEN\s+EFT|GELEN\s+HAVALE|GELEN\s+FAST)\s*[-:,]?\s*/i, '').trim() || 'Gelen Transfer',
       confidence: 'medium',
+      classification_status: 'HIGH_CONFIDENCE',
+      reasons: ['Gelen hareket için yüksek riskli bir entity eşleşmesi bulunmadı.'],
     }
   }
 
@@ -135,11 +160,7 @@ export function reconcileBankMovement(
     upper.includes('KREDI KARTI') ||
     upper.includes('KK TAHSİLAT') ||
     upper.includes('KK TAHSILAT') ||
-    upper.includes('KK ODEME') ||
-    upper.includes('KK ÖDEME') ||
-    upper.includes('KK OTOMATİK ÖDEME') ||
-    upper.includes('KK OTOMATIK ODEME') ||
-    (upper.includes('KK') && (upper.includes('ÖDEME') || upper.includes('ODEME') || upper.includes('TAHSİLAT') || upper.includes('TAHSILAT'))) ||
+    (hasKkToken && (upper.includes('ÖDEME') || upper.includes('ODEME') || upper.includes('TAHSİLAT') || upper.includes('TAHSILAT'))) ||
     upper.includes('KK BORÇ') ||
     upper.includes('KK BORC') ||
     upper.includes('KART BORC') ||
@@ -150,16 +171,8 @@ export function reconcileBankMovement(
     upper.includes('TALİMATLI KREDİ KARTI') ||
     upper.includes('TALIMATLI KREDI KARTI')
   ) {
-    let matchedCard = creditCards.find(
-      (c) =>
-        (c.last_four && upper.includes(c.last_four)) ||
-        upper.includes(c.bank.toUpperCase()) ||
-        upper.includes(c.card_name.toUpperCase())
-    )
-
-    if (!matchedCard && creditCards.length > 0) {
-      matchedCard = creditCards[0]
-    }
+    const cardMatch = findUniqueCardMatch(upper, creditCards)
+    const matchedCard = cardMatch.card
 
     return {
       action: 'CARD_PAYMENT',
@@ -167,7 +180,13 @@ export function reconcileBankMovement(
       analysis_group: 'Hariç',
       merchant: matchedCard ? `Kart Ödemesi (${matchedCard.bank})` : 'Kredi Kartı Ödemesi',
       target_card_id: matchedCard?.id,
-      confidence: 'high',
+      confidence: matchedCard ? 'high' : 'low',
+      classification_status: matchedCard ? 'HIGH_CONFIDENCE' : 'NEEDS_REVIEW',
+      reasons: matchedCard
+        ? ['Kart ödeme ifadesi ve benzersiz kart kimliği eşleşti.']
+        : [cardMatch.ambiguous
+            ? 'Kart ödeme ifadesi birden fazla kartla eşleşti; hedef kart seçilmelidir.'
+            : 'Kart ödeme ifadesi bulundu ancak hedef kart doğrulanamadı.'],
     }
   }
 
@@ -186,6 +205,8 @@ export function reconcileBankMovement(
       analysis_group: 'Kişisel',
       merchant: 'Aile Desteği / Harçlık',
       confidence: 'high',
+      classification_status: 'HIGH_CONFIDENCE',
+      reasons: ['Aile desteği anahtar kelimeleri eşleşti; başka finansal entity etkilenmez.'],
     }
   }
 
@@ -204,6 +225,8 @@ export function reconcileBankMovement(
         merchant: `Borç Ödemesi: ${debt.person_or_entity}`,
         target_debt_id: debt.id,
         confidence: 'high',
+        classification_status: 'NEEDS_REVIEW',
+        reasons: ['Borç sahibi adı eşleşti; borç bakiyesi değişikliği onay gerektirir.'],
       }
     }
   }
@@ -221,6 +244,8 @@ export function reconcileBankMovement(
       analysis_group: 'Hariç',
       merchant: 'Hesaplar Arası Transfer',
       confidence: 'high',
+      classification_status: 'NEEDS_REVIEW',
+      reasons: ['İç transfer ifadesi bulundu; hedef hesap doğrulanmalıdır.'],
     }
   }
 
@@ -255,6 +280,8 @@ export function reconcileBankMovement(
       merchant: matched.merchant || 'Yatırım / Varlık Transferi',
       project_id: matched.project_id,
       confidence: 'high',
+      classification_status: 'HIGH_CONFIDENCE',
+      reasons: ['Yatırım kuruluşu veya varlık transferi ifadesi eşleşti.'],
     }
   }
 
@@ -269,6 +296,10 @@ export function reconcileBankMovement(
       merchant,
       project_id,
       confidence: 'high',
+      classification_status: mappedType === 'Transfer' ? 'HIGH_CONFIDENCE' : 'NEEDS_REVIEW',
+      reasons: mappedType === 'Transfer'
+        ? ['Kullanıcı veya merchant kuralı işlemi tüketim dışı transfer olarak eşledi.']
+        : ['Yüksek riskli ödeme sınıflandırması için yapılandırılmış hedef kanıtı eksik.'],
     }
   }
 
@@ -279,5 +310,7 @@ export function reconcileBankMovement(
     merchant,
     project_id,
     confidence: 'medium',
+    classification_status: 'HIGH_CONFIDENCE',
+    reasons: ['Yüksek riskli bir finansal eşleşme bulunmadı; normal gider olarak önerildi.'],
   }
 }
