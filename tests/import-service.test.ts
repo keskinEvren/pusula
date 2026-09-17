@@ -123,21 +123,17 @@ describe('Import Service Testleri', () => {
   })
 
   describe('Geri Alma İşlemleri (Rollback)', () => {
-    it('Zaten ROLLED_BACK durumundaki ekstreyi reddetmelidir', async () => {
-      mockRpc.mockRejectedValueOnce(new Error('no rpc')) // trigger fallback
-      mockSingle.mockResolvedValueOnce({
-        data: { id: 'import1', raw_text: JSON.stringify({ status: 'ROLLED_BACK' }) },
-        error: null
-      })
+    it('Atomik servis yoksa istemci tarafı geri almaya düşmemelidir', async () => {
+      mockRpc.mockRejectedValueOnce(new Error('no rpc'))
       
       const res = await rollbackImportBatch(mockSupabase, 'import1', 'user1')
       expect(res.success).toBe(false)
-      expect(res.error).toMatch(/daha önce geri alınmış/)
+      expect(res.error).toMatch(/no rpc/)
+      expect(mockFrom).not.toHaveBeenCalled()
     })
 
-    it('Yetkisiz veya bulunamayan kayıt için reddetmelidir', async () => {
-      mockRpc.mockRejectedValueOnce(new Error('no rpc'))
-      mockSingle.mockResolvedValueOnce({ data: null, error: { message: 'Not found' } })
+    it('RPC tarafından bildirilen yetkisiz/bulunamayan kaydı reddetmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: false, error: 'Ekstre bulunamadı.' }, error: null })
       
       const res = await rollbackImportBatch(mockSupabase, 'import1', 'user1')
       expect(res.success).toBe(false)
@@ -194,12 +190,12 @@ describe('Import Service Testleri', () => {
       expect(res.error).toMatch(/seçili hareket bulunamadı/)
     })
 
-    it('Kart snapshot alarak ekstre kaydedebilmelidir', async () => {
-      // Mock db sonuclari
+    it('Ekstreyi tek atomik RPC ile kaydedebilmelidir', async () => {
       const mockCard = { id: 'c1', current_debt: 100, bank: 'Test Bank' }
-      mockEq.mockResolvedValueOnce({ data: [mockCard], error: null }) // select db cards
-      mockSingle.mockResolvedValueOnce({ data: { id: 'imp-1' }, error: null }) // insert statement import
-      mockInsert.mockReturnValueOnce({ select: mockSelect, single: mockSingle }) // statement import
+      mockRpc.mockResolvedValueOnce({
+        data: { success: true, import_id: 'imp-1', inserted_transactions: 1, skipped_duplicates: 0 },
+        error: null,
+      })
       
       const res = await commitStatementBatch({
         supabase: mockSupabase,
@@ -216,8 +212,13 @@ describe('Import Service Testleri', () => {
         debts: [],
       })
       
-      expect(mockFrom).toHaveBeenCalledWith('statement_imports')
-      expect(mockFrom).toHaveBeenCalledWith('transactions')
+      expect(res.success).toBe(true)
+      expect(res.importId).toBe('imp-1')
+      expect(mockRpc).toHaveBeenCalledTimes(1)
+      expect(mockRpc).toHaveBeenCalledWith('fn_commit_statement_import_atomic', expect.objectContaining({
+        p_payload: expect.objectContaining({ card_id: 'c1', import_type: 'credit_card' }),
+      }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
   })
 

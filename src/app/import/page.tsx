@@ -30,6 +30,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { calculateFileHash } from '@/lib/hash'
 import {
   checkDuplicateFileHash,
+  annotateDuplicateTransactions,
   sortStatementsChronologically,
   commitStatementBatch,
 } from '@/lib/import-service'
@@ -265,6 +266,13 @@ export default function ImportPage() {
           }
         }
 
+        const annotatedTransactions = user
+          ? await annotateDuplicateTransactions(supabase, user.id, result.transactions, {
+              sourceBank: result.detected_bank,
+              sourceAccountRef: result.source_account_ref || matchedAccountId || matchedCardId,
+            })
+          : result.transactions
+
         setQueuedFiles((prev) =>
           prev.map((f) =>
             f.id === item.id
@@ -274,7 +282,7 @@ export default function ImportPage() {
                   status: isDuplicate ? 'duplicate' : 'ready',
                   duplicateWarning,
                   parseResult: result,
-                  transactions: result.transactions,
+                  transactions: annotatedTransactions,
                   selectedCardId: matchedCardId,
                   selectedAccountId: matchedAccountId,
                 }
@@ -328,7 +336,14 @@ export default function ImportPage() {
         if (f.id !== fileId) return f
         return {
           ...f,
-          transactions: f.transactions.map((t) => ({ ...t, selected: select })),
+          transactions: f.transactions.map((t) => ({
+            ...t,
+            selected: t.duplicate_status === 'EXACT_DUPLICATE' ? false : select,
+            duplicate_status:
+              select && t.duplicate_status === 'POSSIBLE_DUPLICATE'
+                ? 'USER_CONFIRMED_NEW'
+                : t.duplicate_status,
+          })),
         }
       })
     )
@@ -345,7 +360,22 @@ export default function ImportPage() {
         if (f.id !== fileId) return f
         return {
           ...f,
-          transactions: f.transactions.map((t) => (t.id === txId ? { ...t, [field]: value } : t)),
+          transactions: f.transactions.map((t) => {
+            if (t.id !== txId) return t
+            const next = { ...t, [field]: value }
+            if (field === 'selected' && value === true && t.duplicate_status === 'POSSIBLE_DUPLICATE') {
+              next.duplicate_status = 'USER_CONFIRMED_NEW'
+            }
+            if ((field === 'target_card_id' || field === 'target_debt_id') && value) {
+              next.classification_status = 'CONFIRMED'
+              next.selected = true
+              next.classification_reasons = [
+                ...(t.classification_reasons || []),
+                'Finansal hedef kullanıcı tarafından doğrulandı.',
+              ]
+            }
+            return next
+          }),
         }
       })
     )
@@ -365,6 +395,10 @@ export default function ImportPage() {
             if (t.id !== txId) return t
             let newType = t.type
             let newGroup = t.analysis_group
+            const requiresTarget = newAction === 'CARD_PAYMENT'
+              || newAction === 'CASH_ADVANCE'
+              || newAction === 'COLLECT_RECEIVABLE'
+              || newAction === 'PAY_DEBT'
 
             if (newAction === 'CARD_PAYMENT') {
               newType = 'Kart Ödemesi'
@@ -397,6 +431,15 @@ export default function ImportPage() {
               action: newAction,
               type: newType,
               analysis_group: newGroup,
+              classification_status: requiresTarget
+                ? ((newAction === 'CARD_PAYMENT' || newAction === 'CASH_ADVANCE') ? t.target_card_id : t.target_debt_id)
+                  ? 'CONFIRMED'
+                  : 'NEEDS_REVIEW'
+                : 'CONFIRMED',
+              classification_reasons: ['İşlem aksiyonu kullanıcı tarafından seçildi.'],
+              selected: requiresTarget
+                ? Boolean((newAction === 'CARD_PAYMENT' || newAction === 'CASH_ADVANCE') ? t.target_card_id : t.target_debt_id)
+                : t.duplicate_status !== 'EXACT_DUPLICATE',
             }
           }),
         }
@@ -1204,6 +1247,7 @@ export default function ImportPage() {
                                 <input
                                   type="checkbox"
                                   checked={tx.selected !== false}
+                                  disabled={tx.duplicate_status === 'EXACT_DUPLICATE'}
                                   onChange={(e) =>
                                     handleRowFieldChange(
                                       item.id,
@@ -1231,6 +1275,13 @@ export default function ImportPage() {
 
                             <div className="text-muted-foreground text-[11px] truncate" title={tx.raw_description}>
                               {tx.raw_description}
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {tx.duplicate_status === 'EXACT_DUPLICATE' && <Badge variant="warning">Daha önce içe aktarılmış</Badge>}
+                              {tx.duplicate_status === 'POSSIBLE_DUPLICATE' && <Badge variant="warning">Muhtemel duplicate</Badge>}
+                              {tx.duplicate_status === 'NEW' && <Badge variant="success">Yeni</Badge>}
+                              {tx.classification_status === 'NEEDS_REVIEW' && <Badge variant="outline">İnceleme gerekli</Badge>}
                             </div>
 
                             <div className="space-y-1">
@@ -1392,6 +1443,7 @@ export default function ImportPage() {
                                   <input
                                     type="checkbox"
                                     checked={tx.selected !== false}
+                                    disabled={tx.duplicate_status === 'EXACT_DUPLICATE'}
                                     onChange={(e) =>
                                       handleRowFieldChange(
                                         item.id,
@@ -1410,7 +1462,13 @@ export default function ImportPage() {
                                   className="p-2.5 max-w-xs truncate text-muted-foreground font-sans"
                                   title={tx.raw_description}
                                 >
-                                  {tx.raw_description}
+                                  <div>{tx.raw_description}</div>
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {tx.duplicate_status === 'EXACT_DUPLICATE' && <Badge variant="warning">İçe aktarılmış</Badge>}
+                                    {tx.duplicate_status === 'POSSIBLE_DUPLICATE' && <Badge variant="warning">Muhtemel duplicate</Badge>}
+                                    {tx.duplicate_status === 'NEW' && <Badge variant="success">Yeni</Badge>}
+                                    {tx.classification_status === 'NEEDS_REVIEW' && <Badge variant="outline">İnceleme gerekli</Badge>}
+                                  </div>
                                 </td>
                                 <td className="p-2.5 font-sans">
                                   <Input

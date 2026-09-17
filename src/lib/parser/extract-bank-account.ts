@@ -6,6 +6,16 @@ import type { ParseResult, ExtractedTransaction } from './types'
 import type { Debt, CreditCard, MerchantMapping } from '@/types/database'
 import { formatLocalDateInput } from '../utils'
 
+function extractSourceAccountRef(text: string): string | undefined {
+  const compact = text.replace(/\s+/g, ' ')
+  const iban = compact.match(/\bTR\s*\d{2}(?:\s*\d){22}\b/i)?.[0]
+    || compact.match(/\bTR\d{24}\b/i)?.[0]
+  if (iban) return iban.replace(/\s+/g, '').toUpperCase()
+
+  const account = compact.match(/(?:Müşteri\/Hesap No|Hesap No)\s*:?\s*([A-Z0-9-]{5,})/i)?.[1]
+  return account?.toUpperCase()
+}
+
 /**
  * Parses raw text lines from Turkish bank account statements (Vadesiz Hesap Özeti)
  * Handles dual columns (Tutar + Bakiye), multi-line FAST explanations, and 2-digit years.
@@ -30,6 +40,7 @@ export function parseBankAccountLines(
     rawAmountStr: string
     balanceStr?: string
     borcAlacakFlag?: string
+    externalReference?: string
   }
 
   const movements: IntermediateMovement[] = []
@@ -77,7 +88,7 @@ export function parseBankAccountLines(
 
       // Check for dual amount format at end of line: [Tutar TL] [Bakiye TL] (with optional A/B and optional trailing reference number like A012B)
       // e.g. "Gelen Transfer 7.000,00 TL 6.849,61 TL" or "Lehdar= EVREN -8.398,08 TL 0,00 TL A012B"
-      const dualMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?(?:\s+[A-Za-z0-9]{3,20})?$/i)
+      const dualMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?(?:\s+([A-Za-z0-9]{3,20}))?$/i)
 
       if (dualMatch) {
         currentMovement = {
@@ -86,16 +97,18 @@ export function parseBankAccountLines(
           rawAmountStr: dualMatch[2].trim(), // Exact transaction amount!
           balanceStr: dualMatch[3].trim(),   // Account balance!
           borcAlacakFlag: dualMatch[4]?.toUpperCase(),
+          externalReference: dualMatch[5],
         }
       } else {
         // Single amount fallback: [Açıklama] [Tutar TL] (with optional A/B and optional trailing reference)
-        const singleMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?(?:\s+[A-Za-z0-9]{3,20})?$/i)
+        const singleMatch = rest.match(/^(.*?)\s+([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})\s*(?:TL|TRY)?(?:\s*\((A|B)\))?(?:\s+([A-Za-z0-9]{3,20}))?$/i)
         if (singleMatch) {
           currentMovement = {
             date: parsedDate,
             descriptionParts: [singleMatch[1].trim()],
             rawAmountStr: singleMatch[2].trim(),
             borcAlacakFlag: singleMatch[3]?.toUpperCase(),
+            externalReference: singleMatch[4],
           }
         }
       }
@@ -148,6 +161,8 @@ export function parseBankAccountLines(
     const absAmount = parseFloat(cleanAmountStr)
     if (isNaN(absAmount) || absAmount === 0) continue
 
+    const balanceAfter = mov.balanceStr ? parseFlexibleAmount(mov.balanceStr) : undefined
+
     // Run Smart Reconciliation Engine
     const suggestion = reconcileBankMovement(
       fullDesc,
@@ -173,7 +188,11 @@ export function parseBankAccountLines(
       target_debt_id: suggestion.target_debt_id,
       project_id: suggestion.project_id,
       confidence: suggestion.confidence,
-      selected: true,
+      classification_status: suggestion.classification_status,
+      classification_reasons: suggestion.reasons,
+      external_reference: mov.externalReference,
+      balance_after: balanceAfter,
+      selected: suggestion.classification_status !== 'NEEDS_REVIEW' && suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
 
@@ -207,6 +226,7 @@ export function extractFromHtmlBankAccount(
     desc: string
     amountStr: string
     balanceStr?: string
+    externalReference?: string
   }
 
   const rawRows: IntermediateRow[] = []
@@ -274,6 +294,7 @@ export function extractFromHtmlBankAccount(
         desc: desc.trim(),
         amountStr: amountStr.trim(),
         balanceStr: balanceStr ? balanceStr.trim() : undefined,
+        externalReference: cells.length >= 5 ? cells[1]?.trim() || undefined : undefined,
       })
     }
   }
@@ -346,7 +367,11 @@ export function extractFromHtmlBankAccount(
       target_debt_id: suggestion.target_debt_id,
       project_id: suggestion.project_id,
       confidence: suggestion.confidence,
-      selected: true,
+      classification_status: suggestion.classification_status,
+      classification_reasons: suggestion.reasons,
+      external_reference: row.externalReference,
+      balance_after: row.balanceStr ? parseFlexibleAmount(row.balanceStr) : undefined,
+      selected: suggestion.classification_status !== 'NEEDS_REVIEW' && suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
 
@@ -373,7 +398,7 @@ export function parseBankAccountTable(
 
   // Scan for header row
   let headerIdx = -1
-  let colMap = { date: -1, amount: -1, debit: -1, credit: -1, balance: -1, desc: -1 }
+  let colMap = { date: -1, amount: -1, debit: -1, credit: -1, balance: -1, desc: -1, reference: -1 }
 
   for (let r = 0; r < Math.min(rows.length, 30); r++) {
     const row = (rows[r] || []).map((c) => fixWindows1254Text(String(c || '')).trim())
@@ -387,6 +412,7 @@ export function parseBankAccountTable(
     const credit = row.findIndex((c) => /^(?:alacak|gelen|giriş|giris)$/i.test(c))
     const desc = row.findIndex((c) => /a[çc][ıi]klama|detay|i[şs]lem/i.test(c))
     const bal = row.findIndex((c) => /bakiye|balance/i.test(c))
+    const reference = row.findIndex((c) => /referans|reference|fiş|fis|işlem no|islem no/i.test(c))
 
     if (d !== -1 && (a !== -1 || (debit !== -1 && credit !== -1) || desc !== -1)) {
       headerIdx = r
@@ -397,6 +423,7 @@ export function parseBankAccountTable(
         credit,
         balance: bal,
         desc: desc !== -1 ? desc : row.length > 3 ? 3 : 1,
+        reference,
       }
       break
     }
@@ -423,6 +450,7 @@ export function parseBankAccountTable(
     amount: number
     direction: 'inflow' | 'outflow'
     balanceStr?: string
+    externalReference?: string
   }
 
   const rawMovements: IntermediateRow[] = []
@@ -490,6 +518,7 @@ export function parseBankAccountTable(
       amount: absAmount,
       direction: isOutflow ? 'outflow' : 'inflow',
       balanceStr: balStr,
+      externalReference: colMap.reference !== -1 ? String(row[colMap.reference] || '').trim() || undefined : undefined,
     })
   }
 
@@ -531,7 +560,11 @@ export function parseBankAccountTable(
       target_debt_id: suggestion.target_debt_id,
       project_id: suggestion.project_id,
       confidence: suggestion.confidence,
-      selected: true,
+      classification_status: suggestion.classification_status,
+      classification_reasons: suggestion.reasons,
+      external_reference: mov.externalReference,
+      balance_after: mov.balanceStr ? parseFlexibleAmount(mov.balanceStr) : undefined,
+      selected: suggestion.classification_status !== 'NEEDS_REVIEW' && suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
 
@@ -564,6 +597,7 @@ export async function parseBankAccountFile(
         file_name: file.name,
         import_type: 'bank_account',
         detected_bank,
+        source_account_ref: extractSourceAccountRef(htmlContent),
         closing_balance,
         transactions,
         error: transactions.length === 0 ? 'HTML dosyasında hareket satırları tespit edilemedi.' : undefined,
@@ -590,6 +624,7 @@ export async function parseBankAccountFile(
         file_name: file.name,
         import_type: 'bank_account',
         detected_bank,
+        source_account_ref: extractSourceAccountRef(rawText),
         closing_balance,
         transactions,
         error: transactions.length === 0 ? 'Vadesiz hesap hareket satırları tespit edilemedi.' : undefined,
@@ -627,6 +662,7 @@ export async function parseBankAccountFile(
         file_name: file.name,
         import_type: 'bank_account',
         detected_bank,
+        source_account_ref: extractSourceAccountRef(jsonData.flat().join(' ')),
         closing_balance,
         transactions,
         error: transactions.length === 0 ? 'CSV/Excel dosyasında hareket satırları tespit edilemedi.' : undefined,

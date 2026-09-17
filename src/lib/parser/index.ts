@@ -291,6 +291,11 @@ export function parseStatementLines(
       recurrence: finalRecurrence,
       project_id,
       confidence: 'high',
+      classification_status: finalType === 'Kart Ödemesi' ? 'NEEDS_REVIEW' : 'HIGH_CONFIDENCE',
+      classification_reasons: finalType === 'Kart Ödemesi'
+        ? ['Ekstre satırı ödeme olarak algılandı; finansal etki için hedef doğrulaması gerekir.']
+        : ['Kredi kartı ekstresi satırı deterministik parser kurallarıyla sınıflandırıldı.'],
+      duplicate_status: 'NEW',
       selected: finalGroup !== 'Hariç',
     })
   }

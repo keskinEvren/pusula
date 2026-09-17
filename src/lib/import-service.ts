@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { StatementImport, Transaction, CreditCard, Account, Debt } from '../types/database'
 import type { ExtractedTransaction, ParseResult } from './parser/types'
-import { calculateStatementChange } from './finance-engine'
+import { attachTransactionIdentities, IMPORT_PARSER_VERSION, type ImportIdentityContext } from './import-identity'
+import { calculateFileHash } from './hash'
 
 export type ImportBatchStatus = 'PROCESSING' | 'COMPLETED' | 'ROLLED_BACK' | 'FAILED'
 
@@ -161,6 +162,51 @@ export async function checkDuplicateFileHash(
   return { isDuplicate: false }
 }
 
+export async function annotateDuplicateTransactions(
+  supabase: SupabaseClient,
+  userId: string,
+  transactions: ExtractedTransaction[],
+  context: ImportIdentityContext
+): Promise<ExtractedTransaction[]> {
+  const identified = await attachTransactionIdentities(transactions, context)
+
+  let existingRows: Array<{ source_fingerprint?: string | null; weak_fingerprint?: string | null }> = []
+  try {
+    const { data, error } = await (supabase.from('transactions') as any)
+      .select('source_fingerprint, weak_fingerprint')
+      .eq('user_id', userId)
+    if (!error && data) existingRows = data
+  } catch {
+    // A deployment may parse files before the safety migration is installed.
+    // Identity is still attached; commit will fail closed if the atomic RPC is absent.
+  }
+
+  const strongSeen = new Set(existingRows.map((row) => row.source_fingerprint).filter(Boolean) as string[])
+  const weakSeen = new Set(existingRows.map((row) => row.weak_fingerprint).filter(Boolean) as string[])
+
+  return identified.map((transaction) => {
+    const exactDuplicate = transaction.fingerprint_strength === 'strong'
+      && Boolean(transaction.source_fingerprint)
+      && strongSeen.has(transaction.source_fingerprint!)
+    const possibleDuplicate = !exactDuplicate
+      && Boolean(transaction.weak_fingerprint)
+      && weakSeen.has(transaction.weak_fingerprint!)
+
+    if (transaction.source_fingerprint && transaction.fingerprint_strength === 'strong') {
+      strongSeen.add(transaction.source_fingerprint)
+    }
+    if (transaction.weak_fingerprint) weakSeen.add(transaction.weak_fingerprint)
+
+    if (exactDuplicate) {
+      return { ...transaction, duplicate_status: 'EXACT_DUPLICATE' as const, selected: false }
+    }
+    if (possibleDuplicate) {
+      return { ...transaction, duplicate_status: 'POSSIBLE_DUPLICATE' as const, selected: false }
+    }
+    return { ...transaction, duplicate_status: 'NEW' as const }
+  })
+}
+
 /**
  * Fetches all import batches for the user with enriched status, hash, and actual transaction counts.
  */
@@ -249,180 +295,38 @@ export async function rollbackImportBatch(
   importId: string,
   userId: string
 ): Promise<RollbackResult> {
-  // 1. Primary: Atomic PostgreSQL RPC
   try {
     const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rollback_statement_import', {
       p_import_id: importId,
       p_user_id: userId,
     })
 
-    if (!rpcErr && rpcRes) {
-      if (!rpcRes.success) {
-        return {
-          success: false,
-          error: rpcRes.error || 'Ekstre geri alınamadı.',
-          importId,
-          deletedTransactions: 0,
-          deletedStatements: 0,
-        }
-      }
+    if (rpcErr || !rpcRes) {
       return {
-        success: true,
+        success: false,
+        error: rpcErr?.message || 'Atomik geri alma servisine ulaşılamadı; güvenlik için istemci tarafı telafi uygulanmadı.',
         importId,
-        deletedTransactions: rpcRes.deleted_transactions || 0,
-        deletedStatements: rpcRes.deleted_statements || 0,
+        deletedTransactions: 0,
+        deletedStatements: 0,
       }
     }
-  } catch {
-    // Fallback below
-  }
-
-  // 1. Fetch import batch
-  const { data: imp, error: impError } = await supabase
-    .from('statement_imports')
-    .select('*')
-    .eq('id', importId)
-    .eq('user_id', userId)
-    .single()
-
-  if (impError || !imp) {
+    if (!rpcRes.success) {
+      return { success: false, error: rpcRes.error || 'Ekstre geri alınamadı.', importId, deletedTransactions: 0, deletedStatements: 0 }
+    }
+    return {
+      success: true,
+      importId,
+      deletedTransactions: rpcRes.deleted_transactions || 0,
+      deletedStatements: rpcRes.deleted_statements || 0,
+    }
+  } catch (error) {
     return {
       success: false,
-      error: 'Ekstre kaydı bulunamadı veya yetkisiz erişim.',
+      error: error instanceof Error ? error.message : 'Atomik geri alma servisine ulaşılamadı.',
       importId,
       deletedTransactions: 0,
       deletedStatements: 0,
     }
-  }
-
-  const meta = parseBatchMeta(imp)
-  if (meta.status === 'ROLLED_BACK') {
-    return {
-      success: false,
-      error: 'Bu ekstre daha önce geri alınmış.',
-      importId,
-      deletedTransactions: 0,
-      deletedStatements: 0,
-    }
-  }
-
-  const snapshot = meta.snapshot_data || {}
-  let deletedStatements = 0
-
-  // 2. Revert Credit Card state if snapshot exists
-  if (imp.card_id) {
-    if (snapshot.previous_card_state) {
-      const prev = snapshot.previous_card_state
-      await supabase
-        .from('credit_cards')
-        .update({
-          current_debt: prev.current_debt,
-          statement_debt: prev.statement_debt,
-          minimum_payment: prev.minimum_payment,
-          interest_fees: prev.interest_fees,
-          statement_date: prev.statement_date,
-          due_date: prev.due_date,
-        })
-        .eq('id', imp.card_id)
-        .eq('user_id', userId)
-    }
-
-    // Delete associated card_statements
-    const { count } = await supabase
-      .from('card_statements')
-      .delete({ count: 'exact' })
-      .match({ card_id: imp.card_id, statement_date: imp.statement_date })
-
-    deletedStatements = count || 0
-  }
-
-  // 3. Revert Bank Account: delete if created specifically by this batch, otherwise restore previous balance
-  if (snapshot.created_account_id) {
-    await supabase
-      .from('accounts')
-      .delete()
-      .eq('id', snapshot.created_account_id)
-      .eq('user_id', userId)
-  } else if (snapshot.previous_account_state) {
-    const prevAcc = snapshot.previous_account_state
-    await supabase
-      .from('accounts')
-      .update({ balance: prevAcc.balance })
-      .eq('id', prevAcc.account_id)
-      .eq('user_id', userId)
-  }
-
-  if (snapshot.created_card_id) {
-    await supabase
-      .from('credit_cards')
-      .delete()
-      .eq('id', snapshot.created_card_id)
-      .eq('user_id', userId)
-  }
-
-  // 4. Delete auto-discovered subscriptions created during this import
-  if (snapshot.created_subscription_ids && snapshot.created_subscription_ids.length > 0) {
-    await supabase
-      .from('subscriptions')
-      .delete()
-      .in('id', snapshot.created_subscription_ids)
-      .eq('user_id', userId)
-  }
-
-  // 5. Revert debts modified during bank account import
-  if (snapshot.previous_debt_states && snapshot.previous_debt_states.length > 0) {
-    for (const d of snapshot.previous_debt_states) {
-      await supabase
-        .from('debts')
-        .update({
-          remaining: d.remaining,
-          past_payments: d.past_payments,
-          status: d.status,
-        })
-        .eq('id', d.debt_id)
-        .eq('user_id', userId)
-    }
-  }
-
-  // 6. Delete all transactions belonging to this import
-  const { count: deletedTxs, error: delErr } = await supabase
-    .from('transactions')
-    .delete({ count: 'exact' })
-    .eq('import_id', importId)
-    .eq('user_id', userId)
-
-  if (delErr) {
-    return {
-      success: false,
-      error: 'Hareketler silinirken hata oluştu: ' + delErr.message,
-      importId,
-      deletedTransactions: 0,
-      deletedStatements,
-    }
-  }
-
-  // 7. Update statement_imports status to ROLLED_BACK
-  const updatedMeta: ImportBatchMeta = {
-    ...meta,
-    status: 'ROLLED_BACK',
-    rolled_back_at: new Date().toISOString(),
-  }
-
-  await supabase
-    .from('statement_imports')
-    .update({
-      status: 'ROLLED_BACK',
-      rolled_back_at: updatedMeta.rolled_back_at,
-      raw_text: serializeBatchMeta(updatedMeta),
-    })
-    .eq('id', importId)
-    .eq('user_id', userId)
-
-  return {
-    success: true,
-    importId,
-    deletedTransactions: deletedTxs || 0,
-    deletedStatements,
   }
 }
 
@@ -494,6 +398,102 @@ export interface CommitStatementBatchResult {
   error?: string
   insertedTransactionsCount?: number
   createdSubscriptionCount?: number
+  skippedDuplicatesCount?: number
+  alreadyCommitted?: boolean
+}
+
+async function commitStatementBatchAtomic(
+  params: CommitStatementBatchParams
+): Promise<CommitStatementBatchResult> {
+  const selectedTxs = params.transactions.filter((transaction) => transaction.selected !== false)
+  if (selectedTxs.length === 0) {
+    return { success: false, error: 'Kaydedilecek seçili hareket bulunamadı.' }
+  }
+
+  const sourceAccountRef = params.parseResult?.source_account_ref
+    || params.parseResult?.last_four
+    || params.parseResult?.detected_bank
+    || 'unknown-source'
+  const identified = await attachTransactionIdentities(selectedTxs, {
+    sourceBank: params.parseResult?.detected_bank,
+    sourceAccountRef,
+  })
+  const idempotencySeed = params.fileHash
+    || identified.map((transaction) => transaction.source_fingerprint).sort().join('|')
+  const idempotencyKey = await calculateFileHash(
+    `${params.userId}|${params.importType}|${params.fileName}|${idempotencySeed}`
+  )
+
+  const payload = {
+    user_id: params.userId,
+    idempotency_key: idempotencyKey,
+    parser_version: IMPORT_PARSER_VERSION,
+    file_name: params.fileName,
+    file_hash: params.fileHash,
+    import_type: params.importType,
+    bank: params.parseResult?.detected_bank || 'Banka Dökümü',
+    card_name: params.parseResult?.detected_card || null,
+    last_four: params.parseResult?.last_four || null,
+    card_id: params.selectedCardId || null,
+    account_id: params.selectedAccountId || null,
+    source_account_ref: sourceAccountRef,
+    statement_date: params.parseResult?.statement_date || null,
+    due_date: params.parseResult?.due_date || null,
+    statement_debt: params.parseResult?.statement_debt ?? null,
+    minimum_payment: params.parseResult?.minimum_payment ?? null,
+    interest_fees: params.parseResult?.interest_fees ?? null,
+    closing_balance: params.parseResult?.closing_balance ?? null,
+    transactions: identified.map((transaction, index) => ({
+      row_index: index,
+      date: transaction.date,
+      direction: transaction.direction || (transaction.type === 'Gelir' ? 'inflow' : 'outflow'),
+      type: sanitizeTransactionType(transaction.type, transaction.direction === 'inflow' ? 'Gelir' : 'Harcama'),
+      description: transaction.raw_description,
+      merchant: transaction.merchant,
+      amount: transaction.amount,
+      analysis_group: sanitizeAnalysisGroup(transaction.analysis_group),
+      recurrence: transaction.recurrence || null,
+      project_id: transaction.project_id || null,
+      action: transaction.action || null,
+      target_card_id: transaction.target_card_id || null,
+      target_debt_id: transaction.target_debt_id || null,
+      classification_status: transaction.classification_status || 'UNKNOWN',
+      confidence: transaction.confidence,
+      classification_reasons: transaction.classification_reasons || [],
+      external_reference: transaction.external_reference || null,
+      balance_after: transaction.balance_after ?? null,
+      source_fingerprint: transaction.source_fingerprint,
+      weak_fingerprint: transaction.weak_fingerprint,
+      fingerprint_strength: transaction.fingerprint_strength,
+      duplicate_status: transaction.duplicate_status || 'NEW',
+    })),
+  }
+
+  try {
+    const { data, error } = await (params.supabase.rpc as any)('fn_commit_statement_import_atomic', {
+      p_payload: payload,
+    })
+    if (error || !data) {
+      return {
+        success: false,
+        error: error?.message || 'Atomik import servisi yanıt vermedi. Güvenlik için hiçbir istemci tarafı fallback uygulanmadı.',
+      }
+    }
+    if (!data.success) return { success: false, error: data.error || 'Import tamamlanamadı.' }
+    return {
+      success: true,
+      importId: data.import_id,
+      insertedTransactionsCount: data.inserted_transactions || 0,
+      skippedDuplicatesCount: data.skipped_duplicates || 0,
+      alreadyCommitted: Boolean(data.already_committed),
+      createdSubscriptionCount: 0,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Atomik import servisine ulaşılamadı.',
+    }
+  }
 }
 
 /**
@@ -503,632 +503,5 @@ export interface CommitStatementBatchResult {
 export async function commitStatementBatch(
   params: CommitStatementBatchParams
 ): Promise<CommitStatementBatchResult> {
-  const {
-    supabase,
-    userId,
-    fileName,
-    fileHash,
-    importType,
-    parseResult,
-    transactions,
-    selectedCardId,
-    selectedAccountId,
-    cards,
-    accounts,
-    debts,
-  } = params
-
-  const selectedTxs = transactions.filter((t) => t.selected !== false)
-  if (selectedTxs.length === 0) {
-    return { success: false, error: 'Kaydedilecek seçili hareket bulunamadı.' }
-  }
-
-  let createdImportId: string | null = null
-  let createdCardId: string | null = null
-  let createdAccountId: string | null = null
-  const snapshotData: ImportBatchSnapshot = {}
-
-  try {
-    const totalSelectedAmount = selectedTxs.reduce((sum, t) => sum + t.amount, 0)
-    const detectedBankName = parseResult?.detected_bank || 'Banka Dökümü'
-    const detectedCardTitle = parseResult?.detected_card || 'Kredi Kartı'
-
-    // Always fetch latest cards from database to prevent stale in-memory data
-    let dbLatestCards: CreditCard[] | null = null
-    try {
-      const query = supabase.from('credit_cards').select('*')
-      if (typeof query?.eq === 'function') {
-        const { data } = await query.eq('user_id', userId)
-        dbLatestCards = data
-      }
-    } catch {
-      // Graceful fallback to passed cards array
-    }
-
-    const activeCards: CreditCard[] =
-      dbLatestCards && dbLatestCards.length > 0 ? dbLatestCards : cards
-
-    // =======================================================================
-    // MOD A: KREDİ KARTI EKSTRESİ
-    // =======================================================================
-    if (importType === 'credit_card') {
-      let resolvedCardId = selectedCardId
-      const statementDebtValue = parseResult?.statement_debt ?? totalSelectedAmount
-      const minPaymentValue = parseResult?.minimum_payment ?? Math.round(statementDebtValue * 0.2)
-      const interestFeesValue = parseResult?.interest_fees ?? 0
-
-      // Match target card (prioritize last_four if available)
-      let targetCard = activeCards.find(
-        (c) =>
-          (resolvedCardId && c.id === resolvedCardId) ||
-          (!resolvedCardId &&
-            parseResult?.last_four &&
-            (c.last_four === parseResult.last_four || c.card_name?.includes(parseResult.last_four)))
-      )
-
-      if (!targetCard && !resolvedCardId && !parseResult?.last_four) {
-        targetCard = activeCards.find(
-          (c) =>
-            c.bank.toLowerCase().includes(detectedBankName.toLowerCase()) ||
-            detectedBankName.toLowerCase().includes(c.bank.toLowerCase())
-        )
-      }
-
-      // Capture previous card state for atomic rollback
-      if (targetCard) {
-        snapshotData.previous_card_state = {
-          card_id: targetCard.id,
-          current_debt: Number(targetCard.current_debt || 0),
-          statement_debt: Number(targetCard.statement_debt || 0),
-          minimum_payment: Number(targetCard.minimum_payment || 0),
-          interest_fees: Number(targetCard.interest_fees || 0),
-          statement_date: targetCard.statement_date || null,
-          due_date: targetCard.due_date || null,
-        }
-      }
-
-      if (!resolvedCardId) {
-        // Query DB directly in case a previous batch created or has this card
-        if (parseResult?.last_four) {
-          const { data: dbCards } = await supabase
-            .from('credit_cards')
-            .select('*')
-            .eq('user_id', userId)
-            .eq('last_four', parseResult.last_four)
-
-          const found = dbCards?.[0]
-          if (found) {
-            targetCard = found
-            resolvedCardId = found.id
-          }
-        }
-
-        // Only fallback to bank name if the statement did NOT have a specific card number
-        if (!resolvedCardId && !targetCard && !parseResult?.last_four) {
-          const { data: dbCards } = await supabase
-            .from('credit_cards')
-            .select('*')
-            .eq('user_id', userId)
-            .ilike('bank', `%${detectedBankName}%`)
-
-          const found = dbCards?.[0]
-          if (found) {
-            targetCard = found
-            resolvedCardId = found.id
-          }
-        }
-
-        if (targetCard && !snapshotData.previous_card_state) {
-          snapshotData.previous_card_state = {
-            card_id: targetCard.id,
-            current_debt: Number(targetCard.current_debt || 0),
-            statement_debt: Number(targetCard.statement_debt || 0),
-            minimum_payment: Number(targetCard.minimum_payment || 0),
-            interest_fees: Number(targetCard.interest_fees || 0),
-            statement_date: targetCard.statement_date || null,
-            due_date: targetCard.due_date || null,
-          }
-        }
-
-        if (targetCard) {
-          resolvedCardId = targetCard.id
-          const isNewerStatement =
-            !targetCard.statement_date ||
-            (parseResult?.statement_date &&
-              new Date(parseResult.statement_date) >= new Date(targetCard.statement_date))
-
-          if (isNewerStatement) {
-            targetCard.current_debt = statementDebtValue
-            targetCard.statement_debt = statementDebtValue
-            targetCard.minimum_payment = minPaymentValue
-            targetCard.interest_fees = interestFeesValue
-            targetCard.statement_date = parseResult?.statement_date || null
-            targetCard.due_date = parseResult?.due_date || null
-
-            const updatePayload: any = {
-              current_debt: statementDebtValue,
-              statement_debt: statementDebtValue,
-              minimum_payment: minPaymentValue,
-              interest_fees: interestFeesValue,
-              statement_date: parseResult?.statement_date || null,
-              due_date: parseResult?.due_date || null,
-            }
-
-            if (targetCard.bank === 'Diğer Banka' && detectedBankName !== 'Diğer Banka') {
-              updatePayload.bank = detectedBankName
-              updatePayload.card_name = detectedCardTitle
-              targetCard.bank = detectedBankName
-              targetCard.card_name = detectedCardTitle
-            }
-
-            await supabase
-              .from('credit_cards')
-              .update(updatePayload)
-              .eq('id', targetCard.id)
-          }
-        } else {
-          const { data: newCard, error: newCardErr } = await supabase
-            .from('credit_cards')
-            .insert({
-              user_id: userId,
-              bank: detectedBankName,
-              card_name: detectedCardTitle,
-              last_four: parseResult?.last_four || null,
-              current_debt: statementDebtValue,
-              statement_debt: statementDebtValue,
-              minimum_payment: minPaymentValue,
-              interest_fees: interestFeesValue,
-              statement_date: parseResult?.statement_date || null,
-              due_date: parseResult?.due_date || null,
-            })
-            .select()
-            .single()
-
-          if (newCardErr) throw newCardErr
-          if (newCard) {
-            resolvedCardId = newCard.id
-            createdCardId = newCard.id
-            snapshotData.created_card_id = newCard.id
-            cards.push(newCard)
-            activeCards.push(newCard)
-          }
-        }
-      } else {
-        const matchedCard = activeCards.find((c) => c.id === resolvedCardId)
-        const isNewerStatement =
-          !matchedCard?.statement_date ||
-          (parseResult?.statement_date &&
-            new Date(parseResult.statement_date) >= new Date(matchedCard.statement_date))
-
-        if (isNewerStatement && matchedCard) {
-          matchedCard.current_debt = statementDebtValue
-          matchedCard.statement_debt = statementDebtValue
-          matchedCard.minimum_payment = minPaymentValue
-          matchedCard.interest_fees = interestFeesValue
-          matchedCard.statement_date = parseResult?.statement_date || null
-          matchedCard.due_date = parseResult?.due_date || null
-
-          const updatePayload: any = {
-            current_debt: statementDebtValue,
-            statement_debt: statementDebtValue,
-            minimum_payment: minPaymentValue,
-            interest_fees: interestFeesValue,
-            statement_date: parseResult?.statement_date || null,
-            due_date: parseResult?.due_date || null,
-          }
-
-          if (matchedCard.bank === 'Diğer Banka' && detectedBankName !== 'Diğer Banka') {
-            updatePayload.bank = detectedBankName
-            updatePayload.card_name = detectedCardTitle
-            matchedCard.bank = detectedBankName
-            matchedCard.card_name = detectedCardTitle
-          }
-
-          await supabase
-            .from('credit_cards')
-            .update(updatePayload)
-            .eq('id', resolvedCardId)
-        }
-      }
-
-      // Create Statement Import record
-      const batchMeta: ImportBatchMeta = {
-        file_hash: fileHash,
-        status: 'COMPLETED',
-        import_type: 'credit_card',
-        snapshot_data: snapshotData,
-      }
-
-      const { data: importRecord, error: importError } = await supabase
-        .from('statement_imports')
-        .insert({
-          user_id: userId,
-          file_name: fileName || 'ekstre.pdf',
-          file_hash: fileHash,
-          status: 'COMPLETED',
-          import_type: 'credit_card',
-          snapshot_data: snapshotData,
-          bank: detectedBankName,
-          card_id: resolvedCardId || null,
-          statement_date: parseResult?.statement_date || null,
-          due_date: parseResult?.due_date || null,
-          total_transactions: selectedTxs.length,
-          total_amount: totalSelectedAmount,
-          raw_text: serializeBatchMeta(batchMeta),
-        })
-        .select()
-        .single()
-
-      if (importError) throw importError
-      createdImportId = importRecord.id
-
-      // Card Statement History (card_statements)
-      if (resolvedCardId && parseResult?.statement_date) {
-        const prevDebt = parseResult?.prev_debt || null
-        const { changeAmount, changePct } = calculateStatementChange(statementDebtValue, prevDebt)
-        await supabase.from('card_statements').insert({
-          user_id: userId,
-          card_id: resolvedCardId,
-          import_id: importRecord.id,
-          statement_date: parseResult.statement_date,
-          period_debt: statementDebtValue,
-          minimum: minPaymentValue,
-          spending: totalSelectedAmount,
-          interest_fees: interestFeesValue,
-          due_date: parseResult.due_date || null,
-          prev_debt: prevDebt,
-          change_amount: changeAmount,
-          change_pct: changePct ? changePct / 100 : null,
-        })
-      }
-
-      // Insert Transactions with import_id link
-      const rowsToInsert = selectedTxs.map((t) => ({
-        user_id: userId,
-        date: t.date,
-        account_or_card: detectedCardTitle,
-        type: sanitizeTransactionType(t.type, 'Harcama'),
-        description: t.raw_description,
-        amount: t.amount,
-        analysis_group: sanitizeAnalysisGroup(t.analysis_group),
-        merchant: t.merchant,
-        recurrence: t.recurrence || null,
-        statement_date: parseResult?.statement_date || null,
-        card_id: resolvedCardId || null,
-        project_id: t.project_id || null,
-        import_id: importRecord.id,
-      }))
-
-      const { error: txInsertErr } = await supabase.from('transactions').insert(rowsToInsert)
-      if (txInsertErr) throw txInsertErr
-
-      return {
-        success: true,
-        importId: importRecord.id,
-        insertedTransactionsCount: selectedTxs.length,
-        createdSubscriptionCount: 0,
-      }
-    }
-
-    // =======================================================================
-    // MOD B: VADESİZ HESAP DÖKÜMÜ & UZLAŞTIRMA
-    // =======================================================================
-    let currentAccountId = selectedAccountId
-
-    if (!currentAccountId) {
-      // 1. Try to find matching existing account from in-memory accounts array
-      let existingAcc = accounts.find(
-        (a) =>
-          (a.name && detectedBankName && a.name.toLowerCase().includes(detectedBankName.toLowerCase())) ||
-          (a.name && detectedBankName && detectedBankName.toLowerCase().includes(a.name.toLowerCase()))
-      )
-
-      // 2. If not found in memory, query DB
-      if (!existingAcc && detectedBankName) {
-        const { data: dbAccs } = await supabase
-          .from('accounts')
-          .select('*')
-          .eq('user_id', userId)
-          .ilike('name', `%${detectedBankName}%`)
-
-        if (dbAccs && dbAccs.length > 0) {
-          const found = dbAccs[0]
-          existingAcc = found
-          if (!accounts.some((a) => a.id === found.id)) {
-            accounts.push(found)
-          }
-        }
-      }
-
-      if (existingAcc) {
-        currentAccountId = existingAcc.id
-      } else {
-        const { data: newAcc, error: newAccErr } = await supabase
-          .from('accounts')
-          .insert({
-            user_id: userId,
-            name: detectedBankName || 'Vadesiz Hesap',
-            type: 'vadesiz',
-            balance: 0,
-          })
-          .select()
-          .single()
-
-        if (newAccErr) throw newAccErr
-          if (newAcc) {
-            currentAccountId = newAcc.id
-            createdAccountId = newAcc.id
-            accounts.push(newAcc)
-          snapshotData.created_account_id = newAcc.id
-        }
-      }
-    }
-
-    const targetAccount = accounts.find((a) => a.id === currentAccountId)
-    let runningAccountBalance = targetAccount ? Number(targetAccount.balance) : 0
-
-    if (targetAccount && !snapshotData.created_account_id) {
-      snapshotData.previous_account_state = {
-        account_id: targetAccount.id,
-        balance: runningAccountBalance,
-      }
-    }
-
-    const batchMeta: ImportBatchMeta = {
-      file_hash: fileHash,
-      status: 'COMPLETED',
-      import_type: 'bank_account',
-      snapshot_data: snapshotData,
-    }
-
-    const { data: importRecord, error: importError } = await supabase
-      .from('statement_imports')
-      .insert({
-        user_id: userId,
-        file_name: fileName || 'hesap_dokumu.pdf',
-        file_hash: fileHash,
-        status: 'COMPLETED',
-        import_type: 'bank_account',
-        snapshot_data: snapshotData,
-        bank: detectedBankName,
-        total_transactions: selectedTxs.length,
-        total_amount: totalSelectedAmount,
-        raw_text: serializeBatchMeta(batchMeta),
-      })
-      .select()
-      .single()
-
-    if (importError) throw importError
-    createdImportId = importRecord.id
-
-    // Fetch fresh cards from DB for accurate settlement
-    let dbCardsForSettlement: CreditCard[] | null = null
-    try {
-      const query = supabase.from('credit_cards').select('*')
-      if (typeof query?.eq === 'function') {
-        const { data } = await query.eq('user_id', userId)
-        dbCardsForSettlement = data
-      }
-    } catch {
-      // Graceful fallback
-    }
-
-    const settlementCards: CreditCard[] =
-      dbCardsForSettlement && dbCardsForSettlement.length > 0 ? dbCardsForSettlement : activeCards
-
-    // Row-by-row reconciliation
-    for (const t of selectedTxs) {
-      if (t.direction === 'inflow') {
-        runningAccountBalance += t.amount
-      } else {
-        runningAccountBalance -= t.amount
-      }
-
-      // Receivable collection (F17: Cumulative calculation & snapshot tracking)
-      if (t.action === 'COLLECT_RECEIVABLE' && t.target_debt_id) {
-        const targetDebt = debts.find((d) => d.id === t.target_debt_id)
-        if (targetDebt) {
-          if (!snapshotData.previous_debt_states) snapshotData.previous_debt_states = []
-          if (!snapshotData.previous_debt_states.some((s) => s.debt_id === targetDebt.id)) {
-            snapshotData.previous_debt_states.push({
-              debt_id: targetDebt.id,
-              remaining: targetDebt.remaining,
-              past_payments: targetDebt.past_payments,
-              status: targetDebt.status,
-            })
-          }
-          const newPast = targetDebt.past_payments + t.amount
-          const newRem = Math.max(0, targetDebt.remaining - t.amount)
-          targetDebt.past_payments = newPast
-          targetDebt.remaining = newRem
-          targetDebt.status = newRem <= 0 ? 'Kapatıldı' : 'Açık'
-
-          await supabase
-            .from('debts')
-            .update({
-              past_payments: newPast,
-              remaining: newRem,
-              status: targetDebt.status,
-            })
-            .eq('id', targetDebt.id)
-        }
-      }
-
-      // Card debt settlement
-      if (t.action === 'CARD_PAYMENT') {
-        let cardId = t.target_card_id
-        let targetCard = cardId ? settlementCards.find((c) => c.id === cardId) : undefined
-
-        if (!targetCard) {
-          const upper = (t.raw_description || '').toUpperCase()
-          targetCard = settlementCards.find(
-            (c) =>
-              (c.last_four && upper.includes(c.last_four)) ||
-              upper.includes(c.bank.toUpperCase()) ||
-              upper.includes(c.card_name.toUpperCase())
-          )
-        }
-
-        if (targetCard) {
-          const isPostStatement =
-            !targetCard.statement_date ||
-            new Date(t.date) >= new Date(targetCard.statement_date)
-
-          if (isPostStatement) {
-            const newDebt = Math.max(0, targetCard.current_debt - t.amount)
-            targetCard.current_debt = newDebt
-            const newMin = Math.max(0, (targetCard.minimum_payment || 0) - t.amount)
-            targetCard.minimum_payment = newMin
-            await supabase
-              .from('credit_cards')
-              .update({
-                current_debt: newDebt,
-                minimum_payment: newMin,
-              })
-              .eq('id', targetCard.id)
-          }
-        }
-      }
-
-      // Cash advance drawn from credit card into checking account
-      if (t.action === 'CASH_ADVANCE') {
-        let cardId = t.target_card_id
-        let targetCard = cardId ? settlementCards.find((c) => c.id === cardId) : undefined
-
-        if (!targetCard) {
-          const upper = (t.raw_description || '').toUpperCase()
-          targetCard = settlementCards.find(
-            (c) =>
-              (c.last_four && upper.includes(c.last_four)) ||
-              upper.includes(c.bank.toUpperCase()) ||
-              upper.includes(c.card_name.toUpperCase())
-          )
-        }
-
-        if (targetCard) {
-          const isPostStatement =
-            !targetCard.statement_date ||
-            new Date(t.date) > new Date(targetCard.statement_date)
-
-          if (isPostStatement) {
-            const newDebt = targetCard.current_debt + t.amount
-            targetCard.current_debt = newDebt
-            await supabase
-              .from('credit_cards')
-              .update({ current_debt: newDebt })
-              .eq('id', targetCard.id)
-          }
-        }
-      }
-
-      // Personal debt repayment (F17: Cumulative calculation & snapshot tracking)
-      if (t.action === 'PAY_DEBT' && t.target_debt_id) {
-        const targetDebt = debts.find((d) => d.id === t.target_debt_id)
-        if (targetDebt) {
-          if (!snapshotData.previous_debt_states) snapshotData.previous_debt_states = []
-          if (!snapshotData.previous_debt_states.some((s) => s.debt_id === targetDebt.id)) {
-            snapshotData.previous_debt_states.push({
-              debt_id: targetDebt.id,
-              remaining: targetDebt.remaining,
-              past_payments: targetDebt.past_payments,
-              status: targetDebt.status,
-            })
-          }
-          const newPast = targetDebt.past_payments + t.amount
-          const newRem = Math.max(0, targetDebt.remaining - t.amount)
-          targetDebt.past_payments = newPast
-          targetDebt.remaining = newRem
-          targetDebt.status = newRem <= 0 ? 'Kapatıldı' : 'Açık'
-
-          await supabase
-            .from('debts')
-            .update({
-              past_payments: newPast,
-              remaining: newRem,
-              status: targetDebt.status,
-            })
-            .eq('id', targetDebt.id)
-        }
-      }
-    }
-
-    // Persist snapshot with previous debt states if any debt was affected
-    if (snapshotData.previous_debt_states && snapshotData.previous_debt_states.length > 0) {
-      batchMeta.snapshot_data = snapshotData
-      await supabase
-        .from('statement_imports')
-        .update({
-          snapshot_data: snapshotData,
-          raw_text: serializeBatchMeta(batchMeta),
-        })
-        .eq('id', importRecord.id)
-    }
-
-    // Update account balance
-    const finalBalance =
-      parseResult?.closing_balance !== undefined
-        ? parseResult.closing_balance
-        : runningAccountBalance
-
-    if (currentAccountId) {
-      await supabase
-        .from('accounts')
-        .update({ balance: finalBalance })
-        .eq('id', currentAccountId)
-    }
-
-    // Insert transactions
-    const accountName = targetAccount ? targetAccount.name : detectedBankName
-    const rowsToInsert = selectedTxs.map((t) => ({
-      user_id: userId,
-      date: t.date,
-      account_or_card: accountName,
-      type: sanitizeTransactionType(t.type, t.direction === 'inflow' ? 'Gelir' : 'Harcama'),
-      description: t.raw_description,
-      amount: t.amount,
-      analysis_group: sanitizeAnalysisGroup(t.analysis_group),
-      merchant: t.merchant,
-      account_id: currentAccountId || null,
-      project_id: t.project_id || null,
-      import_id: importRecord.id,
-    }))
-
-    const { error: txInsertErr } = await supabase.from('transactions').insert(rowsToInsert)
-    if (txInsertErr) throw txInsertErr
-
-    return {
-      success: true,
-      importId: importRecord.id,
-      insertedTransactionsCount: selectedTxs.length,
-    }
-  } catch (err: any) {
-    if (createdImportId) {
-      try {
-        await rollbackImportBatch(supabase, createdImportId, userId)
-      } catch (cleanupErr) {
-        console.error('Error rolling back failed import batch:', cleanupErr)
-      }
-    } else {
-      // Failure happened before a rollback-capable import row existed.
-      // Restore or remove resources changed during the partial attempt.
-      if (snapshotData.previous_card_state) {
-        const prev = snapshotData.previous_card_state
-        await supabase.from('credit_cards').update({
-          current_debt: prev.current_debt,
-          statement_debt: prev.statement_debt,
-          minimum_payment: prev.minimum_payment,
-          interest_fees: prev.interest_fees,
-          statement_date: prev.statement_date,
-          due_date: prev.due_date,
-        }).eq('id', prev.card_id).eq('user_id', userId)
-      }
-      if (createdCardId) {
-        await supabase.from('credit_cards').delete().eq('id', createdCardId).eq('user_id', userId)
-      }
-      if (createdAccountId) {
-        await supabase.from('accounts').delete().eq('id', createdAccountId).eq('user_id', userId)
-      }
-    }
-    return { success: false, error: err.message || 'Veritabanına kaydedilirken hata oluştu.' }
-  }
+  return commitStatementBatchAtomic(params)
 }

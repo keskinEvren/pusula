@@ -56,6 +56,7 @@ describe('Reconciler Tests', () => {
       const result = reconcileBankMovement('KK ÖDEME', 500, 'outflow', [])
       expect(result.action).toBe('CARD_PAYMENT')
       expect(result.analysis_group).toBe('Hariç')
+      expect(result.classification_status).toBe('NEEDS_REVIEW')
     })
 
     it('Axess card payment -> correct card name', () => {
@@ -72,6 +73,18 @@ describe('Reconciler Tests', () => {
       const result = reconcileBankMovement('KREDİ KARTI ÖDEMESİ AKBANK', 1000, 'outflow', [], cards)
       expect(result.action).toBe('CARD_PAYMENT')
       expect(result.target_card_id).toBe('c1')
+      expect(result.classification_status).toBe('HIGH_CONFIDENCE')
+    })
+
+    it('does not auto-target when the same bank matches multiple cards', () => {
+      const cards = [
+        { id: 'c1', bank: 'Akbank', card_name: 'Axess', last_four: '1111' },
+        { id: 'c2', bank: 'Akbank', card_name: 'Wings', last_four: '2222' },
+      ] as any
+      const result = reconcileBankMovement('KREDİ KARTI ÖDEMESİ AKBANK', 1000, 'outflow', [], cards)
+      expect(result.target_card_id).toBeUndefined()
+      expect(result.classification_status).toBe('NEEDS_REVIEW')
+      expect(result.reasons[0]).toMatch(/birden fazla kart/)
     })
 
     it('Personal debt repayment -> Borc Odemesi', () => {
@@ -102,6 +115,12 @@ describe('Reconciler Tests', () => {
       expect(result.action).toBe('DIRECT_EXPENSE')
     })
 
+    it('Generic payment wording must not become a card payment', () => {
+      const result = reconcileBankMovement('FAST ANLIK ÖDEME - KAHVE DÜKKANI', 120, 'outflow')
+      expect(result.action).toBe('DIRECT_EXPENSE')
+      expect(result.target_card_id).toBeUndefined()
+    })
+
     it('Investment transfer (Midas, Binance) -> INVESTMENT_TRANSFER + Haric', () => {
       const result = reconcileBankMovement('MİDAS MENKUL', 5000, 'outflow')
       expect(result.action).toBe('INVESTMENT_TRANSFER')
@@ -126,6 +145,7 @@ describe('Reconciler Tests', () => {
       ] as any
       const result = reconcileBankMovement('GELEN EFT', 100, 'inflow', debts)
       expect(result.action).toBe('COLLECT_RECEIVABLE')
+      expect(result.classification_status).toBe('NEEDS_REVIEW')
     })
   })
 })
