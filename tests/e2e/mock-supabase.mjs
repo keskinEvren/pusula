@@ -5,7 +5,8 @@ const user = { id: '11111111-1111-4111-8111-111111111111', aud: 'authenticated',
 const token = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify({ sub: user.id, exp: 4102444800, role: 'authenticated' })).toString('base64url')}.qa-signature`
 let tables = {}, failures = [], requests = []
 createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://127.0.0.1:54321')
+  const fixturePort = Number(process.env.QA_FIXTURE_PORT || 54321)
+  const url = new URL(req.url, `http://127.0.0.1:${fixturePort}`)
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
@@ -255,4 +256,4 @@ createServer(async (req, res) => {
     return send(result, req.method === 'POST' ? 201 : 200)
   }
   send({ message: 'Unknown fixture endpoint' }, 404)
-}).listen(54321, '127.0.0.1', () => console.log('QA fixture listening on 127.0.0.1:54321'))
+}).listen(Number(process.env.QA_FIXTURE_PORT || 54321), '127.0.0.1', () => console.log(`QA fixture listening on 127.0.0.1:${process.env.QA_FIXTURE_PORT || 54321}`))

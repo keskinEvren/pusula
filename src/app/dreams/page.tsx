@@ -27,6 +27,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { isMissingRelationError, requireMutationData } from '@/lib/supabase/mutation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -113,7 +114,7 @@ function DreamsContent() {
       .select('*')
       .order('order_index', { ascending: true })
 
-    if (error) {
+    if (error && isMissingRelationError(error)) {
       console.warn('Dreams table remote query note:', error.message)
       setIsDbFallback(true)
       const cached = localStorage.getItem('pusula_local_dreams')
@@ -138,6 +139,9 @@ function DreamsContent() {
       } else {
         setDreams([])
       }
+    } else if (error) {
+      setIsDbFallback(false)
+      toast.error(error.message || 'Hedefler yüklenemedi.')
     } else if (data && data.length > 0) {
       // Remote dreams table has rows - filter any legacy mock IDs
       const validData = data.filter(
@@ -224,71 +228,48 @@ function DreamsContent() {
       updated_at: new Date().toISOString(),
     }
 
-    if (!isDbFallback && user) {
-      if (editingDream) {
-        if (isUUID(editingDream.id)) {
-          const { error } = await supabase.from('dreams').update(payload).eq('id', editingDream.id)
-          if (!error) {
-            const updated = dreams.map((d) => (d.id === editingDream.id ? ({ ...d, ...payload } as Dream) : d))
-            syncLocal(updated)
+    try {
+      if (!isDbFallback && user) {
+        if (editingDream) {
+          if (isUUID(editingDream.id)) {
+            const result = await supabase.from('dreams').update(payload).eq('id', editingDream.id).select('*').single()
+            const saved = requireMutationData(result, 'Hedef güncellemesi backend tarafından doğrulanamadı.')
+            syncLocal(dreams.map((d) => (d.id === editingDream.id ? saved : d)))
           } else {
-            await loadDreams()
+            const result = await supabase
+              .from('dreams')
+              .insert({ ...payload, order_index: editingDream.order_index ?? dreams.length, created_at: new Date().toISOString() })
+              .select('*')
+              .single()
+            const saved = requireMutationData(result, 'Hedef kaydı backend tarafından doğrulanamadı.')
+            syncLocal(dreams.map((d) => (d.id === editingDream.id ? saved : d)))
           }
         } else {
-          // If dream has legacy non-UUID, insert into Supabase as a real record
-          const { data: inserted } = await supabase
+          const result = await supabase
             .from('dreams')
-            .insert({
-              ...payload,
-              order_index: editingDream.order_index ?? dreams.length,
-              created_at: new Date().toISOString(),
-            })
-            .select()
-          if (inserted && inserted.length > 0) {
-            const updated = dreams.map((d) => (d.id === editingDream.id ? inserted[0] : d))
-            syncLocal(updated)
-          } else {
-            await loadDreams()
-          }
+            .insert({ ...payload, order_index: dreams.length, created_at: new Date().toISOString() })
+            .select('*')
+            .single()
+          const saved = requireMutationData(result, 'Hedef kaydı backend tarafından doğrulanamadı.')
+          syncLocal([saved, ...dreams])
         }
       } else {
-        const { data: inserted } = await supabase
-          .from('dreams')
-          .insert({
-            ...payload,
-            order_index: dreams.length,
-            created_at: new Date().toISOString(),
-          })
-          .select()
-        if (inserted && inserted.length > 0) {
-          const updated = [inserted[0], ...dreams]
-          syncLocal(updated)
+        let updated: Dream[]
+        if (editingDream) {
+          updated = dreams.map((d) => (d.id === editingDream.id ? ({ ...d, ...payload } as Dream) : d))
         } else {
-          await loadDreams()
+          updated = [{ ...payload, id: crypto.randomUUID(), achieved_at: null, achieved_note: null, achieved_image_url: null, order_index: dreams.length, created_at: new Date().toISOString() } as Dream, ...dreams]
         }
+        syncLocal(updated)
+        toast.warning('Hedefler tablosu bulunamadığı için kayıt yalnızca bu cihazda saklandı.')
+        setIsModalOpen(false)
+        return
       }
-    } else {
-      // Local fallback
-      let updated: Dream[]
-      if (editingDream) {
-        updated = dreams.map((d) => (d.id === editingDream.id ? ({ ...d, ...payload } as Dream) : d))
-      } else {
-        const newItem: Dream = {
-          ...payload,
-          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'a0000000-0000-4000-8000-' + String(Date.now()).slice(-12).padStart(12, '0'),
-          achieved_at: null,
-          achieved_note: null,
-          achieved_image_url: null,
-          order_index: dreams.length,
-          created_at: new Date().toISOString(),
-        } as Dream
-        updated = [newItem, ...dreams]
-      }
-      syncLocal(updated)
+      toast.success(editingDream ? 'Hedef güncellendi!' : 'Yeni hedef vizyon panona eklendi!')
+      setIsModalOpen(false)
+    } catch (err: any) {
+      toast.error(err.message || 'Hedef kaydedilemedi.')
     }
-
-    toast.success(editingDream ? 'Hedef güncellendi!' : 'Yeni hedef vizyon panona eklendi!')
-    setIsModalOpen(false)
   }
 
   // Delete Dream
@@ -296,23 +277,16 @@ function DreamsContent() {
     if (!dreamToDelete) return
     const id = dreamToDelete.id
 
-    // 1. Optimistically update local state & local storage
-    const updated = dreams.filter((d) => d.id !== id)
-    syncLocal(updated)
-    toast.success('Hedef silindi.')
-    setDreamToDelete(null)
-
-    // 2. Only attempt remote DB deletion if DB is active and ID is a valid UUID
-    if (!isDbFallback && isUUID(id)) {
-      try {
+    try {
+      if (!isDbFallback && isUUID(id)) {
         const supabase = createClient()
-        const { error } = await supabase.from('dreams').delete().eq('id', id)
-        if (error) {
-          console.warn('Remote dream delete warning:', error.message)
-        }
-      } catch (err) {
-        console.warn('Remote dream delete error:', err)
+        requireMutationData(await supabase.from('dreams').delete().eq('id', id).select('id').single(), 'Hedef silme işlemi doğrulanamadı.')
       }
+      syncLocal(dreams.filter((d) => d.id !== id))
+      toast.success('Hedef silindi.')
+      setDreamToDelete(null)
+    } catch (err: any) {
+      toast.error(err.message || 'Hedef silinemedi.')
     }
   }
 
@@ -337,53 +311,46 @@ function DreamsContent() {
       updated_at: new Date().toISOString(),
     }
 
-    const updated = dreams.map((d) => (d.id === celebratingDream.id ? { ...d, ...updates } : d))
-    syncLocal(updated)
-
-    if (!isDbFallback && isUUID(celebratingDream.id)) {
-      try {
+    try {
+      if (!isDbFallback && isUUID(celebratingDream.id)) {
         const supabase = createClient()
-        await supabase.from('dreams').update(updates).eq('id', celebratingDream.id)
-      } catch (err) {
-        console.warn('Remote celebration update warning:', err)
+        requireMutationData(await supabase.from('dreams').update(updates).eq('id', celebratingDream.id).select('id').single(), 'Hedef durumu doğrulanamadı.')
       }
+      syncLocal(dreams.map((d) => (d.id === celebratingDream.id ? { ...d, ...updates } : d)))
+      toast.success('Tebrikler! Kişisel zafer Zafer Müzesi\'ne kaydedildi 🏆')
+      setIsCelebrationOpen(false)
+      setActiveTab('achieved')
+    } catch (err: any) {
+      toast.error(err.message || 'Hedef tamamlanamadı.')
     }
-
-    toast.success('Tebrikler! Kişisel zafer Zafer Müzesi\'ne kaydedildi 🏆')
-    setIsCelebrationOpen(false)
-    setActiveTab('achieved')
   }
 
   // Move from Incubating to Active
   const handlePromoteToActive = async (dream: Dream) => {
     const updates = { status: 'active' as const, updated_at: new Date().toISOString() }
-    const updated = dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d))
-    syncLocal(updated)
-    toast.success('Hedef aktif vizyona taşındı!')
-
-    if (!isDbFallback && isUUID(dream.id)) {
-      try {
+    try {
+      if (!isDbFallback && isUUID(dream.id)) {
         const supabase = createClient()
-        await supabase.from('dreams').update(updates).eq('id', dream.id)
-      } catch (err) {
-        console.warn('Remote promote warning:', err)
+        requireMutationData(await supabase.from('dreams').update(updates).eq('id', dream.id).select('id').single(), 'Hedef taşıma işlemi doğrulanamadı.')
       }
+      syncLocal(dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d)))
+      toast.success('Hedef aktif vizyona taşındı!')
+    } catch (err: any) {
+      toast.error(err.message || 'Hedef taşınamadı.')
     }
   }
 
   // Move from Active to Incubating
   const handleDemoteToIncubating = async (dream: Dream) => {
     const updates = { status: 'incubating' as const, updated_at: new Date().toISOString() }
-    const updated = dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d))
-    syncLocal(updated)
-
-    if (!isDbFallback && isUUID(dream.id)) {
-      try {
+    try {
+      if (!isDbFallback && isUUID(dream.id)) {
         const supabase = createClient()
-        await supabase.from('dreams').update(updates).eq('id', dream.id)
-      } catch (err) {
-        console.warn('Remote demote warning:', err)
+        requireMutationData(await supabase.from('dreams').update(updates).eq('id', dream.id).select('id').single(), 'Hedef taşıma işlemi doğrulanamadı.')
       }
+      syncLocal(dreams.map((d) => (d.id === dream.id ? { ...d, ...updates } : d)))
+    } catch (err: any) {
+      toast.error(err.message || 'Hedef taşınamadı.')
     }
   }
 

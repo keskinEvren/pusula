@@ -339,7 +339,15 @@ export async function deleteImportBatchPermanently(
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
   // Clean up any remaining transactions first
-  await supabase.from('transactions').delete().eq('import_id', importId).eq('user_id', userId)
+  const { error: childDeleteError } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('import_id', importId)
+    .eq('user_id', userId)
+
+  if (childDeleteError) {
+    return { success: false, error: `İçe aktarılan hareketler silinemedi: ${childDeleteError.message}` }
+  }
 
   const { error } = await supabase
     .from('statement_imports')

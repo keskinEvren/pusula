@@ -237,32 +237,14 @@ function IdeasContent() {
       const budgetNum = promoteBudget ? parseFloat(promoteBudget) : null
       const finalSlug = slugify(promoteSlug || promoteTarget.title) || 'proje-' + Date.now()
 
-      // 1. Create Project
-      const { data: newProject, error: prjError } = await supabase
-        .from('projects')
-        .insert({
-          user_id: user.id,
-          name: promoteTarget.title,
-          slug: finalSlug,
-          description: promoteTarget.description,
-          status: 'Planlama',
-          budget_limit: budgetNum || null,
-        })
-        .select()
-        .single()
-
-      if (prjError) throw prjError
-
-      // 2. Mark Idea as Promoted
-      const { error: updateError } = await supabase
-        .from('ideas')
-        .update({
-          status: 'promoted',
-          promoted_project_id: newProject.id,
-        })
-        .eq('id', promoteTarget.id)
-
-      if (updateError) throw updateError
+      const { data, error } = await supabase.rpc('fn_promote_idea_to_project_atomic', {
+        p_user_id: user.id,
+        p_idea_id: promoteTarget.id,
+        p_slug: finalSlug,
+        p_budget_limit: budgetNum || null,
+      })
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.error || 'Projeye dönüştürme doğrulanamadı.')
 
       setPromoteTarget(null)
       toast.success('Fikir başarıyla projeye dönüştürüldü!')

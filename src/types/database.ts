@@ -423,6 +423,9 @@ export interface Database {
           source_account_id: string | null
           target_account_id: string | null
           related_debt_id: string | null
+          related_investment_id: string | null
+          investment_quantity_delta: number | null
+          investment_unit_price: number | null
           import_id: string | null
           source_bank: string | null
           source_account_ref: string | null
@@ -455,6 +458,9 @@ export interface Database {
           source_account_id?: string | null
           target_account_id?: string | null
           related_debt_id?: string | null
+          related_investment_id?: string | null
+          investment_quantity_delta?: number | null
+          investment_unit_price?: number | null
           import_id?: string | null
           source_bank?: string | null
           source_account_ref?: string | null
@@ -487,6 +493,9 @@ export interface Database {
           source_account_id?: string | null
           target_account_id?: string | null
           related_debt_id?: string | null
+          related_investment_id?: string | null
+          investment_quantity_delta?: number | null
+          investment_unit_price?: number | null
           import_id?: string | null
           source_bank?: string | null
           source_account_ref?: string | null
@@ -997,6 +1006,32 @@ export interface Database {
           p_debt_id: string
           p_user_id?: string
         }
+        Returns: Json
+      }
+      fn_unlink_transaction_from_debt_atomic: {
+        Args: { p_user_id: string; p_transaction_id: string }
+        Returns: Json
+      }
+      fn_link_transaction_to_investment_atomic: {
+        Args: {
+          p_user_id: string
+          p_transaction_id: string
+          p_investment_id: string
+          p_added_qty?: number | null
+          p_unit_price?: number | null
+        }
+        Returns: Json
+      }
+      fn_unlink_transaction_from_investment_atomic: {
+        Args: { p_user_id: string; p_transaction_id: string }
+        Returns: Json
+      }
+      fn_promote_idea_to_project_atomic: {
+        Args: { p_user_id: string; p_idea_id: string; p_slug: string; p_budget_limit?: number | null }
+        Returns: Json
+      }
+      fn_restore_vault_replace_atomic: {
+        Args: { p_data: Json }
         Returns: Json
       }
     }

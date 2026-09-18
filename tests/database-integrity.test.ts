@@ -359,6 +359,45 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
       [JSON.stringify(crossTenantPayload)]
     )).rejects.toThrow(/kullanıcıya ait değil/)
   })
+
+  it('debt unlink and investment link/unlink complete as atomic RPCs', async () => {
+    await asUser(userA)
+    const debt='12121212-1212-4212-8212-121212121212'
+    const investment='13131313-1313-4313-8313-131313131313'
+    const debtTx='14141414-1414-4414-8414-141414141414'
+    const investmentTx='15151515-1515-4515-8515-151515151515'
+    await db.query(`insert into debts(id,user_id,type,person_or_entity,principal,remaining) values($1,$2,'Borç','Atomic',100,100)`,[debt,userA])
+    await db.query(`insert into investments(id,user_id,name,category,quantity,unit_cost,current_price) values($1,$2,'Fund','Diğer',10,20,20)`,[investment,userA])
+    await db.query(`insert into transactions(id,user_id,date,type,description,amount) values($1,$2,current_date,'Harcama','Debt',25),($3,$2,current_date,'Harcama','Investment',60)`,[debtTx,userA,investmentTx])
+
+    expect((await db.query<{result:any}>('select fn_link_transaction_to_debt_atomic($1,$2,$3) result',[userA,debtTx,debt])).rows[0].result.success).toBe(true)
+    expect((await db.query<{result:any}>('select fn_unlink_transaction_from_debt_atomic($1,$2) result',[userA,debtTx])).rows[0].result.success).toBe(true)
+    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows).toEqual([{remaining:'100.00',past_payments:'0.00'}])
+
+    expect((await db.query<{result:any}>('select fn_link_transaction_to_investment_atomic($1,$2,$3,$4,$5) result',[userA,investmentTx,investment,2,30])).rows[0].result.success).toBe(true)
+    expect((await db.query('select quantity,unit_cost from investments where id=$1',[investment])).rows).toEqual([{quantity:'12.000000',unit_cost:'21.6667'}])
+    expect((await db.query<{result:any}>('select fn_unlink_transaction_from_investment_atomic($1,$2) result',[userA,investmentTx])).rows[0].result.success).toBe(true)
+    expect((await db.query('select quantity,unit_cost from investments where id=$1',[investment])).rows).toEqual([{quantity:'10.000000',unit_cost:'20.0000'}])
+  })
+
+  it('idea promotion is all-or-nothing and idempotent', async () => {
+    await asUser(userA)
+    const idea='16161616-1616-4616-8616-161616161616'
+    await db.query(`insert into ideas(id,user_id,title,description) values($1,$2,'Atomic idea','Description')`,[idea,userA])
+    const first=await db.query<{result:any}>('select fn_promote_idea_to_project_atomic($1,$2,$3,$4) result',[userA,idea,'atomic-idea',500])
+    expect(first.rows[0].result.success).toBe(true)
+    const second=await db.query<{result:any}>('select fn_promote_idea_to_project_atomic($1,$2,$3,$4) result',[userA,idea,'different-slug',500])
+    expect(second.rows[0].result.already_promoted).toBe(true)
+    expect((await db.query('select count(*)::int count from projects where id=$1',[first.rows[0].result.project_id])).rows).toEqual([{count:1}])
+  })
+
+  it('vault replace rolls cleanup back when any restored row is invalid', async () => {
+    await asUser(userA)
+    const before=await db.query('select name,balance from accounts where id=$1',[source])
+    const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], subscriptions:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], project_tasks:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
+    await expect(db.query('select fn_restore_vault_replace_atomic($1::jsonb)',[JSON.stringify(invalid)])).rejects.toThrow()
+    expect((await db.query('select name,balance from accounts where id=$1',[source])).rows).toEqual(before.rows)
+  })
 })
 
 

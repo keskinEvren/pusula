@@ -42,6 +42,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import { isUUID } from '@/lib/utils'
 import { useTimer, formatMinutesHours, type TimerMode } from '@/lib/timer-context'
+import { isMissingRelationError, requireMutationData } from '@/lib/supabase/mutation'
 import type { AgendaItem, Project } from '@/types/database'
 
 function toLocalDateString(d: Date): string {
@@ -180,7 +181,7 @@ function AgendaContent() {
         supabase.from('projects').select('*').order('name'),
       ])
 
-      if (itemsError) {
+      if (itemsError && isMissingRelationError(itemsError)) {
         console.warn('agenda_items remote notice (fallback to local):', itemsError.message)
         setIsDbFallback(true)
         const cached = localStorage.getItem('pusula_local_agenda_items')
@@ -197,6 +198,9 @@ function AgendaContent() {
         } else {
           setItems([])
         }
+      } else if (itemsError) {
+        setIsDbFallback(false)
+        throw new Error(itemsError.message)
       } else if (itemsData) {
         setIsDbFallback(false)
         const validItems = itemsData.filter((it: any) => it.title !== 'Bugünün Öncelikli Görevini Tamamla')
@@ -206,18 +210,8 @@ function AgendaContent() {
 
       if (projectsData) setProjects(projectsData)
     } catch (err: any) {
-      console.warn('Error loading agenda data:', err)
-      setIsDbFallback(true)
-      const cached = localStorage.getItem('pusula_local_agenda_items')
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached)
-          const cleaned = Array.isArray(parsed)
-            ? parsed.filter((it: any) => it.title !== 'Bugünün Öncelikli Görevini Tamamla')
-            : []
-          setItems(cleaned)
-        } catch {}
-      }
+      console.error('Error loading agenda data:', err)
+      toast.error(err.message || 'Ajanda verileri yüklenemedi.')
     } finally {
       setLoading(false)
     }
@@ -255,7 +249,7 @@ function AgendaContent() {
         } = await supabase.auth.getUser()
         if (user) newItem.user_id = user.id
 
-        const { data, error } = await supabase
+        const result = await supabase
           .from('agenda_items')
           .insert({
             user_id: newItem.user_id,
@@ -270,27 +264,23 @@ function AgendaContent() {
           .select()
           .single()
 
-        if (error) {
-          console.warn('Supabase insert notice, using local cache:', error.message)
-          setIsDbFallback(true)
-          syncLocal([...items, newItem])
-        } else if (data) {
-          syncLocal([...items, data])
-        }
+        const data = requireMutationData(result, 'Ajanda kaydı backend tarafından doğrulanamadı.')
+        syncLocal([...items, data])
       } else {
         syncLocal([...items, newItem])
+        toast.warning('Ajanda tablosu bulunamadığı için kayıt yalnızca bu cihazda saklandı.')
+        setQuickTitle('')
+        setQuickTime('')
+        setQuickProjectId('')
+        return
       }
 
       setQuickTitle('')
       setQuickTime('')
       setQuickProjectId('')
       toast.success('Ajandaya eklendi!')
-    } catch {
-      syncLocal([...items, newItem])
-      setQuickTitle('')
-      setQuickTime('')
-      setQuickProjectId('')
-      toast.success('Ajandaya eklendi!')
+    } catch (err: any) {
+      toast.error(err.message || 'Ajanda kaydı oluşturulamadı.')
     } finally {
       setQuickSubmitting(false)
     }
@@ -328,7 +318,7 @@ function AgendaContent() {
         } = await supabase.auth.getUser()
         if (user) newItem.user_id = user.id
 
-        const { data, error } = await supabase
+        const result = await supabase
           .from('agenda_items')
           .insert({
             user_id: newItem.user_id,
@@ -344,15 +334,13 @@ function AgendaContent() {
           .select()
           .single()
 
-        if (error) {
-          console.warn('Supabase modal insert notice, using local cache:', error.message)
-          setIsDbFallback(true)
-          syncLocal([...items, newItem])
-        } else if (data) {
-          syncLocal([...items, data])
-        }
+        const data = requireMutationData(result, 'Ajanda kaydı backend tarafından doğrulanamadı.')
+        syncLocal([...items, data])
       } else {
         syncLocal([...items, newItem])
+        toast.warning('Ajanda tablosu bulunamadığı için kayıt yalnızca bu cihazda saklandı.')
+        setIsModalOpen(false)
+        return
       }
 
       setIsModalOpen(false)
@@ -360,13 +348,8 @@ function AgendaContent() {
       setModalTime('')
       setModalProjectId('')
       toast.success('Yeni ajanda maddesi oluşturuldu!')
-    } catch {
-      syncLocal([...items, newItem])
-      setIsModalOpen(false)
-      setModalTitle('')
-      setModalTime('')
-      setModalProjectId('')
-      toast.success('Yeni ajanda maddesi oluşturuldu!')
+    } catch (err: any) {
+      toast.error(err.message || 'Ajanda kaydı oluşturulamadı.')
     } finally {
       setModalSubmitting(false)
     }
@@ -377,23 +360,22 @@ function AgendaContent() {
     const nextStatus: AgendaItem['status'] = item.status === 'completed' ? 'planned' : 'completed'
     const completedAt = nextStatus === 'completed' ? new Date().toISOString() : null
 
-    const updated = items.map((i) => (i.id === item.id ? { ...i, status: nextStatus, completed_at: completedAt } : i))
-    syncLocal(updated)
-
-    if (nextStatus === 'completed') {
-      toast.success(`"${item.title}" tamamlandı!`)
-    }
-
-    if (!isDbFallback) {
-      try {
+    try {
+      if (!isDbFallback) {
         const supabase = createClient()
-        await supabase
+        const result = await supabase
           .from('agenda_items')
           .update({ status: nextStatus, completed_at: completedAt })
           .eq('id', item.id)
-      } catch (err) {
-        console.warn('Status update db notice:', err)
+          .select('id')
+          .single()
+        requireMutationData(result, 'Ajanda durumu backend tarafından doğrulanamadı.')
       }
+      const updated = items.map((i) => (i.id === item.id ? { ...i, status: nextStatus, completed_at: completedAt } : i))
+      syncLocal(updated)
+      if (nextStatus === 'completed') toast.success(`"${item.title}" tamamlandı!`)
+    } catch (err: any) {
+      toast.error(err.message || 'Ajanda durumu güncellenemedi.')
     }
   }
 
@@ -401,67 +383,62 @@ function AgendaContent() {
   const handleDeleteItem = async () => {
     if (!itemToDelete) return
     const id = itemToDelete.id
-    const updated = items.filter((i) => i.id !== id)
-    syncLocal(updated)
-    if (activeTimer?.itemId === id) {
-      discardTimer()
-    }
-    toast.success('Ajanda maddesi silindi')
-    setItemToDelete(null)
-
-    if (!isDbFallback && isUUID(id)) {
-      try {
+    try {
+      if (!isDbFallback && isUUID(id)) {
         const supabase = createClient()
-        await supabase.from('agenda_items').delete().eq('id', id)
-      } catch (err) {
-        console.warn('Delete db notice:', err)
+        const result = await supabase.from('agenda_items').delete().eq('id', id).select('id').single()
+        requireMutationData(result, 'Ajanda kaydının silindiği doğrulanamadı.')
       }
+      syncLocal(items.filter((i) => i.id !== id))
+      if (activeTimer?.itemId === id) discardTimer()
+      toast.success('Ajanda maddesi silindi')
+      setItemToDelete(null)
+    } catch (err: any) {
+      toast.error(err.message || 'Ajanda maddesi silinemedi.')
     }
   }
 
   // Move single item to today (Carry-over)
   const handleMoveToToday = async (item: AgendaItem) => {
-    const updated = items.map((i) => (i.id === item.id ? { ...i, plan_date: todayStr } : i))
-    syncLocal(updated)
-    toast.success(`✨ "${item.title}" bugünün ajandasına aktarıldı!`)
-
-    if (!isDbFallback) {
-      try {
+    try {
+      if (!isDbFallback) {
         const supabase = createClient()
-        await supabase.from('agenda_items').update({ plan_date: todayStr }).eq('id', item.id)
-      } catch (err) {
-        console.warn('Move to today db notice:', err)
+        const result = await supabase.from('agenda_items').update({ plan_date: todayStr }).eq('id', item.id).select('id').single()
+        requireMutationData(result, 'Ajanda taşıma işlemi doğrulanamadı.')
       }
+      syncLocal(items.map((i) => (i.id === item.id ? { ...i, plan_date: todayStr } : i)))
+      toast.success(`✨ "${item.title}" bugünün ajandasına aktarıldı!`)
+    } catch (err: any) {
+      toast.error(err.message || 'Ajanda maddesi taşınamadı.')
     }
   }
 
   // Move all uncompleted items of a past day to today
   const handleMoveAllToToday = async (uncompletedItems: AgendaItem[]) => {
-    const uncompletedIds = new Set(uncompletedItems.map((i) => i.id))
-    const updated = items.map((i) => (uncompletedIds.has(i.id) ? { ...i, plan_date: todayStr } : i))
-    syncLocal(updated)
-    toast.success(`✨ ${uncompletedItems.length} görev bugünün ajandasına aktarıldı!`)
-
-    if (!isDbFallback) {
-      try {
+    try {
+      if (!isDbFallback) {
         const supabase = createClient()
-        for (const it of uncompletedItems) {
-          await supabase.from('agenda_items').update({ plan_date: todayStr }).eq('id', it.id)
-        }
-      } catch (err) {
-        console.warn('Move all to today db notice:', err)
+        const ids = uncompletedItems.map((item) => item.id)
+        const result = await supabase.from('agenda_items').update({ plan_date: todayStr }).in('id', ids).select('id')
+        const rows = requireMutationData(result, 'Ajanda taşıma işlemi doğrulanamadı.')
+        if (rows.length !== ids.length) throw new Error('Bazı ajanda kayıtları backend tarafından güncellenmedi.')
       }
+      const uncompletedIds = new Set(uncompletedItems.map((i) => i.id))
+      syncLocal(items.map((i) => (uncompletedIds.has(i.id) ? { ...i, plan_date: todayStr } : i)))
+      toast.success(`✨ ${uncompletedItems.length} görev bugünün ajandasına aktarıldı!`)
+      setSelectedDate(todayStr)
+    } catch (err: any) {
+      toast.error(err.message || 'Ajanda maddeleri taşınamadı.')
     }
-    // Switch view to today
-    setSelectedDate(todayStr)
   }
 
   // Handle Complete Active Timer
   const handleCompleteActiveTimer = async () => {
-    await completeTimer(completionNotes.trim() || undefined)
-    setIsCompleteModalOpen(false)
-    setCompletionNotes('')
-    loadData()
+    if (await completeTimer(completionNotes.trim() || undefined)) {
+      setIsCompleteModalOpen(false)
+      setCompletionNotes('')
+      await loadData()
+    }
   }
 
   // Day shift helpers
