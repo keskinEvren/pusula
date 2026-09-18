@@ -168,7 +168,7 @@ create table if not exists public.ideas (
   user_id uuid references auth.users(id) on delete cascade not null,
   title text not null,
   description text,
-  status text default 'inbox' check (status in ('inbox', 'maybe', 'killed', 'promoted')),
+  status text default 'inbox' check (status in ('inbox', 'maybe', 'decided', 'killed', 'promoted')),
   score numeric(4, 1),
   tags text[],
   promoted_project_id uuid references public.projects(id) on delete set null,

@@ -21,6 +21,7 @@ import {
   Building2,
   Clock,
   CalendarCheck,
+  Trash2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, formatLocalDateInput, slugify } from '@/lib/utils'
@@ -32,6 +33,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
 import { useToast } from '@/lib/toast-context'
@@ -90,6 +92,10 @@ export default function ProjectDetailPage({
     description: '',
     accountId: '',
   })
+
+  // Delete State
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [deletingProject, setDeletingProject] = useState(false)
 
   const handleQuickExpense = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -288,6 +294,29 @@ export default function ProjectDetailPage({
     }
   }
 
+  const handleDeleteProject = async () => {
+    if (!project) return
+    setDeletingProject(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('projects').delete().eq('id', project.id)
+      if (error) throw error
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(`pusula_project_doc_${slug}`)
+      }
+
+      toast.success(`"${project.name}" projesi başarıyla silindi.`)
+      setIsDeleteConfirmOpen(false)
+      setIsProjectEditModalOpen(false)
+      router.push('/projects')
+    } catch (err: any) {
+      toast.error(err?.message || 'Proje silinirken bir hata oluştu.')
+    } finally {
+      setDeletingProject(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center text-xs text-muted-foreground animate-pulse">
@@ -408,6 +437,16 @@ export default function ProjectDetailPage({
             >
               <Settings className="h-3.5 w-3.5" />
               Projeyi Düzenle
+            </Button>
+            <Button
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs min-h-[36px] text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+              title="Projeyi Sil"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Projeyi Sil</span>
             </Button>
             {project.repo_url && (
               <a
@@ -992,17 +1031,47 @@ export default function ProjectDetailPage({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t border-border">
-              <Button type="button" variant="outline" onClick={() => setIsProjectEditModalOpen(false)}>
-                İptal
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                className="gap-1.5 text-xs min-h-[36px]"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Projeyi Sil</span>
               </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsProjectEditModalOpen(false)}>
+                  İptal
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                </Button>
+              </div>
             </div>
           </form>
         )}
       </Modal>
+
+      {/* Delete Project Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteProject}
+        title="Projeyi Sil"
+        description={
+          <span>
+            <strong>&quot;{project.name}&quot;</strong> projesini kalıcı olarak silmek istediğinizden emin misiniz?
+            <br /><br />
+            Projeye ait geçmiş harcamalar, abonelikler ve ajanda kayıtları korunur, yalnızca proje bağlantıları kaldırılır.
+          </span>
+        }
+        confirmLabel="Projeyi Sil"
+        variant="destructive"
+        isLoading={deletingProject}
+      />
     </div>
   )
 }

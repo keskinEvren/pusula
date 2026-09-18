@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  Trash2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, slugify } from '@/lib/utils'
@@ -33,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import type { Project, Transaction, Subscription } from '@/types/database'
@@ -115,6 +117,8 @@ function ProjectsContent() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string; slug: string } | null>(null)
+  const [deletingProject, setDeletingProject] = useState(false)
   const [projectForm, setProjectForm] = useState({
     name: '',
     slug: '',
@@ -205,6 +209,33 @@ function ProjectsContent() {
       toast.error(err.message || 'Proje eklenemedi')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return
+    setDeletingProject(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('projects').delete().eq('id', projectToDelete.id)
+      if (error) throw error
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(`pusula_project_doc_${projectToDelete.slug}`)
+      }
+
+      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id))
+      setProjectCosts((prev) => {
+        const copy = { ...prev }
+        delete copy[projectToDelete.id]
+        return copy
+      })
+      toast.success(`"${projectToDelete.name}" projesi başarıyla silindi.`)
+      setProjectToDelete(null)
+    } catch (err: any) {
+      toast.error(err?.message || 'Proje silinirken bir hata oluştu.')
+    } finally {
+      setDeletingProject(false)
     }
   }
 
@@ -408,8 +439,8 @@ function ProjectsContent() {
                         </div>
                       </div>
 
-                      {/* Quick Shift Status */}
-                      <div className="shrink-0">
+                      {/* Quick Shift Status & Delete */}
+                      <div className="shrink-0 flex items-center gap-1.5">
                         <Select
                           id={`workbench-status-${project.id}`}
                           aria-label={`${project.name} durumunu değiştir`}
@@ -427,6 +458,17 @@ function ProjectsContent() {
                           <option value="Canlı">✅ Canlıya Al</option>
                           <option value="Arşiv">⏸️ Arşivle</option>
                         </Select>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setProjectToDelete({ id: project.id, name: project.name, slug: project.slug })}
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                          title="Projeyi Sil"
+                          aria-label={`"${project.name}" projesini sil`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
 
@@ -708,6 +750,16 @@ function ProjectsContent() {
                             Detay ↗
                           </Button>
                         </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setProjectToDelete({ id: project.id, name: project.name, slug: project.slug })}
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                          title="Projeyi Sil"
+                          aria-label={`"${project.name}" projesini sil`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -845,15 +897,27 @@ function ProjectsContent() {
                         </td>
 
                         <td className="p-3 text-right">
-                          <Link href={`/projects/${project.slug}`}>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link href={`/projects/${project.slug}`}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2.5 border-border hover:border-primary/50"
+                              >
+                                Gözlemle ↗
+                              </Button>
+                            </Link>
                             <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs px-2.5 border-border hover:border-primary/50"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setProjectToDelete({ id: project.id, name: project.name, slug: project.slug })}
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                              title="Projeyi Sil"
+                              aria-label={`"${project.name}" projesini sil`}
                             >
-                              Gözlemle ↗
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                          </Link>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -1007,6 +1071,24 @@ function ProjectsContent() {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Project Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!projectToDelete}
+        onClose={() => setProjectToDelete(null)}
+        onConfirm={handleDeleteProject}
+        title="Projeyi Sil"
+        description={
+          <span>
+            <strong>&quot;{projectToDelete?.name}&quot;</strong> projesini kalıcı olarak silmek istediğinizden emin misiniz?
+            <br /><br />
+            Projeye ait geçmiş harcamalar, abonelikler ve ajanda kayıtları korunur, yalnızca proje bağlantıları kaldırılır.
+          </span>
+        }
+        confirmLabel="Projeyi Sil"
+        variant="destructive"
+        isLoading={deletingProject}
+      />
     </div>
   )
 }
