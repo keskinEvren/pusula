@@ -211,10 +211,14 @@ function DreamsContent() {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    const userId = user?.id || 'local'
+
+    if (!user) {
+      toast.error('Hedef eklemek için lütfen önce giriş yapın.')
+      return
+    }
 
     const payload = {
-      user_id: userId,
+      user_id: user.id,
       title: formTitle.trim(),
       description: formDescription.trim() || null,
       identity_persona: formIdentityPersona.trim() || null,
@@ -229,41 +233,28 @@ function DreamsContent() {
     }
 
     try {
-      if (!isDbFallback && user) {
-        if (editingDream) {
-          if (isUUID(editingDream.id)) {
-            const result = await supabase.from('dreams').update(payload).eq('id', editingDream.id).select('*').single()
-            const saved = requireMutationData(result, 'Hedef güncellemesi backend tarafından doğrulanamadı.')
-            syncLocal(dreams.map((d) => (d.id === editingDream.id ? saved : d)))
-          } else {
-            const result = await supabase
-              .from('dreams')
-              .insert({ ...payload, order_index: editingDream.order_index ?? dreams.length, created_at: new Date().toISOString() })
-              .select('*')
-              .single()
-            const saved = requireMutationData(result, 'Hedef kaydı backend tarafından doğrulanamadı.')
-            syncLocal(dreams.map((d) => (d.id === editingDream.id ? saved : d)))
-          }
+      if (editingDream) {
+        if (isUUID(editingDream.id)) {
+          const result = await supabase.from('dreams').update(payload).eq('id', editingDream.id).select('*').single()
+          const saved = requireMutationData(result, 'Hedef güncellemesi backend tarafından doğrulanamadı.')
+          syncLocal(dreams.map((d) => (d.id === editingDream.id ? saved : d)))
         } else {
           const result = await supabase
             .from('dreams')
-            .insert({ ...payload, order_index: dreams.length, created_at: new Date().toISOString() })
+            .insert({ ...payload, order_index: editingDream.order_index ?? dreams.length, created_at: new Date().toISOString() })
             .select('*')
             .single()
           const saved = requireMutationData(result, 'Hedef kaydı backend tarafından doğrulanamadı.')
-          syncLocal([saved, ...dreams])
+          syncLocal(dreams.map((d) => (d.id === editingDream.id ? saved : d)))
         }
       } else {
-        let updated: Dream[]
-        if (editingDream) {
-          updated = dreams.map((d) => (d.id === editingDream.id ? ({ ...d, ...payload } as Dream) : d))
-        } else {
-          updated = [{ ...payload, id: crypto.randomUUID(), achieved_at: null, achieved_note: null, achieved_image_url: null, order_index: dreams.length, created_at: new Date().toISOString() } as Dream, ...dreams]
-        }
-        syncLocal(updated)
-        toast.warning('Hedefler tablosu bulunamadığı için kayıt yalnızca bu cihazda saklandı.')
-        setIsModalOpen(false)
-        return
+        const result = await supabase
+          .from('dreams')
+          .insert({ ...payload, order_index: dreams.length, created_at: new Date().toISOString() })
+          .select('*')
+          .single()
+        const saved = requireMutationData(result, 'Hedef kaydı backend tarafından doğrulanamadı.')
+        syncLocal([saved, ...dreams])
       }
       toast.success(editingDream ? 'Hedef güncellendi!' : 'Yeni hedef vizyon panona eklendi!')
       setIsModalOpen(false)
