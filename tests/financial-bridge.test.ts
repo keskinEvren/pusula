@@ -253,29 +253,30 @@ describe('Financial Bridge Testleri', () => {
     })
 
     it('unlinkTransactionFromDebt bağlantıyı kaldırmalıdır', async () => {
-      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', type: 'Borç Ödemesi', amount: 100, description: 'Ödeme [DEBT:d-1]' }, error: null }) // tx
-      mockSingle.mockResolvedValueOnce({ data: { id: 'd-1', remaining: 400, past_payments: 100 }, error: null }) // debt
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-1' }, error: null })
       
       const res = await bridge.unlinkTransactionFromDebt({ userId: 'u1', transactionId: 'tx-1' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ type: 'Harcama' }))
+      expect(mockRpc).toHaveBeenCalledWith('fn_unlink_transaction_from_debt_atomic', expect.objectContaining({ p_transaction_id: 'tx-1' }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
 
     it('linkTransactionToInvestment [INV:id] eklemeli ve grubu Hariç yapmalıdır', async () => {
-      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', description: 'Hisse' }, error: null }) // tx
-      mockSingle.mockResolvedValueOnce({ data: null, error: null }) // inv (not updating qty in this test)
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-1' }, error: null })
 
       const res = await bridge.linkTransactionToInvestment({ userId: 'u1', transactionId: 'tx-1', investmentId: 'inv-1' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ type: 'Transfer', analysis_group: 'Hariç', description: 'Hisse [INV:inv-1]' }))
+      expect(mockRpc).toHaveBeenCalledWith('fn_link_transaction_to_investment_atomic', expect.objectContaining({ p_investment_id: 'inv-1' }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
 
     it('unlinkTransactionFromInvestment etiketi kaldırmalı ve grubu Kişisel yapmalıdır', async () => {
-      mockSingle.mockResolvedValueOnce({ data: { id: 'tx-1', description: 'Hisse [INV:inv-1]', type: 'Transfer' }, error: null })
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: 'tx-1' }, error: null })
       
       const res = await bridge.unlinkTransactionFromInvestment({ userId: 'u1', transactionId: 'tx-1' })
       expect(res.success).toBe(true)
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ type: 'Harcama', analysis_group: 'Kişisel', description: 'Hisse' }))
+      expect(mockRpc).toHaveBeenCalledWith('fn_unlink_transaction_from_investment_atomic', expect.objectContaining({ p_transaction_id: 'tx-1' }))
+      expect(mockFrom).not.toHaveBeenCalled()
     })
   })
 })

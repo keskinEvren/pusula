@@ -126,6 +126,7 @@ function VaultPageContent() {
           maps,
           invs,
           projs,
+          projectTasks,
           ideas,
           agenda,
           dreams,
@@ -144,6 +145,7 @@ function VaultPageContent() {
           fetchAllRows(supabase, 'merchant_mappings'),
           fetchAllRows(supabase, 'investments'),
           fetchAllRows(supabase, 'projects'),
+          fetchAllRows(supabase, 'project_tasks'),
           fetchAllRows(supabase, 'ideas'),
           fetchAllRows(supabase, 'agenda_items'),
           fetchAllRows(supabase, 'dreams'),
@@ -163,6 +165,7 @@ function VaultPageContent() {
         if (maps) data.merchant_mappings = maps
         if (invs) data.investments = invs
         if (projs) data.projects = projs
+        if (projectTasks) data.project_tasks = projectTasks
         if (ideas) data.ideas = ideas
         if (agenda) data.agenda_items = agenda
         if (imports) data.statement_imports = imports
@@ -336,76 +339,15 @@ function VaultPageContent() {
 
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Geri yükleme için oturum açmalısınız.')
 
-      // LocalStorage'daki tabloları anında senkronize et
-      setRestoreProgress('Yerel önbellek senkronize ediliyor...')
-      localStorage.setItem('pusula_local_dreams', JSON.stringify(finalData.dreams || []))
-      localStorage.setItem('pusula_local_routines', JSON.stringify(finalData.routines || []))
-      localStorage.setItem('pusula_local_routine_logs', JSON.stringify(finalData.routine_logs || []))
-      localStorage.setItem('pusula_local_journal_entries', JSON.stringify(finalData.journal_entries || []))
-      localStorage.setItem('pusula_local_credentials', JSON.stringify(finalData.credentials || []))
-
-      // Supabase tablolarına opsiyonel upsert
-      if (user) {
-        if (restoreMode === 'replace') {
-          setRestoreProgress('Mevcut bulut verileri temizleniyor (replace modu)...')
-          // Ters FK bağımlılık sırasıyla temizleme
-          const delCreds = await supabase.from('credentials').delete().eq('user_id', user.id)
-          if (delCreds.error) console.warn('credentials cleanup warning:', delCreds.error.message)
-
-          // Seviye 3 (Yapraklar):
-          const delTxs = await supabase.from('transactions').delete().eq('user_id', user.id)
-          if (delTxs.error) throw new Error(`transactions silinirken hata: ${delTxs.error.message}`)
-
-          const delRLogs = await supabase.from('routine_logs').delete().eq('user_id', user.id)
-          if (delRLogs.error) throw new Error(`routine_logs silinirken hata: ${delRLogs.error.message}`)
-
-          const delStmts = await supabase.from('card_statements').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-          if (delStmts.error) console.warn('card_statements cleanup warning:', delStmts.error.message)
-
-          // Seviye 2:
-          const delImports = await supabase.from('statement_imports').delete().eq('user_id', user.id)
-          if (delImports.error) throw new Error(`statement_imports silinirken hata: ${delImports.error.message}`)
-
-          const delIdeas = await supabase.from('ideas').delete().eq('user_id', user.id)
-          if (delIdeas.error) throw new Error(`ideas silinirken hata: ${delIdeas.error.message}`)
-
-          const delAgenda = await supabase.from('agenda_items').delete().eq('user_id', user.id)
-          if (delAgenda.error) throw new Error(`agenda_items silinirken hata: ${delAgenda.error.message}`)
-
-          const delSubs = await supabase.from('subscriptions').delete().eq('user_id', user.id)
-          if (delSubs.error) throw new Error(`subscriptions silinirken hata: ${delSubs.error.message}`)
-
-          const delDebts = await supabase.from('debts').delete().eq('user_id', user.id)
-          if (delDebts.error) throw new Error(`debts silinirken hata: ${delDebts.error.message}`)
-
-          const delRoutines = await supabase.from('routines').delete().eq('user_id', user.id)
-          if (delRoutines.error) throw new Error(`routines silinirken hata: ${delRoutines.error.message}`)
-
-          // Seviye 1 (Kökler):
-          const delJournals = await supabase.from('journal_entries').delete().eq('user_id', user.id)
-          if (delJournals.error) throw new Error(`journal_entries silinirken hata: ${delJournals.error.message}`)
-
-          const delMaps = await supabase.from('merchant_mappings').delete().eq('user_id', user.id)
-          if (delMaps.error) throw new Error(`merchant_mappings silinirken hata: ${delMaps.error.message}`)
-
-          const delInvs = await supabase.from('investments').delete().eq('user_id', user.id)
-          if (delInvs.error) throw new Error(`investments silinirken hata: ${delInvs.error.message}`)
-
-          const delDreams = await supabase.from('dreams').delete().eq('user_id', user.id)
-          if (delDreams.error) throw new Error(`dreams silinirken hata: ${delDreams.error.message}`)
-
-          const delProjs = await supabase.from('projects').delete().eq('user_id', user.id)
-          if (delProjs.error) throw new Error(`projects silinirken hata: ${delProjs.error.message}`)
-
-          const delCards = await supabase.from('credit_cards').delete().eq('user_id', user.id)
-          if (delCards.error) throw new Error(`credit_cards silinirken hata: ${delCards.error.message}`)
-
-          const delAccs = await supabase.from('accounts').delete().eq('user_id', user.id)
-          if (delAccs.error) throw new Error(`accounts silinirken hata: ${delAccs.error.message}`)
-        }
-
-        // Düzgün FK sırasıyla yükleme (Level 1 -> Level 2 -> Level 3):
+      if (restoreMode === 'replace') {
+        setRestoreProgress('Bulut verileri tek transaction içinde geri yükleniyor...')
+        const { data, error } = await supabase.rpc('fn_restore_vault_replace_atomic', { p_data: finalData as any })
+        if (error) throw error
+        if (!data?.success) throw new Error(data?.error || 'Atomik geri yükleme doğrulanamadı.')
+      } else {
+        // Merge modu yalnızca idempotent upsert yapar; her çağrının hatası kontrol edilir.
         setRestoreProgress('Temel kayıtlar geri yükleniyor (Seviye 1)...')
         await upsertInChunks(supabase, 'accounts', finalData.accounts)
         await upsertInChunks(supabase, 'credit_cards', finalData.credit_cards)
@@ -419,6 +361,7 @@ function VaultPageContent() {
 
         setRestoreProgress('Bağlantılı kayıtlar geri yükleniyor (Seviye 2)...')
         await upsertInChunks(supabase, 'statement_imports', finalData.statement_imports)
+        await upsertInChunks(supabase, 'project_tasks', finalData.project_tasks)
         await upsertInChunks(supabase, 'debts', finalData.debts)
         await upsertInChunks(supabase, 'subscriptions', finalData.subscriptions)
         await upsertInChunks(supabase, 'ideas', finalData.ideas)
@@ -429,6 +372,14 @@ function VaultPageContent() {
         await upsertInChunks(supabase, 'routine_logs', finalData.routine_logs)
         await upsertInChunks(supabase, 'transactions', finalData.transactions)
       }
+
+      // Yerel kopya yalnızca backend tüm işi doğruladıktan sonra güncellenir.
+      setRestoreProgress('Yerel önbellek senkronize ediliyor...')
+      localStorage.setItem('pusula_local_dreams', JSON.stringify(finalData.dreams || []))
+      localStorage.setItem('pusula_local_routines', JSON.stringify(finalData.routines || []))
+      localStorage.setItem('pusula_local_routine_logs', JSON.stringify(finalData.routine_logs || []))
+      localStorage.setItem('pusula_local_journal_entries', JSON.stringify(finalData.journal_entries || []))
+      localStorage.setItem('pusula_local_credentials', JSON.stringify(finalData.credentials || []))
 
       setVaultData(finalData)
       const successText = `Başarılı! ${validationResult.payload.manifest.total_records} kayıt başarıyla geri yüklendi ve kasanız güncellendi.`

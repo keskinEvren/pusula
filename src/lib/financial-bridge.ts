@@ -164,68 +164,10 @@ export class FinancialBridge {
     userId: string
     transactionId: string
   }): Promise<FinancialEventResult> {
-    try {
-      const supabase = createClient()
-
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', params.transactionId)
-        .eq('user_id', params.userId)
-        .single()
-
-      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
-
-      const debtId = getLinkedDebtId(tx)
-      if (debtId) {
-        const { data: debt } = await supabase
-          .from('debts')
-          .select('*')
-          .eq('id', debtId)
-          .eq('user_id', params.userId)
-          .single()
-
-        if (debt) {
-          const restoredPast = Math.max(0, Number(debt.past_payments) - Number(tx.amount))
-          const restoredRemaining = Number(debt.remaining) + Number(tx.amount)
-          await supabase
-            .from('debts')
-            .update({
-              past_payments: restoredPast,
-              remaining: restoredRemaining,
-              status: 'Açık',
-            })
-            .eq('id', debtId)
-        }
-      }
-
-      // Restore transaction
-      const cleanDesc = (tx.description || '').replace(/\s*\[DEBT:[a-f0-9-]+\]/gi, '').trim()
-      const restoredType = tx.type === 'Tahsilat' ? 'Gelir' : tx.type === 'Borç Ödemesi' ? 'Harcama' : tx.type
-
-      const updatePayload: any = {
-        type: restoredType,
-        description: cleanDesc,
-        analysis_group: 'Kişisel',
-      }
-
-      const res1 = await supabase
-        .from('transactions')
-        .update({ ...updatePayload, related_debt_id: null })
-        .eq('id', tx.id)
-
-      if (res1.error) {
-        const res2 = await supabase
-          .from('transactions')
-          .update(updatePayload)
-          .eq('id', tx.id)
-        if (res2.error) throw res2.error
-      }
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Bağlantı çözülemedi.' }
-    }
+    const result = await this.atomic('fn_unlink_transaction_from_debt_atomic', {
+      p_user_id: params.userId, p_transaction_id: params.transactionId,
+    })
+    return result.success ? { ...result, transactionId: params.transactionId } : result
   }
 
   /**
@@ -240,65 +182,12 @@ export class FinancialBridge {
     addedQty?: number
     unitPrice?: number
   }): Promise<FinancialEventResult> {
-    try {
-      const supabase = createClient()
-
-      // 1. Get Transaction
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', params.transactionId)
-        .eq('user_id', params.userId)
-        .single()
-
-      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
-
-      // 2. Get Investment (if DB available)
-      const { data: inv } = await supabase
-        .from('investments')
-        .select('*')
-        .eq('id', params.investmentId)
-        .eq('user_id', params.userId)
-        .single()
-
-      if (inv && params.addedQty && params.addedQty > 0 && params.unitPrice && params.unitPrice > 0) {
-        const currentQty = Number(inv.quantity || 0)
-        const currentCost = Number(inv.unit_cost || 0)
-        const newQty = currentQty + params.addedQty
-        const totalSpent = (currentQty * currentCost) + (params.addedQty * params.unitPrice)
-        const newUnitCost = newQty > 0 ? Math.round((totalSpent / newQty) * 100) / 100 : 0
-
-        await supabase
-          .from('investments')
-          .update({
-            quantity: newQty,
-            unit_cost: newUnitCost,
-            current_price: params.unitPrice,
-            last_price_updated_at: new Date().toISOString(),
-          })
-          .eq('id', inv.id)
-      }
-
-      // 3. Update Transaction: mark as Excluded from consumption & tag with [INV:id]
-      const invTag = `[INV:${params.investmentId}]`
-      const baseDesc = (tx.description || '').replace(/\s*\[INV:[^\]]+\]/gi, '').trim()
-      const updatedDesc = `${baseDesc} ${invTag}`.trim()
-
-      const { error: updErr } = await supabase
-        .from('transactions')
-        .update({
-          type: 'Transfer',
-          analysis_group: 'Hariç',
-          description: updatedDesc,
-        })
-        .eq('id', tx.id)
-
-      if (updErr) throw updErr
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Yatırıma aktarılamadı.' }
-    }
+    const result = await this.atomic('fn_link_transaction_to_investment_atomic', {
+      p_user_id: params.userId, p_transaction_id: params.transactionId,
+      p_investment_id: params.investmentId, p_added_qty: params.addedQty ?? null,
+      p_unit_price: params.unitPrice ?? null,
+    })
+    return result.success ? { ...result, transactionId: params.transactionId } : result
   }
 
   /**
@@ -308,35 +197,10 @@ export class FinancialBridge {
     userId: string
     transactionId: string
   }): Promise<FinancialEventResult> {
-    try {
-      const supabase = createClient()
-
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', params.transactionId)
-        .eq('user_id', params.userId)
-        .single()
-
-      if (txErr || !tx) return { success: false, error: 'Hareket bulunamadı.' }
-
-      const cleanDesc = (tx.description || '').replace(/\s*\[INV:[^\]]+\]/gi, '').trim()
-
-      const { error: updErr } = await supabase
-        .from('transactions')
-        .update({
-          type: 'Harcama',
-          analysis_group: 'Kişisel',
-          description: cleanDesc,
-        })
-        .eq('id', tx.id)
-
-      if (updErr) throw updErr
-
-      return { success: true, transactionId: tx.id }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Bağlantı geri alınamadı.' }
-    }
+    const result = await this.atomic('fn_unlink_transaction_from_investment_atomic', {
+      p_user_id: params.userId, p_transaction_id: params.transactionId,
+    })
+    return result.success ? { ...result, transactionId: params.transactionId } : result
   }
 }
 

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/lib/toast-context'
+import { requireMutationData } from '@/lib/supabase/mutation'
 import type { AgendaItem } from '@/types/database'
 
 export type TimerMode = 'stopwatch' | 'pomodoro'
@@ -29,9 +30,9 @@ interface TimerContextValue {
   startTimer: (item: AgendaItem, projectName?: string | null) => Promise<void>
   pauseTimer: () => Promise<void>
   resumeTimer: () => void
-  completeTimer: (notes?: string) => Promise<void>
+  completeTimer: (notes?: string) => Promise<boolean>
   discardTimer: () => void
-  setTimerMode: (mode: TimerMode, targetMinutes?: number) => void
+  setTimerMode: (mode: TimerMode, targetMinutes?: number) => Promise<void>
   formatTime: (seconds: number) => string
 }
 
@@ -169,28 +170,22 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       isRunning: true,
     }
 
-    setActiveTimer(newTimer)
-    setElapsedSeconds(item.duration_seconds || 0)
-    saveStateToStorage(newTimer)
-
-    // Mark as in_progress in Supabase & Local Cache
-    updateLocalAgendaItem(item.id, {
-      status: 'in_progress',
-      timer_mode: timerMode,
-      pomodoro_target_minutes: pomodoroTargetMinutes,
-    })
-
     try {
       const supabase = createClient()
-      await supabase
+      requireMutationData(await supabase
         .from('agenda_items')
         .update({ status: 'in_progress', timer_mode: timerMode, pomodoro_target_minutes: pomodoroTargetMinutes })
         .eq('id', item.id)
+        .select('id')
+        .single(), 'Sayaç başlangıcı backend tarafından doğrulanamadı.')
+      setActiveTimer(newTimer)
+      setElapsedSeconds(item.duration_seconds || 0)
+      saveStateToStorage(newTimer)
+      updateLocalAgendaItem(item.id, { status: 'in_progress', timer_mode: timerMode, pomodoro_target_minutes: pomodoroTargetMinutes })
+      toast.info(`⏱️ "${item.title}" için sayaç başlatıldı`)
     } catch (err) {
-      // Ignore database notice if offline/local
+      toast.error(err instanceof Error ? err.message : 'Sayaç başlatılamadı.')
     }
-
-    toast.info(`⏱️ "${item.title}" için sayaç başlatıldı`)
   }, [saveStateToStorage, toast])
 
   // Pause
@@ -208,24 +203,22 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       isRunning: false,
     }
 
-    setActiveTimer(paused)
-    setElapsedSeconds(newBase)
-    saveStateToStorage(paused)
-
-    // Sync seconds to local cache and Supabase
-    updateLocalAgendaItem(activeTimer.itemId, { duration_seconds: newBase })
-
     try {
       const supabase = createClient()
-      await supabase
+      requireMutationData(await supabase
         .from('agenda_items')
         .update({ duration_seconds: newBase })
         .eq('id', activeTimer.itemId)
+        .select('id')
+        .single(), 'Sayaç süresi backend tarafından doğrulanamadı.')
+      setActiveTimer(paused)
+      setElapsedSeconds(newBase)
+      saveStateToStorage(paused)
+      updateLocalAgendaItem(activeTimer.itemId, { duration_seconds: newBase })
+      toast.info('Sayaç duraklatıldı')
     } catch (err) {
-      // Ignore
+      toast.error(err instanceof Error ? err.message : 'Sayaç duraklatılamadı.')
     }
-
-    toast.info('Sayaç duraklatıldı')
   }, [activeTimer, saveStateToStorage, toast])
 
   // Resume
@@ -245,7 +238,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   // Complete
   const completeTimer = useCallback(async (notes?: string) => {
-    if (!activeTimer) return
+    if (!activeTimer) return false
 
     let finalSeconds = activeTimer.baseElapsedSeconds
     if (activeTimer.isRunning && activeTimer.startedAtTimestamp) {
@@ -260,23 +253,24 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       ...(notes ? { notes } : {}),
     }
 
-    // Always update local cache
-    updateLocalAgendaItem(activeTimer.itemId, patch)
-
     try {
       const supabase = createClient()
-      await supabase
+      requireMutationData(await supabase
         .from('agenda_items')
         .update(patch)
         .eq('id', activeTimer.itemId)
-    } catch (err: any) {
-      // Local cache already updated
-    } finally {
+        .select('id')
+        .single(), 'Sayaç tamamlama işlemi backend tarafından doğrulanamadı.')
+      updateLocalAgendaItem(activeTimer.itemId, patch)
       playChime()
       toast.success(`✅ "${activeTimer.itemTitle}" tamamlandı! Toplam süre: ${formatMinutesHours(finalSeconds)}`)
       setActiveTimer(null)
       setElapsedSeconds(0)
       saveStateToStorage(null)
+      return true
+    } catch (err: any) {
+      toast.error(err.message || 'Sayaç tamamlanamadı.')
+      return false
     }
   }, [activeTimer, saveStateToStorage, toast])
 
@@ -289,7 +283,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   }, [saveStateToStorage, toast])
 
   // Set mode (Stopwatch / Pomodoro)
-  const setTimerMode = useCallback((mode: TimerMode, targetMinutes = 25) => {
+  const setTimerMode = useCallback(async (mode: TimerMode, targetMinutes = 25) => {
     if (!activeTimer) return
 
     const updated: ActiveTimerData = {
@@ -297,26 +291,22 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       timerMode: mode,
       pomodoroTargetMinutes: targetMinutes,
     }
-    setActiveTimer(updated)
-    saveStateToStorage(updated)
-    pomodoroChimedRef.current = false
-
-    updateLocalAgendaItem(activeTimer.itemId, {
-      timer_mode: mode,
-      pomodoro_target_minutes: targetMinutes,
-    })
-
     try {
       const supabase = createClient()
-      supabase
+      requireMutationData(await supabase
         .from('agenda_items')
         .update({ timer_mode: mode, pomodoro_target_minutes: targetMinutes })
         .eq('id', activeTimer.itemId)
-        .then(() => {})
-    } catch {
-      // Ignore
+        .select('id')
+        .single(), 'Sayaç modu backend tarafından doğrulanamadı.')
+      setActiveTimer(updated)
+      saveStateToStorage(updated)
+      pomodoroChimedRef.current = false
+      updateLocalAgendaItem(activeTimer.itemId, { timer_mode: mode, pomodoro_target_minutes: targetMinutes })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sayaç modu güncellenemedi.')
     }
-  }, [activeTimer, saveStateToStorage])
+  }, [activeTimer, saveStateToStorage, toast])
 
   const formatTime = (totalSec: number): string => {
     const hours = Math.floor(totalSec / 3600)

@@ -23,6 +23,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { isMissingRelationError, requireMutationData, throwOnSupabaseError } from '@/lib/supabase/mutation'
 import { formatCurrency, cn, isUUID } from '@/lib/utils'
 import { calculatePortfolioMetrics, calculateDcaAverageCost, round2 } from '@/lib/finance-engine'
 import { searchAssetCatalog, type CatalogAsset } from '@/lib/market/assets-catalog'
@@ -148,7 +149,7 @@ function InvestmentsContent() {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) {
+    if (error && isMissingRelationError(error)) {
       console.warn('Investments table query note:', error.message)
       // Fallback to localStorage if table migration not yet run in remote Supabase
       setIsDbFallback(true)
@@ -164,6 +165,9 @@ function InvestmentsContent() {
       } else {
         setInvestments([])
       }
+    } else if (error) {
+      setIsDbFallback(false)
+      toast.error(error.message || 'Yatırım verileri yüklenemedi.')
     } else if (data) {
       const validData = data.filter((inv: any) => !inv.id?.startsWith?.('demo-'))
       setInvestments(validData)
@@ -215,20 +219,13 @@ function InvestmentsContent() {
         // Save to DB or local storage
         if (!isDbFallback) {
           const supabase = createClient()
-          for (const item of updatedList) {
-            await supabase
-              .from('investments')
-              .update({
-                current_price: item.current_price,
-                last_price_updated_at: item.last_price_updated_at,
-              })
-              .eq('id', item.id)
-          }
+          throwOnSupabaseError(await supabase.from('investments').upsert(updatedList), 'Fiyatlar kaydedilemedi.')
         }
         syncLocal(updatedList)
       }
     } catch (err) {
       console.error('Error refreshing prices:', err)
+      toast.error(err instanceof Error ? err.message : 'Fiyatlar güncellenemedi.')
     } finally {
       setRefreshing(false)
     }
@@ -373,7 +370,7 @@ function InvestmentsContent() {
 
       if (!isDbFallback) {
         const supabase = createClient()
-        const { error } = await supabase
+        const result = await supabase
           .from('investments')
           .update({
             quantity: dcaResult.newQuantity,
@@ -383,8 +380,10 @@ function InvestmentsContent() {
             updated_at: new Date().toISOString(),
           })
           .eq('id', dcaItem.id)
+          .select('id')
+          .single()
 
-        if (error) throw error
+        requireMutationData(result, 'Kademeli alım backend tarafından doğrulanamadı.')
         await loadInvestments()
       } else {
         const updated = investments.map((inv) =>
@@ -457,33 +456,30 @@ function InvestmentsContent() {
       updated_at: new Date().toISOString(),
     }
 
-    if (!isDbFallback && user) {
-      if (editingItem) {
-        await supabase.from('investments').update(payload).eq('id', editingItem.id)
+    try {
+      if (!isDbFallback && user) {
+        const result = editingItem
+          ? await supabase.from('investments').update(payload).eq('id', editingItem.id).select('*').single()
+          : await supabase.from('investments').insert(payload).select('*').single()
+        requireMutationData(result, 'Yatırım kaydı backend tarafından doğrulanamadı.')
+        await loadInvestments()
       } else {
-        await supabase.from('investments').insert(payload)
+        let updated: Investment[]
+        if (editingItem) {
+          updated = investments.map((inv) => inv.id === editingItem.id ? ({ ...inv, ...payload } as Investment) : inv)
+        } else {
+          updated = [{ ...payload, id: `inv-${Date.now()}`, created_at: new Date().toISOString() } as Investment, ...investments]
+        }
+        syncLocal(updated)
+        toast.warning('Yatırımlar tablosu bulunamadığı için kayıt yalnızca bu cihazda saklandı.')
+        setIsModalOpen(false)
+        return
       }
-      loadInvestments()
-    } else {
-      // Local storage fallback
-      let updated: Investment[]
-      if (editingItem) {
-        updated = investments.map((inv) =>
-          inv.id === editingItem.id ? ({ ...inv, ...payload } as Investment) : inv
-        )
-      } else {
-        const newItem: Investment = {
-          ...payload,
-          id: `inv-${Date.now()}`,
-          created_at: new Date().toISOString(),
-        } as Investment
-        updated = [newItem, ...investments]
-      }
-      syncLocal(updated)
+      toast.success(editingItem ? 'Yatırım güncellendi.' : 'Yeni yatırım eklendi.')
+      setIsModalOpen(false)
+    } catch (err: any) {
+      toast.error(err.message || 'Yatırım kaydedilemedi.')
     }
-
-    toast.success(editingItem ? 'Yatırım güncellendi.' : 'Yeni yatırım eklendi.')
-    setIsModalOpen(false)
   }
 
   const confirmDeleteItem = async () => {
@@ -492,7 +488,8 @@ function InvestmentsContent() {
     try {
       if (!isDbFallback && isUUID(deleteTargetItem.id)) {
         const supabase = createClient()
-        await supabase.from('investments').delete().eq('id', deleteTargetItem.id)
+        const result = await supabase.from('investments').delete().eq('id', deleteTargetItem.id).select('id').single()
+        requireMutationData(result, 'Yatırım kaydının silindiği doğrulanamadı.')
         await loadInvestments()
       } else {
         syncLocal(investments.filter((i) => i.id !== deleteTargetItem.id))
@@ -513,31 +510,27 @@ function InvestmentsContent() {
     const newPrice = parseFloat(quickNewPrice.replace(',', '.'))
     if (isNaN(newPrice) || newPrice <= 0) return
 
-    if (!isDbFallback) {
-      const supabase = createClient()
-      await supabase
-        .from('investments')
-        .update({
-          current_price: newPrice,
-          last_price_updated_at: new Date().toISOString(),
-        })
-        .eq('id', quickUpdateItem.id)
-      loadInvestments()
-    } else {
-      const updated = investments.map((inv) =>
-        inv.id === quickUpdateItem.id
-          ? {
-              ...inv,
-              current_price: newPrice,
-              last_price_updated_at: new Date().toISOString(),
-            }
-          : inv
-      )
-      syncLocal(updated)
+    try {
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const result = await supabase
+          .from('investments')
+          .update({ current_price: newPrice, last_price_updated_at: new Date().toISOString() })
+          .eq('id', quickUpdateItem.id)
+          .select('id')
+          .single()
+        requireMutationData(result, 'Fiyat güncellemesi backend tarafından doğrulanamadı.')
+        await loadInvestments()
+      } else {
+        syncLocal(investments.map((inv) => inv.id === quickUpdateItem.id
+          ? { ...inv, current_price: newPrice, last_price_updated_at: new Date().toISOString() }
+          : inv))
+      }
+      toast.success('Fiyat güncellendi.')
+      setQuickUpdateItem(null)
+    } catch (err: any) {
+      toast.error(err.message || 'Fiyat güncellenemedi.')
     }
-
-    toast.success('Fiyat güncellendi.')
-    setQuickUpdateItem(null)
   }
 
   // Filter & Search

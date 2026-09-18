@@ -121,9 +121,9 @@ describe('vault-engine', () => {
   })
 
   describe('Constants', () => {
-    it('EMPTY_VAULT_DATA 17 tablonun tümüne sahiptir', () => {
+    it('EMPTY_VAULT_DATA 18 tablonun tümüne sahiptir', () => {
       const keys = Object.keys(EMPTY_VAULT_DATA)
-      expect(keys.length).toBe(17)
+      expect(keys.length).toBe(18)
     })
 
     it('VAULT_TABLE_LABELS tüm tablolar için tanımlanmıştır', () => {

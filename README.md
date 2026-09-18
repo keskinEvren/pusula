@@ -54,6 +54,20 @@ Supabase SQL Editor üzerinden sırasıyla çalıştırınız:
 7. `supabase/migrations/006_create_routines_and_logs.sql`
 8. `supabase/migrations/007_create_journal_entries.sql`
 9. `supabase/migrations/008_security_and_financial_integrity.sql` *(Atomik stored procedure'lar, kilitler ve güvenlik sertleştirmeleri)*
+10. `supabase/migrations/009_projects_ideas_redesign.sql`
+11. `supabase/migrations/010_add_project_type.sql`
+12. `supabase/migrations/011_create_agenda_items.sql`
+13. `supabase/migrations/012_create_credentials_table.sql`
+14. `supabase/migrations/013_lock_down_financial_rpcs.sql`
+15. `supabase/migrations/014_qa_financial_integrity.sql`
+16. `supabase/migrations/015_atomic_payments.sql`
+17. `supabase/migrations/016_atomic_card_statement.sql`
+18. `supabase/migrations/017_keyset_pagination_and_aggregates.sql`
+19. `supabase/migrations/018_idempotent_atomic_import.sql`
+20. `supabase/migrations/019_restore_atomic_debt_rpcs.sql`
+21. `supabase/migrations/020_repair_transaction_financial_bridge.sql`
+22. `supabase/migrations/021_atomic_user_workflows.sql`
+23. `supabase/migrations/022_atomic_vault_replace.sql`
 
 ### 4. Komutlar
 ```bash

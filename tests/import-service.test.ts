@@ -267,5 +267,23 @@ describe('Import Service Testleri', () => {
       expect(mockFrom).toHaveBeenCalledWith('transactions')
       expect(mockFrom).toHaveBeenCalledWith('statement_imports')
     })
+
+    it('child transaction delete başarısızsa parent import kaydını silmemelidir', async () => {
+      const transactionQuery: any = {
+        delete: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+      }
+      transactionQuery.eq
+        .mockReturnValueOnce(transactionQuery)
+        .mockResolvedValueOnce({ error: { message: 'child delete denied' } })
+      const importQuery = { delete: vi.fn() }
+      mockFrom.mockImplementation((table: string) => table === 'transactions' ? transactionQuery : importQuery as any)
+
+      const res = await deleteImportBatchPermanently(mockSupabase, 'imp-1', 'u1')
+
+      expect(res).toEqual({ success: false, error: 'İçe aktarılan hareketler silinemedi: child delete denied' })
+      expect(mockFrom).not.toHaveBeenCalledWith('statement_imports')
+      expect(importQuery.delete).not.toHaveBeenCalled()
+    })
   })
 })

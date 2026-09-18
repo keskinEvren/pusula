@@ -1,6 +1,6 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 
-const fixture = 'http://127.0.0.1:54321'
+const fixture = process.env.QA_SUPABASE_URL || 'http://127.0.0.1:54321'
 const routes = ['/', '/accounts', '/agenda', '/cards', '/credentials', '/debts', '/dreams', '/ideas', '/import', '/imports', '/investments', '/journal', '/projects', '/projects/qa-project', '/routines', '/settings', '/subscriptions', '/transactions', '/vault']
 const account = { id: '22222222-2222-4222-8222-222222222222', user_id: '11111111-1111-4111-8111-111111111111', name: 'QA Bank', type: 'vadesiz', balance: 1000, currency: 'TRY' }
 const project = { id: '33333333-3333-4333-8333-333333333333', user_id: account.user_id, name: 'QA Project', slug: 'qa-project', status: 'Planlama', project_type: 'saas', budget_limit: 10000, description: 'QA document' }
@@ -11,7 +11,7 @@ async function login(page: Page) {
   await page.getByLabel('E-posta adresi', { exact: true }).fill('qa@example.test')
   await page.getByLabel('Şifre', { exact: true }).fill('QA-password-123!')
   await page.getByRole('button', { name: 'Giriş Yap', exact: true }).click()
-  await expect(page).toHaveURL(/3100\/$/)
+  await expect(page).toHaveURL((url) => url.pathname === '/')
 }
 test.beforeEach(async ({ context, request }) => {
   await reset(request)
@@ -106,6 +106,40 @@ test('project expense failure must not report success', async ({ page, request }
   await dialog.locator('button[type=submit]').click()
   await expect(page.getByText('Harcama projeye başarıyla kaydedildi!')).toHaveCount(0)
   await expect(dialog).toBeVisible()
+})
+
+test('agenda: 400/401/403/409/500 mutation errors never create success state', async ({ page, request }) => {
+  await login(page)
+  for (const status of [400, 401, 403, 409, 500]) {
+    await reset(request, { agenda_items: [], projects: [] })
+    await request.post(`${fixture}/__qa/fail`, { data: { path: '/rest/v1/agenda_items', method: 'POST', status } })
+    await page.goto('/agenda')
+    const title = page.getByPlaceholder(/Bugün neye odaklanacaksın/)
+    await title.fill(`Agenda failure ${status}`)
+    await page.getByRole('button', { name: 'Ekle', exact: true }).click()
+    await expect(page.getByRole('alert').filter({ hasText: 'QA injected failure' })).toBeVisible()
+    await expect(title).toHaveValue(`Agenda failure ${status}`)
+    expect(((await state(request)).tables.agenda_items || [])).toHaveLength(0)
+  }
+})
+
+test('investments: 400/401/403/409/500 mutation errors keep modal and backend unchanged', async ({ page, request }) => {
+  await login(page)
+  for (const status of [400, 401, 403, 409, 500]) {
+    await reset(request, { investments: [] })
+    await request.post(`${fixture}/__qa/fail`, { data: { path: '/rest/v1/investments', method: 'POST', status } })
+    await page.goto('/investments')
+    await page.getByRole('button', { name: 'Yeni Varlık' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Varlık / Şirket Adı').fill(`Investment failure ${status}`)
+    await dialog.getByLabel('Miktar / Adet').fill('1')
+    await dialog.getByLabel('Alış Maliyeti').fill('10')
+    await dialog.getByLabel('Güncel Fiyat').fill('10')
+    await dialog.getByRole('button', { name: 'Varlığı Ekle' }).click()
+    await expect(page.getByRole('alert').filter({ hasText: 'QA injected failure' })).toBeVisible()
+    await expect(dialog).toBeVisible()
+    expect(((await state(request)).tables.investments || [])).toHaveLength(0)
+  }
 })
 
 test('cards: create edit statement and delete with reload persistence', async ({ page, request }) => {

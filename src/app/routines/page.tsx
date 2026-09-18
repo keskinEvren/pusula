@@ -30,6 +30,7 @@ import {
   Target,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { requireMutationData } from '@/lib/supabase/mutation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -171,6 +172,7 @@ function RoutinesPageContent() {
               setRoutines(seededData as Routine[])
               localStorage.setItem(STORAGE_KEY_ROUTINES, JSON.stringify(seededData))
             } else {
+              if (seedErr) toast.error(seedErr.message || 'Yerel rutinler buluta aktarılamadı.')
               setRoutines(realLocalRoutines)
             }
           } catch {
@@ -297,24 +299,23 @@ function RoutinesPageContent() {
       (l) => l.routine_id === routineId && l.log_date === selectedDate
     )
 
-    let updatedLogs: RoutineLog[]
-
-    if (existingLog) {
-      // Zaten tamamlanmışsa geri al (sil)
-      updatedLogs = routineLogs.filter((l) => l.id !== existingLog.id)
-      saveLogsToLocal(updatedLogs)
-
-      const supabase = createClient()
-      try {
-        await supabase.from('routine_logs').delete().eq('id', existingLog.id)
-      } catch (err) {
-        console.error('Delete routine log error:', err)
+    const supabase = createClient()
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (existingLog) {
+        if (user && isUUID(existingLog.id)) {
+          requireMutationData(
+            await supabase.from('routine_logs').delete().eq('id', existingLog.id).select('id').single(),
+            'Rutin kaydının silindiği doğrulanamadı.'
+          )
+        }
+        saveLogsToLocal(routineLogs.filter((l) => l.id !== existingLog.id))
+        return
       }
-    } else {
-      // Yeni tamamlama kaydı oluştur
+
       const newLog: RoutineLog = {
         id: crypto.randomUUID(),
-        user_id: 'local',
+        user_id: user?.id || 'local',
         routine_id: routineId,
         log_date: selectedDate,
         status: statusToSet,
@@ -323,20 +324,17 @@ function RoutinesPageContent() {
         completed_at: new Date().toISOString(),
       }
 
-      updatedLogs = [newLog, ...routineLogs]
-      saveLogsToLocal(updatedLogs)
-
-      const supabase = createClient()
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          newLog.user_id = user.id
-          const { error: insErr } = await supabase.from('routine_logs').insert([newLog])
-          if (insErr) console.error('Insert routine log error:', insErr)
-        }
-      } catch (err) {
-        console.error('Insert routine log error:', err)
+      if (user) {
+        const saved = requireMutationData(
+          await supabase.from('routine_logs').insert([newLog]).select('*').single(),
+          'Rutin tamamlaması backend tarafından doğrulanamadı.'
+        )
+        saveLogsToLocal([saved, ...routineLogs])
+      } else {
+        saveLogsToLocal([newLog, ...routineLogs])
       }
+    } catch (err: any) {
+      toast.error(err.message || 'Rutin durumu güncellenemedi.')
     }
   }
 
@@ -349,23 +347,21 @@ function RoutinesPageContent() {
       (l) => l.routine_id === noteRoutine.id && l.log_date === selectedDate
     )
 
-    if (log) {
-      const updatedLogs = routineLogs.map((l) =>
-        l.id === log.id ? { ...l, note: noteInput } : l
-      )
-      saveLogsToLocal(updatedLogs)
-      const supabase = createClient()
-      try {
-        const { error } = await supabase.from('routine_logs').update({ note: noteInput }).eq('id', log.id)
-        if (error) console.error('Update routine log note error:', error)
-      } catch (err) {
-        console.error('Update routine log note error:', err)
-      }
-    } else {
-      // Önce rutini tamamla sonra not iliştir
+    const supabase = createClient()
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (log) {
+        if (user && isUUID(log.id)) {
+          requireMutationData(
+            await supabase.from('routine_logs').update({ note: noteInput }).eq('id', log.id).select('id').single(),
+            'Rutin notu backend tarafından doğrulanamadı.'
+          )
+        }
+        saveLogsToLocal(routineLogs.map((l) => l.id === log.id ? { ...l, note: noteInput } : l))
+      } else {
       const newLog: RoutineLog = {
         id: crypto.randomUUID(),
-        user_id: 'local',
+        user_id: user?.id || 'local',
         routine_id: noteRoutine.id,
         log_date: selectedDate,
         status: isLowBattery ? 'micro_dose' : 'completed',
@@ -373,23 +369,21 @@ function RoutinesPageContent() {
         duration_minutes: 0,
         completed_at: new Date().toISOString(),
       }
-      const updatedLogs = [newLog, ...routineLogs]
-      saveLogsToLocal(updatedLogs)
-      const supabase = createClient()
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
         if (user) {
-          newLog.user_id = user.id
-          const { error } = await supabase.from('routine_logs').insert([newLog])
-          if (error) console.error('Insert routine log with note error:', error)
+          const saved = requireMutationData(
+            await supabase.from('routine_logs').insert([newLog]).select('*').single(),
+            'Rutin notu backend tarafından doğrulanamadı.'
+          )
+          saveLogsToLocal([saved, ...routineLogs])
+        } else {
+          saveLogsToLocal([newLog, ...routineLogs])
         }
-      } catch (err) {
-        console.error('Insert routine log with note error:', err)
       }
+      setNoteRoutine(null)
+      setNoteInput('')
+    } catch (err: any) {
+      toast.error(err.message || 'Rutin notu kaydedilemedi.')
     }
-
-    setNoteRoutine(null)
-    setNoteInput('')
   }
 
   // -------------------------------------------------------------------------
@@ -485,18 +479,17 @@ function RoutinesPageContent() {
           .from('routines')
           .update(routinePayload)
           .eq('id', editingRoutine.id)
-          .select()
+          .select('*')
+          .single()
 
-        if (!updErr && updData && updData.length > 0) {
-          const updatedRoutine = updData[0] as Routine
-          const updatedList = routines.map((r) => (r.id === editingRoutine.id ? updatedRoutine : r))
-          saveRoutinesToLocal(updatedList)
-          toast.success('Rutin başarıyla güncellendi ve buluta kaydedildi!')
-          setIsFormOpen(false)
-          setEditingRoutine(null)
-          return
-        }
-        // Eğer update 0 satır güncellediyse (veritabanında henüz o id yoksa), insert ile kaydet!
+        if (updErr) throw updErr
+        if (!updData) throw new Error('Rutin güncellemesi backend tarafından doğrulanamadı.')
+        const updatedList = routines.map((r) => (r.id === editingRoutine.id ? updData as Routine : r))
+        saveRoutinesToLocal(updatedList)
+        toast.success('Rutin başarıyla güncellendi ve buluta kaydedildi!')
+        setIsFormOpen(false)
+        setEditingRoutine(null)
+        return
       }
 
       // Yeni rutin ekle veya sample-id'den kalıcı UUID ile veritabanına kaydet
@@ -507,7 +500,8 @@ function RoutinesPageContent() {
           order_index: editingRoutine?.order_index ?? routines.length,
           created_at: new Date().toISOString(),
         }])
-        .select()
+        .select('*')
+        .single()
 
       if (insErr) {
         console.error('Supabase save routine error:', insErr)
@@ -515,8 +509,8 @@ function RoutinesPageContent() {
         return
       }
 
-      if (insData && insData.length > 0) {
-        const savedRoutine = insData[0] as Routine
+      if (insData) {
+        const savedRoutine = insData as Routine
         const updatedList = editingRoutine
           ? routines.map((r) => (r.id === editingRoutine.id ? savedRoutine : r))
           : [...routines, savedRoutine]
@@ -540,10 +534,14 @@ function RoutinesPageContent() {
 
     if (isUUID(routineId) && user) {
       try {
-        const { error } = await supabase.from('routines').delete().eq('id', routineId)
+        const { data, error } = await supabase.from('routines').delete().eq('id', routineId).select('id').single()
         if (error) {
           console.error('Delete routine error:', error)
           toast.error(`Sunucudan silinemedi: ${error.message}`)
+          return
+        }
+        if (!data) {
+          toast.error('Rutin silme işlemi backend tarafından doğrulanamadı.')
           return
         }
       } catch (err) {

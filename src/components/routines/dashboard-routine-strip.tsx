@@ -10,6 +10,9 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { requireMutationData } from '@/lib/supabase/mutation'
+import { useToast } from '@/lib/toast-context'
+import { isUUID } from '@/lib/utils'
 import type { Routine, RoutineLog } from '@/types/database'
 import {
   getCurrentTimeBlock,
@@ -21,6 +24,7 @@ const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
 const STORAGE_KEY_LOGS = 'pusula_local_routine_logs'
 
 export function DashboardRoutineStrip() {
+  const { toast } = useToast()
   const [routines, setRoutines] = useState<Routine[]>([])
   const [logs, setLogs] = useState<RoutineLog[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
@@ -122,23 +126,26 @@ export function DashboardRoutineStrip() {
       (l) => l.routine_id === routineId && l.log_date === todayStr
     )
 
-    let updatedLogs: RoutineLog[]
-    if (existingLog) {
-      updatedLogs = logs.filter((l) => l.id !== existingLog.id)
-      setLogs(updatedLogs)
-      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
+    const supabase = createClient()
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
 
-      const supabase = createClient()
-      try {
-        const { error } = await supabase.from('routine_logs').delete().eq('id', existingLog.id)
-        if (error) console.error('Delete routine log error:', error)
-      } catch (err) {
-        console.error('Delete routine log error:', err)
+      if (existingLog) {
+        if (user && isUUID(existingLog.id)) {
+          requireMutationData(
+            await supabase.from('routine_logs').delete().eq('id', existingLog.id).select('id').single(),
+            'Rutin kaydının silindiği doğrulanamadı.'
+          )
+        }
+        const updatedLogs = logs.filter((l) => l.id !== existingLog.id)
+        setLogs(updatedLogs)
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
+        return
       }
-    } else {
+
       const newLog: RoutineLog = {
         id: crypto.randomUUID(),
-        user_id: 'local',
+        user_id: user?.id || 'local',
         routine_id: routineId,
         log_date: todayStr,
         status: 'completed',
@@ -146,21 +153,22 @@ export function DashboardRoutineStrip() {
         duration_minutes: 0,
         completed_at: new Date().toISOString(),
       }
-      updatedLogs = [newLog, ...logs]
-      setLogs(updatedLogs)
-      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
 
-      const supabase = createClient()
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          newLog.user_id = user.id
-          const { error } = await supabase.from('routine_logs').insert([newLog])
-          if (error) console.error('Insert routine log error:', error)
-        }
-      } catch (err) {
-        console.error('Insert routine log error:', err)
+      if (user) {
+        const saved = requireMutationData(
+          await supabase.from('routine_logs').insert([newLog]).select('*').single(),
+          'Rutin tamamlaması backend tarafından doğrulanamadı.'
+        )
+        const updatedLogs = [saved as RoutineLog, ...logs]
+        setLogs(updatedLogs)
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
+      } else {
+        const updatedLogs = [newLog, ...logs]
+        setLogs(updatedLogs)
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
       }
+    } catch (err: any) {
+      toast.error(err.message || 'Rutin durumu güncellenemedi.')
     }
   }
 
