@@ -828,7 +828,7 @@ export interface Database {
           id: string
           user_id: string
           title: string
-          plan_date: string
+          plan_date: string | null
           plan_time: string | null
           project_id: string | null
           status: 'planned' | 'in_progress' | 'completed' | 'missed' | 'cancelled'
@@ -837,6 +837,7 @@ export interface Database {
           pomodoro_target_minutes: number | null
           notes: string | null
           completed_at: string | null
+          is_late_completed: boolean
           created_at: string
           updated_at: string
         }
@@ -844,7 +845,7 @@ export interface Database {
           id?: string
           user_id: string
           title: string
-          plan_date?: string
+          plan_date?: string | null
           plan_time?: string | null
           project_id?: string | null
           status?: 'planned' | 'in_progress' | 'completed' | 'missed' | 'cancelled'
@@ -853,6 +854,7 @@ export interface Database {
           pomodoro_target_minutes?: number | null
           notes?: string | null
           completed_at?: string | null
+          is_late_completed?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -860,7 +862,7 @@ export interface Database {
           id?: string
           user_id?: string
           title?: string
-          plan_date?: string
+          plan_date?: string | null
           plan_time?: string | null
           project_id?: string | null
           status?: 'planned' | 'in_progress' | 'completed' | 'missed' | 'cancelled'
@@ -869,6 +871,7 @@ export interface Database {
           pomodoro_target_minutes?: number | null
           notes?: string | null
           completed_at?: string | null
+          is_late_completed?: boolean
           created_at?: string
           updated_at?: string
         }

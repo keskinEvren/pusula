@@ -170,7 +170,7 @@ export default function ProjectDetailPage({
             .from('agenda_items')
             .select('*')
             .eq('project_id', pData.id)
-            .order('plan_date', { ascending: false })
+            .order('plan_date', { ascending: false, nullsFirst: false })
             .order('created_at', { ascending: false }),
           supabase.rpc('fn_project_finance_summary', { p_project_id: pData.id }),
         ])
@@ -193,7 +193,16 @@ export default function ProjectDetailPage({
             const cached = localStorage.getItem('pusula_local_agenda_items')
             if (cached) {
               const allItems: any[] = JSON.parse(cached)
-              const matched = allItems.filter((i: any) => i.project_id === pData.id)
+              const matched = allItems
+                .filter((i: any) => i.project_id === pData.id)
+                .sort((a: any, b: any) => {
+                  if (a.plan_date && b.plan_date) {
+                    return b.plan_date.localeCompare(a.plan_date)
+                  }
+                  if (a.plan_date) return -1
+                  if (b.plan_date) return 1
+                  return (b.created_at || '').localeCompare(a.created_at || '')
+                })
               setAgendaItems(matched)
             }
           } catch {}
@@ -610,7 +619,16 @@ export default function ProjectDetailPage({
             <div className="rounded-lg bg-muted/40 p-3 border border-border/40">
               <div className="text-xs text-muted-foreground">Son Odak Tarihi</div>
               <div className="text-sm font-semibold text-foreground mt-1.5">
-                {agendaItems[0] ? formatDate(agendaItems[0].plan_date) : 'Kayıt Yok'}
+                {(() => {
+                  const lastDated = agendaItems.find((i) => Boolean(i.plan_date))
+                  if (lastDated && lastDated.plan_date) {
+                    return formatDate(lastDated.plan_date)
+                  }
+                  if (agendaItems.length > 0) {
+                    return 'Tarihsiz (Havuz)'
+                  }
+                  return 'Kayıt Yok'
+                })()}
               </div>
             </div>
           </div>
@@ -633,7 +651,7 @@ export default function ProjectDetailPage({
                       </span>
                     </div>
                     <div className="flex items-center gap-3 shrink-0 font-mono text-muted-foreground">
-                      <span>{formatDate(session.plan_date)}</span>
+                      <span>{session.plan_date ? formatDate(session.plan_date) : 'Tarihsiz'}</span>
                       {session.duration_seconds > 0 && (
                         <Badge variant="primary" className="text-[10px] px-1.5 py-0 font-mono">
                           {formatMinutesHours(session.duration_seconds)}

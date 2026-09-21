@@ -29,6 +29,9 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowRightLeft,
+  Inbox,
+  CheckCheck,
+  CalendarPlus,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -113,7 +116,7 @@ function AgendaContent() {
     formatTime,
   } = useTimer()
 
-  const [viewMode, setViewMode] = useState<'daily' | 'calendar'>('daily')
+  const [viewMode, setViewMode] = useState<'daily' | 'calendar' | 'backlog'>('daily')
   const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateString(new Date()))
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear())
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth()) // 0 - 11
@@ -123,21 +126,28 @@ function AgendaContent() {
   const [loading, setLoading] = useState(true)
   const [isDbFallback, setIsDbFallback] = useState(false)
   const [filterTab, setFilterTab] = useState<'all' | 'planned' | 'completed'>('all')
+  const [backlogFilterTab, setBacklogFilterTab] = useState<'all' | 'planned' | 'completed'>('all')
 
   // Quick inline add state
   const [quickTitle, setQuickTitle] = useState('')
   const [quickProjectId, setQuickProjectId] = useState('')
   const [quickTime, setQuickTime] = useState('')
+  const [quickIsBacklog, setQuickIsBacklog] = useState(false)
   const [quickSubmitting, setQuickSubmitting] = useState(false)
 
   // Full Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
   const [modalDate, setModalDate] = useState(() => toLocalDateString(new Date()))
+  const [modalIsUndated, setModalIsUndated] = useState(false)
   const [modalTime, setModalTime] = useState('')
   const [modalProjectId, setModalProjectId] = useState('')
   const [modalTimerMode, setModalTimerMode] = useState<TimerMode>('stopwatch')
   const [modalSubmitting, setModalSubmitting] = useState(false)
+
+  // Schedule undated item dialog/popover state
+  const [schedulingItem, setSchedulingItem] = useState<AgendaItem | null>(null)
+  const [scheduleTargetDate, setScheduleTargetDate] = useState(() => toLocalDateString(new Date()))
 
   // Complete with notes state
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false)
@@ -224,12 +234,13 @@ function AgendaContent() {
 
     setQuickSubmitting(true)
     const localId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'item-' + Date.now()
+    const targetPlanDate = quickIsBacklog ? null : selectedDate
     const newItem: AgendaItem = {
       id: localId,
       user_id: 'local',
       title: quickTitle.trim(),
-      plan_date: selectedDate,
-      plan_time: quickTime.trim() || null,
+      plan_date: targetPlanDate,
+      plan_time: quickIsBacklog ? null : (quickTime.trim() || null),
       project_id: quickProjectId || null,
       status: 'planned',
       timer_mode: 'stopwatch',
@@ -237,6 +248,7 @@ function AgendaContent() {
       duration_seconds: 0,
       notes: null,
       completed_at: null,
+      is_late_completed: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -260,6 +272,7 @@ function AgendaContent() {
             status: 'planned',
             timer_mode: 'stopwatch',
             duration_seconds: 0,
+            is_late_completed: false,
           })
           .select()
           .single()
@@ -272,13 +285,19 @@ function AgendaContent() {
         setQuickTitle('')
         setQuickTime('')
         setQuickProjectId('')
+        setQuickIsBacklog(false)
         return
       }
 
       setQuickTitle('')
       setQuickTime('')
       setQuickProjectId('')
-      toast.success('Ajandaya eklendi!')
+      setQuickIsBacklog(false)
+      if (quickIsBacklog) {
+        toast.success('Madde tarihsiz görev havuzuna eklendi!')
+      } else {
+        toast.success('Ajandaya eklendi!')
+      }
     } catch (err: any) {
       toast.error(err.message || 'Ajanda kaydı oluşturulamadı.')
     } finally {
@@ -293,12 +312,13 @@ function AgendaContent() {
 
     setModalSubmitting(true)
     const localId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'item-' + Date.now()
+    const targetPlanDate = modalIsUndated ? null : (modalDate || null)
     const newItem: AgendaItem = {
       id: localId,
       user_id: 'local',
       title: modalTitle.trim(),
-      plan_date: modalDate,
-      plan_time: modalTime.trim() || null,
+      plan_date: targetPlanDate,
+      plan_time: modalIsUndated ? null : (modalTime.trim() || null),
       project_id: modalProjectId || null,
       status: 'planned',
       timer_mode: modalTimerMode,
@@ -306,6 +326,7 @@ function AgendaContent() {
       duration_seconds: 0,
       notes: null,
       completed_at: null,
+      is_late_completed: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -330,6 +351,7 @@ function AgendaContent() {
             timer_mode: modalTimerMode,
             pomodoro_target_minutes: modalTimerMode === 'pomodoro' ? 25 : null,
             duration_seconds: 0,
+            is_late_completed: false,
           })
           .select()
           .single()
@@ -347,7 +369,12 @@ function AgendaContent() {
       setModalTitle('')
       setModalTime('')
       setModalProjectId('')
-      toast.success('Yeni ajanda maddesi oluşturuldu!')
+      setModalIsUndated(false)
+      if (modalIsUndated) {
+        toast.success('Madde tarihsiz görev havuzuna eklendi!')
+      } else {
+        toast.success('Yeni ajanda maddesi oluşturuldu!')
+      }
     } catch (err: any) {
       toast.error(err.message || 'Ajanda kaydı oluşturulamadı.')
     } finally {
@@ -432,6 +459,82 @@ function AgendaContent() {
     }
   }
 
+  // Mark past item as "Geç Tamamlandı" (preserves original plan_date)
+  const handleLateComplete = async (item: AgendaItem) => {
+    const completedAt = new Date().toISOString()
+    try {
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const result = await supabase
+          .from('agenda_items')
+          .update({
+            status: 'completed',
+            completed_at: completedAt,
+            is_late_completed: true,
+          })
+          .eq('id', item.id)
+          .select('id')
+          .single()
+        requireMutationData(result, 'Geç tamamlama işlemi doğrulanamadı.')
+      }
+      syncLocal(
+        items.map((i) =>
+          i.id === item.id
+            ? { ...i, status: 'completed', completed_at: completedAt, is_late_completed: true }
+            : i
+        )
+      )
+      toast.success(`✨ "${item.title}" geçmiş plan gününde tamamlandı olarak kaydedildi.`)
+    } catch (err: any) {
+      toast.error(err.message || 'Geç tamamlama işlemi gerçekleştirilemedi.')
+    }
+  }
+
+  // Schedule an item to a specific date (or move from backlog)
+  const handleScheduleItem = async (item: AgendaItem, targetDate: string) => {
+    try {
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const result = await supabase
+          .from('agenda_items')
+          .update({ plan_date: targetDate })
+          .eq('id', item.id)
+          .select('id')
+          .single()
+        requireMutationData(result, 'Tarih atama işlemi doğrulanamadı.')
+      }
+      syncLocal(items.map((i) => (i.id === item.id ? { ...i, plan_date: targetDate } : i)))
+      setSchedulingItem(null)
+      if (targetDate === todayStr) {
+        toast.success(`✨ "${item.title}" bugünün ajandasına planlandı!`)
+      } else {
+        toast.success(`✨ "${item.title}" ${formatDisplayDate(targetDate)} gününe planlandı!`)
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Tarih atanamadı.')
+    }
+  }
+
+  // Move a dated item back to backlog (remove plan_date)
+  const handleMoveToBacklog = async (item: AgendaItem) => {
+    try {
+      if (!isDbFallback) {
+        const supabase = createClient()
+        const result = await supabase
+          .from('agenda_items')
+          .update({ plan_date: null, plan_time: null })
+          .eq('id', item.id)
+          .select('id')
+          .single()
+        requireMutationData(result, 'Havuza aktarma işlemi doğrulanamadı.')
+      }
+      syncLocal(items.map((i) => (i.id === item.id ? { ...i, plan_date: null, plan_time: null } : i)))
+      toast.info(`📥 "${item.title}" tarihsiz görev havuzuna aktarıldı.`)
+    } catch (err: any) {
+      toast.error(err.message || 'Havuza aktarılamadı.')
+    }
+  }
+
   // Handle Complete Active Timer
   const handleCompleteActiveTimer = async () => {
     if (await completeTimer(completionNotes.trim() || undefined)) {
@@ -473,7 +576,7 @@ function AgendaContent() {
     monday.setHours(0, 0, 0, 0)
     const mondayStr = toLocalDateString(monday)
 
-    const weekItems = items.filter((i) => i.plan_date >= mondayStr)
+    const weekItems = items.filter((i) => Boolean(i.plan_date && i.plan_date >= mondayStr))
     const totalDuration = weekItems.reduce((acc, i) => acc + (i.duration_seconds || 0), 0)
     const completedCount = weekItems.filter((i) => i.status === 'completed').length
 
@@ -506,12 +609,28 @@ function AgendaContent() {
   const itemsByDateMap = useMemo(() => {
     const map = new Map<string, AgendaItem[]>()
     items.forEach((item) => {
+      if (!item.plan_date) return
       const list = map.get(item.plan_date) || []
       list.push(item)
       map.set(item.plan_date, list)
     })
     return map
   }, [items])
+
+  // Undated items (Görev Havuzu / Backlog)
+  const undatedItems = useMemo(() => {
+    return items.filter((item) => !item.plan_date)
+  }, [items])
+
+  const filteredUndatedItems = useMemo(() => {
+    if (backlogFilterTab === 'planned') {
+      return undatedItems.filter((i) => i.status === 'planned' || i.status === 'in_progress')
+    }
+    if (backlogFilterTab === 'completed') {
+      return undatedItems.filter((i) => i.status === 'completed')
+    }
+    return undatedItems
+  }, [undatedItems, backlogFilterTab])
 
   // Calendar cells generation for calendarYear and calendarMonth
   const calendarGrid = useMemo(() => {
@@ -690,7 +809,12 @@ function AgendaContent() {
         actions={
           <Button
             onClick={() => {
-              setModalDate(selectedDate)
+              if (viewMode === 'backlog') {
+                setModalIsUndated(true)
+              } else {
+                setModalIsUndated(false)
+                setModalDate(selectedDate)
+              }
               setIsModalOpen(true)
             }}
             className="gap-2 shadow-sm min-h-[36px] text-xs font-semibold"
@@ -892,6 +1016,27 @@ function AgendaContent() {
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('backlog')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              viewMode === 'backlog'
+                ? 'bg-primary text-primary-foreground shadow-xs'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
+          >
+            <Inbox className="h-3.5 w-3.5" />
+            <span>Görev Havuzu</span>
+            {undatedItems.length > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  viewMode === 'backlog' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {undatedItems.length}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -900,6 +1045,13 @@ function AgendaContent() {
               <span>Seçili Gün:</span>
               <Badge variant="outline" className="text-xs border-primary/25 text-primary font-mono">
                 {selectedDate}
+              </Badge>
+            </div>
+          ) : viewMode === 'backlog' ? (
+            <div className="flex items-center gap-2">
+              <span>Havuzdaki Maddeler:</span>
+              <Badge variant="outline" className="text-xs border-primary/25 text-primary font-mono">
+                {undatedItems.length} Madde
               </Badge>
             </div>
           ) : (
@@ -1155,6 +1307,329 @@ function AgendaContent() {
             </div>
           </CardContent>
         </Card>
+      ) : viewMode === 'backlog' ? (
+        <div className="space-y-6">
+          {/* Backlog Header Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card border border-border rounded-xl p-4 shadow-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Inbox className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-bold text-foreground">Tarihsiz Görev Havuzu</h2>
+                <Badge variant="outline" className="text-xs border-primary/25 text-primary font-mono">
+                  {undatedItems.length} Madde
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Henüz bir tarihe bağlanmamış serbest görevler, fikirler ve backlog maddeleri. Buradaki maddeleri doğrudan çalıştırabilir veya takvime planlayabilirsiniz.
+              </p>
+            </div>
+
+            <Button
+              onClick={() => {
+                setModalIsUndated(true)
+                setIsModalOpen(true)
+              }}
+              size="sm"
+              className="gap-1.5 text-xs font-semibold shrink-0"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Havuza Yeni Madde</span>
+            </Button>
+          </div>
+
+          {/* Quick inline capture bar for backlog */}
+          <form
+            onSubmit={(e) => {
+              setQuickIsBacklog(true)
+              handleQuickAdd(e)
+            }}
+            className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-muted/30 border border-border/80 rounded-xl p-2.5 shadow-xs"
+          >
+            <div className="relative flex-1">
+              <Input
+                type="text"
+                required
+                placeholder="Havuza hızlı görev veya fikir ekle... (Örn: Blog yazısı taslağı hazırla, Refactor yap)"
+                value={quickTitle}
+                onChange={(e) => {
+                  setQuickIsBacklog(true)
+                  setQuickTitle(e.target.value)
+                }}
+                className="h-9 text-xs pl-3 pr-3 bg-card"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Select
+                value={quickProjectId}
+                onChange={(e) => setQuickProjectId(e.target.value)}
+                className="h-9 text-xs w-44 shrink-0 bg-card"
+                aria-label="Proje Seçin"
+              >
+                <option value="">(Projesiz / Genel)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+
+              <Button
+                type="submit"
+                disabled={quickSubmitting || !quickTitle.trim()}
+                className="h-9 px-4 text-xs font-semibold shrink-0 gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Havuza Ekle</span>
+              </Button>
+            </div>
+          </form>
+
+          {/* Main Grid: Backlog Items + Info Panel */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            {/* Left 2 Cols: Backlog Items List */}
+            <div className="lg:col-span-2 space-y-3">
+              {/* Backlog Filter Tabs */}
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setBacklogFilterTab('all')}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      backlogFilterTab === 'all'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    Tümü ({undatedItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBacklogFilterTab('planned')}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      backlogFilterTab === 'planned'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    Bekleyenler ({undatedItems.filter((i) => i.status !== 'completed').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBacklogFilterTab('completed')}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      backlogFilterTab === 'completed'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    Tamamlananlar ({undatedItems.filter((i) => i.status === 'completed').length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-2">
+                {filteredUndatedItems.map((item) => {
+                  const prj = getProject(item.project_id)
+                  const isItemActive = activeTimer?.itemId === item.id
+                  const isCompleted = item.status === 'completed'
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between gap-3 p-3.5 rounded-xl border transition-all ${
+                        isItemActive
+                          ? 'border-primary/50 bg-primary/10 shadow-sm'
+                          : isCompleted
+                          ? 'border-border/40 bg-card/40 opacity-75'
+                          : 'border-border bg-card hover:border-border/80 shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {/* Checkbox toggle */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(item)}
+                          className={`h-5 w-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                            isCompleted
+                              ? 'bg-emerald-600 border-emerald-500 text-white'
+                              : 'border-muted-foreground/40 hover:border-primary'
+                          }`}
+                          title={isCompleted ? 'Tamamlanmadı olarak işaretle' : 'Tamamla'}
+                        >
+                          {isCompleted && <Check className="h-3.5 w-3.5" />}
+                        </button>
+
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-sm font-semibold ${
+                                isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'
+                              }`}
+                            >
+                              {item.title}
+                            </span>
+
+                            <Badge variant="outline" className="text-[10px] border-amber-500/40 bg-amber-500/10 text-amber-300">
+                              Tarihsiz Havuz
+                            </Badge>
+
+                            {prj && (
+                              <Link
+                                href={`/projects/${prj.slug}`}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline bg-primary/10 px-2 py-0.5 rounded border border-primary/20 truncate max-w-[150px]"
+                                title={prj.name}
+                              >
+                                <span>{prj.name}</span>
+                              </Link>
+                            )}
+                          </div>
+
+                          {item.notes && (
+                            <p className="text-xs text-muted-foreground italic line-clamp-1">
+                              "{item.notes}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right side: Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.duration_seconds > 0 && (
+                          <span className="text-xs font-mono font-semibold text-foreground bg-muted/50 px-2 py-1 rounded-md border border-border/40 flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                            <span>{formatMinutesHours(item.duration_seconds)}</span>
+                          </span>
+                        )}
+
+                        {/* Quick Plan to Today Button */}
+                        {!isCompleted && (
+                          <Button
+                            size="sm"
+                            type="button"
+                            onClick={() => handleScheduleItem(item, todayStr)}
+                            className="h-8 px-2.5 text-xs font-semibold gap-1 bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 shadow-xs"
+                            title="Bu maddeyi bugünün ajandasına ata"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Bugüne Planla</span>
+                          </Button>
+                        )}
+
+                        {/* Select Custom Date Button */}
+                        {!isCompleted && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            type="button"
+                            onClick={() => {
+                              setSchedulingItem(item)
+                              setScheduleTargetDate(todayStr)
+                            }}
+                            className="h-8 px-2.5 text-xs font-semibold gap-1 border-border hover:bg-muted"
+                            title="Takvimden bir gün seçerek planla"
+                          >
+                            <CalendarPlus className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="hidden md:inline">Tarih Ata</span>
+                          </Button>
+                        )}
+
+                        {/* Start Timer Button */}
+                        {!isCompleted && !isItemActive && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => startTimer(item, prj?.name)}
+                            className="h-8 px-2.5 text-xs font-semibold gap-1 border-primary/25 text-primary hover:bg-primary/10"
+                            title="Sayacı Başlat"
+                          >
+                            <Play className="h-3.5 w-3.5 fill-current" />
+                            <span className="hidden sm:inline">Başlat</span>
+                          </Button>
+                        )}
+
+                        {isItemActive && (
+                          <Badge variant="primary" className="text-[10px] px-2 py-0.5 animate-pulse">
+                            Çalışılıyor
+                          </Badge>
+                        )}
+
+                        {/* Delete button */}
+                        <button
+                          type="button"
+                          onClick={() => setItemToDelete(item)}
+                          className="p-1.5 rounded text-muted-foreground/60 hover:text-destructive transition-colors"
+                          title="Maddeyi Sil"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {filteredUndatedItems.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-border/80 bg-card/40 p-8 text-center space-y-2">
+                    <Inbox className="h-6 w-6 text-muted-foreground mx-auto" />
+                    <div className="text-sm font-semibold text-foreground">
+                      Havuzda Madde Bulunmuyor
+                    </div>
+                    <div className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      Belirli bir gün belirlemediğiniz fikir, yapılacak iş ve görevleri yukarıdaki kutudan ekleyerek burada toplayabilirsiniz.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right 1 Col: Backlog Guide & Metrics */}
+            <div className="space-y-4">
+              <Card className="border-border bg-card shadow-xs">
+                <CardHeader className="p-4 pb-3">
+                  <CardTitle className="text-sm font-bold flex items-center gap-2">
+                    <Inbox className="h-4 w-4 text-primary" />
+                    <span>Havuz Durumu</span>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Tarihsiz görevlerin genel dağılımı
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-muted/40 p-3 rounded-lg border border-border/40">
+                      <div className="text-[11px] text-muted-foreground">Bekleyen</div>
+                      <div className="text-lg font-bold font-mono text-foreground mt-0.5">
+                        {undatedItems.filter((i) => i.status !== 'completed').length}
+                      </div>
+                    </div>
+                    <div className="bg-muted/40 p-3 rounded-lg border border-border/40">
+                      <div className="text-[11px] text-muted-foreground">Tamamlanan</div>
+                      <div className="text-lg font-bold font-mono text-foreground mt-0.5">
+                        {undatedItems.filter((i) => i.status === 'completed').length}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                    <div className="font-semibold text-foreground text-xs">Nasıl Kullanılır?</div>
+                    <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
+                      <li>
+                        <strong className="text-foreground">⚡ Bugüne Planla:</strong> Maddeyi anında bugünün ajandasına aktarır.
+                      </li>
+                      <li>
+                        <strong className="text-foreground">📅 Tarih Ata:</strong> İleri bir tarihe randevu veya planlama yapar.
+                      </li>
+                      <li>
+                        <strong className="text-foreground">⏱️ Doğrudan Başlat:</strong> Tarih atamadan da sayaç başlatıp efor sarf edebilirsiniz.
+                      </li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       ) : (
         <>
           {/* ========================================================================= */}
@@ -1263,14 +1738,32 @@ function AgendaContent() {
           <Input
             type="text"
             required
-            placeholder="Bugün neye odaklanacaksın? (Örn: Watchpath auth mimarisi, Sunucu faturasını öde...)"
+            placeholder={
+              quickIsBacklog
+                ? 'Tarihsiz görev havuzuna ne eklemek istersiniz?'
+                : 'Bugün neye odaklanacaksın? (Örn: Watchpath auth mimarisi, Sunucu faturasını öde...)'
+            }
             value={quickTitle}
             onChange={(e) => setQuickTitle(e.target.value)}
             className="h-9 text-xs pl-3 pr-3 bg-card"
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => setQuickIsBacklog((prev) => !prev)}
+            className={`h-9 px-2.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors shrink-0 ${
+              quickIsBacklog
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-xs'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground'
+            }`}
+            title={quickIsBacklog ? 'Tarihsiz havuza eklenecek (tıkla: güne planla)' : 'Seçili güne eklenecek (tıkla: tarihsiz havuza ekle)'}
+          >
+            <Inbox className="h-3.5 w-3.5" />
+            <span>{quickIsBacklog ? 'Tarihsiz Havuz' : 'Güne Planla'}</span>
+          </button>
+
           <Select
             value={quickProjectId}
             onChange={(e) => setQuickProjectId(e.target.value)}
@@ -1285,13 +1778,15 @@ function AgendaContent() {
             ))}
           </Select>
 
-          <Input
-            type="time"
-            value={quickTime}
-            onChange={(e) => setQuickTime(e.target.value)}
-            className="h-9 text-xs w-24 shrink-0 font-mono bg-card"
-            title="Saat (Opsiyonel)"
-          />
+          {!quickIsBacklog && (
+            <Input
+              type="time"
+              value={quickTime}
+              onChange={(e) => setQuickTime(e.target.value)}
+              className="h-9 text-xs w-24 shrink-0 font-mono bg-card"
+              title="Saat (Opsiyonel)"
+            />
+          )}
 
           <Button
             type="submit"
@@ -1363,7 +1858,7 @@ function AgendaContent() {
                     Bu geçmiş günde tamamlanmamış {dayItems.filter((i) => i.status !== 'completed').length} görev var
                   </p>
                   <p className="text-rose-200/80 text-[11px]">
-                    Geçmiş görevler doğrudan tamamlanamaz veya silinemez; üzerinde çalışmak için bugünün ajandasına aktarmalısınız.
+                    İşi yapmadıysanız <strong>Bugüne Getir</strong> ile bugüne aktarabilir, o gün tamamlandıysa <strong>Geç Tamamlandı</strong> ile kapatabilirsiniz.
                   </p>
                 </div>
               </div>
@@ -1385,7 +1880,7 @@ function AgendaContent() {
               const prj = getProject(item.project_id)
               const isItemActive = activeTimer?.itemId === item.id
               const isCompleted = item.status === 'completed'
-              const isPastUncompleted = item.plan_date < todayStr && !isCompleted
+              const isPastUncompleted = Boolean(item.plan_date && item.plan_date < todayStr && !isCompleted)
 
               return (
                 <div
@@ -1407,7 +1902,7 @@ function AgendaContent() {
                       disabled={isPastUncompleted}
                       onClick={() => {
                         if (isPastUncompleted) {
-                          toast.warning("Geçmişte kalan görev doğrudan tamamlanamaz. Lütfen önce 'Bugüne Getir' butonuna basın.")
+                          toast.warning("Geçmişte kalan görev doğrudan tamamlanamaz. Lütfen 'Geç Tamamlandı' veya 'Bugüne Getir' aksiyonunu kullanın.")
                           return
                         }
                         handleToggleStatus(item)
@@ -1421,7 +1916,7 @@ function AgendaContent() {
                       }`}
                       title={
                         isPastUncompleted
-                          ? "Geçmişteki görev doğrudan tamamlanamaz. Önce 'Bugüne Getir' demelisiniz."
+                          ? "Geçmişteki görev doğrudan işaretlenemez. 'Geç Tamamlandı' veya 'Bugüne Getir' seçiniz."
                           : isCompleted
                           ? 'Tamamlanmadı olarak işaretle'
                           : 'Tamamla'
@@ -1451,6 +1946,13 @@ function AgendaContent() {
                         {isPastUncompleted && (
                           <Badge variant="outline" className="text-[10px] border-rose-500/40 bg-rose-500/10 text-rose-300">
                             Geçmişte Atlandı
+                          </Badge>
+                        )}
+
+                        {item.is_late_completed && (
+                          <Badge variant="outline" className="text-[10px] border-emerald-500/40 bg-emerald-500/10 text-emerald-300 flex items-center gap-1">
+                            <CheckCheck className="h-3 w-3" />
+                            <span>Geç Tamamlandı</span>
                           </Badge>
                         )}
 
@@ -1490,18 +1992,30 @@ function AgendaContent() {
                       </span>
                     ) : null}
 
-                    {/* If past uncompleted: Show "Bugüne Getir" button */}
+                    {/* If past uncompleted: Show "Geç Tamamlandı" and "Bugüne Getir" buttons */}
                     {isPastUncompleted ? (
-                      <Button
-                        size="sm"
-                        type="button"
-                        onClick={() => handleMoveToToday(item)}
-                        className="h-8 px-3 text-xs font-semibold gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-xs"
-                        title="Bu görevi bugünün ajandasına aktar ve çalışmaya aç"
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" />
-                        <span>Bugüne Getir</span>
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          type="button"
+                          onClick={() => handleLateComplete(item)}
+                          className="h-8 px-2.5 text-xs font-semibold gap-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 shadow-xs"
+                          title="Bu görev o gün tamamlandı ancak işaretlenmedi olarak kaydet (orijinal plan_date korunur)"
+                        >
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          <span>Geç Tamamlandı</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          onClick={() => handleMoveToToday(item)}
+                          className="h-8 px-2.5 text-xs font-semibold gap-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-xs"
+                          title="Bu görevi bugünün ajandasına aktar ve çalışmaya aç"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                          <span>Bugüne Getir</span>
+                        </Button>
+                      </div>
                     ) : (
                       /* Start Timer Button (if not completed and not currently active) */
                       !isCompleted && !isItemActive && (
@@ -1522,6 +2036,18 @@ function AgendaContent() {
                       <Badge variant="primary" className="text-[10px] px-2 py-0.5 animate-pulse">
                         Çalışılıyor
                       </Badge>
+                    )}
+
+                    {/* Move to Backlog button (if not past uncompleted and not completed) */}
+                    {!isPastUncompleted && !isCompleted && (
+                      <button
+                        type="button"
+                        onClick={() => handleMoveToBacklog(item)}
+                        className="p-1.5 rounded text-muted-foreground/60 hover:text-amber-400 transition-colors"
+                        title="Tarihsiz Görev Havuzuna Gönder (Tarihi Kaldır)"
+                      >
+                        <Inbox className="h-3.5 w-3.5" />
+                      </button>
                     )}
 
                     {/* Delete button: ONLY allow deleting if NOT past uncompleted */}
@@ -1659,34 +2185,49 @@ function AgendaContent() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="modal-item-date" className="text-xs font-semibold text-muted-foreground">
-                Tarih
-              </label>
-              <Input
-                id="modal-item-date"
-                type="date"
-                required
-                value={modalDate}
-                onChange={(e) => setModalDate(e.target.value)}
-                className="text-xs font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="modal-item-time" className="text-xs font-semibold text-muted-foreground">
-                Planlanan Saat (Opsiyonel)
-              </label>
-              <Input
-                id="modal-item-time"
-                type="time"
-                value={modalTime}
-                onChange={(e) => setModalTime(e.target.value)}
-                className="text-xs font-mono"
-              />
-            </div>
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/50">
+            <input
+              type="checkbox"
+              id="modal-item-undated"
+              checked={modalIsUndated}
+              onChange={(e) => setModalIsUndated(e.target.checked)}
+              className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+            />
+            <label htmlFor="modal-item-undated" className="text-xs font-medium text-foreground cursor-pointer select-none">
+              Tarih Belirtme (Tarihsiz Görev Havuzuna Ekle)
+            </label>
           </div>
+
+          {!modalIsUndated && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label htmlFor="modal-item-date" className="text-xs font-semibold text-muted-foreground">
+                  Tarih
+                </label>
+                <Input
+                  id="modal-item-date"
+                  type="date"
+                  required={!modalIsUndated}
+                  value={modalDate}
+                  onChange={(e) => setModalDate(e.target.value)}
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="modal-item-time" className="text-xs font-semibold text-muted-foreground">
+                  Planlanan Saat (Opsiyonel)
+                </label>
+                <Input
+                  id="modal-item-time"
+                  type="time"
+                  value={modalTime}
+                  onChange={(e) => setModalTime(e.target.value)}
+                  className="text-xs font-mono"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -1733,6 +2274,65 @@ function AgendaContent() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 📅 MODAL: GÖREVİ TAKVİME PLANLA (BACKLOG -> DATED)                        */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={!!schedulingItem}
+        onClose={() => setSchedulingItem(null)}
+        title="Görevi Takvime Planla"
+        description={`"${schedulingItem?.title}" maddesini takvimde bir güne atayın.`}
+      >
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label htmlFor="schedule-target-date" className="text-xs font-semibold text-muted-foreground">
+              Plan Tarihi
+            </label>
+            <Input
+              id="schedule-target-date"
+              type="date"
+              required
+              value={scheduleTargetDate}
+              onChange={(e) => setScheduleTargetDate(e.target.value)}
+              className="text-xs font-mono"
+            />
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (schedulingItem) handleScheduleItem(schedulingItem, todayStr)
+              }}
+              className="text-xs gap-1.5 text-primary border-primary/25 hover:bg-primary/10"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Bugüne Planla ({todayStr})</span>
+            </Button>
+
+            <div className="flex items-center gap-2 justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => setSchedulingItem(null)}>
+                İptal
+              </Button>
+              <Button
+                size="sm"
+                disabled={!scheduleTargetDate}
+                onClick={() => {
+                  if (schedulingItem && scheduleTargetDate) {
+                    handleScheduleItem(schedulingItem, scheduleTargetDate)
+                  }
+                }}
+                className="text-xs font-semibold bg-primary text-primary-foreground"
+              >
+                Tarihe Ata
+              </Button>
+            </div>
+          </div>
+        </div>
       </Modal>
 
       {/* ========================================================================= */}

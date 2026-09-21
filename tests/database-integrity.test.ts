@@ -12,7 +12,7 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
   beforeAll(async () => {
     db = new PGlite()
     await db.exec(`create schema auth; create role anon; create role authenticated;
-      create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}');
+      create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}', created_at timestamptz default now());
       create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
       grant usage on schema auth to authenticated, anon; grant execute on function auth.uid() to authenticated, anon;`)
     const dir = fileURLToPath(new URL('../supabase/migrations/', import.meta.url))
