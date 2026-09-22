@@ -1,6 +1,24 @@
-# 🧭 Pusula — Solo Kurucu Komuta Merkezi
+# 🧭 Pusula: Solo Kurucu Komuta Merkezi
 
 > Kişisel finans ve proje yönetiminin tek bir ekranda buluştuğu, paranın nereden gelip nereye gittiğini ve projelerin bu denklemi nasıl etkilediğini gösteren bütünleşik solo kurucu işletim sistemi.
+
+## 📸 Canlı Arayüz & Komuta Merkezi
+
+| Finans & Proje Kokpiti | Finansal Hareketler & Ledger |
+|:---:|:---:|
+| ![Finans Kokpiti](docs/screenshots/03_dashboard_cockpit.png) | ![İşlem Hareketleri](docs/screenshots/04_transactions.png) |
+
+| Kredi Kartları & Hesaplar | Proje & Fikir Portföyü |
+|:---:|:---:|
+| ![Kartlar ve Hesaplar](docs/screenshots/05_cards_accounts.png) | ![Proje Yönetimi](docs/screenshots/06_projects_management.png) |
+
+| Ajanda & Operasyonel Planlayıcı | Mobil Uyumlu Finans Kokpiti |
+|:---:|:---:|
+| ![Ajanda Planlayıcı](docs/screenshots/07_agenda_planner.png) | ![Mobil Kokpit](docs/screenshots/08_mobile_cockpit.png) |
+
+| Güvenli Giriş Portalı (Dark) | Giriş Portalı (Light) |
+|:---:|:---:|
+| ![Giriş Portalı Dark](docs/screenshots/01_login_dark.png) | ![Giriş Portalı Light](docs/screenshots/02_login_light.png) |
 
 ---
 
