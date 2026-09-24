@@ -18,6 +18,9 @@ import {
   getCurrentTimeBlock,
   TIME_BLOCK_META,
   formatDateToYmd,
+  getDailyCompletionStatus,
+  DAILY_COMPLETION_META,
+  getRoutineStartDate,
 } from '@/lib/routines-engine'
 
 const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
@@ -111,15 +114,24 @@ export function DashboardRoutineStrip() {
     loadData()
   }, [todayStr])
 
-  // O anki zaman dilimine ait aktif rutinler (yoksa tüm aktif rutinler)
-  const currentBlockRoutines = routines.filter((r) => r.time_block === currentBlock)
-  const displayRoutines = currentBlockRoutines.length > 0 ? currentBlockRoutines : routines.slice(0, 4)
+  // O anki zaman dilimine ait aktif rutinler (başlangıç tarihi bugüne kadar olanlar)
+  const activeTodayRoutines = routines.filter((r) => r.is_active && getRoutineStartDate(r) <= todayStr)
+  const currentBlockRoutines = activeTodayRoutines.filter((r) => r.time_block === currentBlock)
+  const displayRoutines = currentBlockRoutines.length > 0 ? currentBlockRoutines : activeTodayRoutines.slice(0, 4)
 
-  const completedCount = displayRoutines.filter((r) =>
-    logs.some((l) => l.routine_id === r.id && l.log_date === todayStr)
+  const frozenRoutineIds = new Set(
+    logs.filter((l) => l.log_date === todayStr && l.status === 'frozen').map((l) => l.routine_id)
+  )
+  const actionableRoutines = displayRoutines.filter((r) => !frozenRoutineIds.has(r.id))
+  const isFrozenDay = displayRoutines.length > 0 && actionableRoutines.length === 0
+
+  const completedCount = actionableRoutines.filter((r) =>
+    logs.some((l) => l.routine_id === r.id && l.log_date === todayStr && (l.status === 'completed' || l.status === 'micro_dose' || l.status === 'kintsugi_repaired'))
   ).length
-  const totalCount = displayRoutines.length
+  const totalCount = actionableRoutines.length
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+  const completionStatus = getDailyCompletionStatus(percent, completedCount)
+  const statusMeta = DAILY_COMPLETION_META[completionStatus]
 
   async function handleToggle(routineId: string) {
     const existingLog = logs.find(
@@ -131,6 +143,30 @@ export function DashboardRoutineStrip() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (existingLog) {
+        if (existingLog.status === 'frozen') {
+          // Dondurulmuşsa tamamlandıya çevir
+          if (user && isUUID(existingLog.id)) {
+            const updated = requireMutationData(
+              await supabase
+                .from('routine_logs')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('id', existingLog.id)
+                .select('*')
+                .single(),
+              'Rutin durumu güncellenemedi.'
+            )
+            const updatedLogs = logs.map((l) => (l.id === existingLog.id ? (updated as RoutineLog) : l))
+            setLogs(updatedLogs)
+            localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
+            return
+          } else {
+            const updatedLogs = logs.map((l) => (l.id === existingLog.id ? { ...l, status: 'completed' as const, completed_at: new Date().toISOString() } : l))
+            setLogs(updatedLogs)
+            localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updatedLogs))
+            return
+          }
+        }
+
         if (user && isUUID(existingLog.id)) {
           requireMutationData(
             await supabase.from('routine_logs').delete().eq('id', existingLog.id).select('id').single(),
@@ -189,18 +225,28 @@ export function DashboardRoutineStrip() {
             </span>
           </div>
 
-          <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            <span>%{percent}</span>
-          </div>
+          {isFrozenDay ? (
+            <div className="flex items-center gap-1.5 text-xs text-sky-400 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_#38bdf8]" />
+              <span>🧊 Mola Günü</span>
+            </div>
+          ) : (
+            <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotColor}`} />
+              <span className={`font-semibold ${statusMeta.color}`}>%{percent}</span>
+              <span className="text-[11px] text-muted-foreground font-medium">({statusMeta.label})</span>
+            </div>
+          )}
         </div>
 
         {/* Orta Taraf: Hızlı Tikleme Hapları (Chips) */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 flex-1 justify-start sm:justify-center">
           {displayRoutines.map((routine) => {
-            const isDone = logs.some(
+            const routineLog = logs.find(
               (l) => l.routine_id === routine.id && l.log_date === todayStr
             )
+            const isFrozen = routineLog?.status === 'frozen'
+            const isDone = !!routineLog && !isFrozen
 
             return (
               <button
@@ -208,19 +254,24 @@ export function DashboardRoutineStrip() {
                 type="button"
                 onClick={() => handleToggle(routine.id)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all shrink-0 border ${
-                  isDone
+                  isFrozen
+                    ? 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                    : isDone
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                     : 'bg-background/60 text-foreground/80 border-border/80 hover:bg-muted'
                 }`}
+                title={isFrozen ? 'Donduruldu / Mola (Tamamlamak için tıkla)' : undefined}
               >
                 <span
                   className={`h-4 w-4 rounded flex items-center justify-center text-[10px] transition-colors ${
-                    isDone
+                    isFrozen
+                      ? 'bg-sky-500/20 text-sky-400'
+                      : isDone
                       ? 'bg-emerald-500 text-black'
                       : 'border border-muted-foreground/40'
                   }`}
                 >
-                  {isDone && <Check className="h-3 w-3 stroke-[3]" />}
+                  {isFrozen ? '🧊' : isDone ? <Check className="h-3 w-3 stroke-[3]" /> : null}
                 </span>
                 <span>{routine.icon}</span>
                 <span className={`truncate max-w-[120px] ${isDone ? 'line-through opacity-70' : ''}`}>

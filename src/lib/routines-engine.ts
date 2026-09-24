@@ -3,6 +3,61 @@ import { Routine, RoutineLog } from '@/types/database'
 export type TimeBlock = 'morning' | 'afternoon' | 'evening' | 'night'
 export type RoutineLogStatus = 'completed' | 'micro_dose' | 'kintsugi_repaired' | 'skipped' | 'frozen'
 
+export type DailyCompletionStatus = 'completed' | 'partial' | 'insufficient' | 'none'
+
+export const DAILY_COMPLETION_META: Record<
+  DailyCompletionStatus,
+  {
+    label: string
+    color: string
+    dotColor: string
+    badgeClass: string
+  }
+> = {
+  completed: {
+    label: 'Tamamlandı',
+    color: 'text-emerald-400',
+    dotColor: 'bg-emerald-400 shadow-[0_0_6px_#10b981]',
+    badgeClass: 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10',
+  },
+  partial: {
+    label: 'Kısmi',
+    color: 'text-amber-400',
+    dotColor: 'bg-amber-400 shadow-[0_0_6px_#f59e0b]',
+    badgeClass: 'border-amber-500/40 text-amber-400 bg-amber-500/10',
+  },
+  insufficient: {
+    label: 'Yetersiz',
+    color: 'text-rose-400',
+    dotColor: 'bg-rose-400 shadow-[0_0_6px_#f43f5e]',
+    badgeClass: 'border-rose-500/40 text-rose-400 bg-rose-500/10',
+  },
+  none: {
+    label: 'Aktivite Yok',
+    color: 'text-muted-foreground',
+    dotColor: 'bg-muted-foreground/30',
+    badgeClass: 'border-border/60 text-muted-foreground bg-muted/20',
+  },
+}
+
+export function getDailyCompletionStatus(percent: number, completedCount?: number): DailyCompletionStatus {
+  const count = completedCount !== undefined ? completedCount : (percent > 0 ? 1 : 0)
+  if (count === 0 || percent <= 0) return 'none'
+  if (percent >= 100) return 'completed'
+  if (percent >= 50) return 'partial'
+  return 'insufficient'
+}
+
+export function getRoutineStartDate(routine: Routine | { created_at?: string; start_date?: string | null }): string {
+  if (routine && (routine as any).start_date) {
+    return String((routine as any).start_date).slice(0, 10)
+  }
+  if (routine && routine.created_at) {
+    return routine.created_at.slice(0, 10)
+  }
+  return '1970-01-01'
+}
+
 export interface StreakInfo {
   currentStreak: number
   longestStreak: number
@@ -25,6 +80,9 @@ export interface DaySummary {
   totalRoutines: number
   completedCount: number
   completionRate: number // 0..100
+  status: DailyCompletionStatus
+  frozenCount?: number
+  isFrozenDay?: boolean
 }
 
 export interface ConstellationNode {
@@ -123,9 +181,20 @@ export function getCurrentTimeBlock(): TimeBlock {
   return 'night'
 }
 
-export function filterRoutinesByTimeBlock(routines: Routine[], block: TimeBlock): Routine[] {
+export function filterRoutinesByTimeBlock(
+  routines: Routine[],
+  block: TimeBlock,
+  targetDateStr?: string
+): Routine[] {
   return routines
-    .filter((r) => r.is_active && r.time_block === block)
+    .filter((r) => {
+      if (!r.is_active || r.time_block !== block) return false
+      if (targetDateStr) {
+        const startDate = getRoutineStartDate(r)
+        if (startDate > targetDateStr) return false
+      }
+      return true
+    })
     .sort((a, b) => a.order_index - b.order_index)
 }
 
@@ -259,10 +328,54 @@ export function calculateDailyCompletion(
   completedCount: number
   percent: number
   isPerfectDay: boolean
+  status: DailyCompletionStatus
+  frozenCount: number
+  isFrozenDay: boolean
 } {
-  const activeRoutines = routines.filter((r) => r.is_active)
+  const activeRoutines = routines.filter((r) => {
+    if (!r.is_active) return false
+    const startDate = getRoutineStartDate(r)
+    return startDate <= targetDateStr
+  })
+
   if (activeRoutines.length === 0) {
-    return { totalActive: 0, completedCount: 0, percent: 0, isPerfectDay: false }
+    return {
+      totalActive: 0,
+      completedCount: 0,
+      percent: 0,
+      isPerfectDay: false,
+      status: 'none',
+      frozenCount: 0,
+      isFrozenDay: false,
+    }
+  }
+
+  const frozenRoutineIds = new Set(
+    logs
+      .filter((l) => l.log_date === targetDateStr && l.status === 'frozen')
+      .map((l) => l.routine_id)
+  )
+
+  let frozenCount = 0
+  for (const routine of activeRoutines) {
+    if (frozenRoutineIds.has(routine.id)) {
+      frozenCount++
+    }
+  }
+
+  const actionableRoutines = activeRoutines.filter((r) => !frozenRoutineIds.has(r.id))
+
+  // Tüm aktif rutinler dondurulmuşsa nötr "Mola / Donduruldu" günü
+  if (actionableRoutines.length === 0) {
+    return {
+      totalActive: 0,
+      completedCount: 0,
+      percent: 0,
+      isPerfectDay: false,
+      status: 'none',
+      frozenCount,
+      isFrozenDay: true,
+    }
   }
 
   const targetLogs = logs.filter(
@@ -274,20 +387,24 @@ export function calculateDailyCompletion(
   const completedRoutineIds = new Set(targetLogs.map((l) => l.routine_id))
   let completedCount = 0
 
-  for (const routine of activeRoutines) {
+  for (const routine of actionableRoutines) {
     if (completedRoutineIds.has(routine.id)) {
       completedCount++
     }
   }
 
-  const percent = Math.round((completedCount / activeRoutines.length) * 100)
-  const isPerfectDay = completedCount === activeRoutines.length && activeRoutines.length > 0
+  const percent = Math.round((completedCount / actionableRoutines.length) * 100)
+  const isPerfectDay = completedCount === actionableRoutines.length && actionableRoutines.length > 0
+  const status = getDailyCompletionStatus(percent, completedCount)
 
   return {
-    totalActive: activeRoutines.length,
+    totalActive: actionableRoutines.length,
     completedCount,
     percent,
     isPerfectDay,
+    status,
+    frozenCount,
+    isFrozenDay: false,
   }
 }
 
@@ -325,6 +442,9 @@ export function generateWeeklyDaySummaries(
       totalRoutines: metrics.totalActive,
       completedCount: metrics.completedCount,
       completionRate: metrics.percent,
+      status: metrics.status,
+      frozenCount: metrics.frozenCount,
+      isFrozenDay: metrics.isFrozenDay,
     })
   }
 
@@ -343,6 +463,10 @@ export interface MonthCalendarDay {
   completionRate: number
   hasCompleted: boolean
   isPerfect: boolean
+  status: DailyCompletionStatus
+  totalRoutines: number
+  frozenCount?: number
+  isFrozenDay?: boolean
 }
 
 export function generateMonthCalendar(
@@ -374,6 +498,10 @@ export function generateMonthCalendar(
       completionRate: metrics.percent,
       hasCompleted: metrics.completedCount > 0,
       isPerfect: metrics.isPerfectDay,
+      status: metrics.status,
+      totalRoutines: metrics.totalActive,
+      frozenCount: metrics.frozenCount,
+      isFrozenDay: metrics.isFrozenDay,
     })
   }
 
@@ -390,6 +518,10 @@ export function generateMonthCalendar(
       completionRate: metrics.percent,
       hasCompleted: metrics.completedCount > 0,
       isPerfect: metrics.isPerfectDay,
+      status: metrics.status,
+      totalRoutines: metrics.totalActive,
+      frozenCount: metrics.frozenCount,
+      isFrozenDay: metrics.isFrozenDay,
     })
   }
 
@@ -407,6 +539,10 @@ export function generateMonthCalendar(
       completionRate: metrics.percent,
       hasCompleted: metrics.completedCount > 0,
       isPerfect: metrics.isPerfectDay,
+      status: metrics.status,
+      totalRoutines: metrics.totalActive,
+      frozenCount: metrics.frozenCount,
+      isFrozenDay: metrics.isFrozenDay,
     })
   }
 
@@ -466,7 +602,13 @@ export function generateConstellationGraph(
   logs: RoutineLog[],
   targetDateStr: string
 ): ConstellationGraph {
-  const activeRoutines = routines.filter((r) => r.is_active).sort((a, b) => a.order_index - b.order_index)
+  const activeRoutines = routines
+    .filter((r) => {
+      if (!r.is_active) return false
+      const startDate = getRoutineStartDate(r)
+      return startDate <= targetDateStr
+    })
+    .sort((a, b) => a.order_index - b.order_index)
   const count = activeRoutines.length
 
   if (count === 0) {

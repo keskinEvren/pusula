@@ -28,6 +28,7 @@ import {
   Check,
   X,
   Target,
+  Snowflake,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { requireMutationData } from '@/lib/supabase/mutation'
@@ -55,6 +56,9 @@ import {
   formatDateToYmd,
   parseYmdToDate,
   addDays,
+  DailyCompletionStatus,
+  DAILY_COMPLETION_META,
+  getRoutineStartDate,
 } from '@/lib/routines-engine'
 
 const STORAGE_KEY_ROUTINES = 'pusula_local_routines'
@@ -105,6 +109,7 @@ function RoutinesPageContent() {
     minimum_effective_dose: '',
     dream_id: '',
     identity_persona: '',
+    start_date: formatDateToYmd(new Date()),
   })
 
   // Timer Interval Ref
@@ -293,7 +298,7 @@ function RoutinesPageContent() {
   // -------------------------------------------------------------------------
   // Rutin Tamamlama / Geri Alma (Optimistic Toggle)
   // -------------------------------------------------------------------------
-  async function handleToggleRoutine(routineId: string, customStatus?: 'completed' | 'micro_dose') {
+  async function handleToggleRoutine(routineId: string, customStatus?: 'completed' | 'micro_dose' | 'frozen') {
     const statusToSet = customStatus || (isLowBattery ? 'micro_dose' : 'completed')
     const existingLog = routineLogs.find(
       (l) => l.routine_id === routineId && l.log_date === selectedDate
@@ -303,14 +308,38 @@ function RoutinesPageContent() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (existingLog) {
-        if (user && isUUID(existingLog.id)) {
-          requireMutationData(
-            await supabase.from('routine_logs').delete().eq('id', existingLog.id).select('id').single(),
-            'Rutin kaydının silindiği doğrulanamadı.'
-          )
+        if (existingLog.status === statusToSet) {
+          if (user && isUUID(existingLog.id)) {
+            requireMutationData(
+              await supabase.from('routine_logs').delete().eq('id', existingLog.id).select('id').single(),
+              'Rutin kaydının silindiği doğrulanamadı.'
+            )
+          }
+          saveLogsToLocal(routineLogs.filter((l) => l.id !== existingLog.id))
+          return
+        } else {
+          if (user && isUUID(existingLog.id)) {
+            const updated = requireMutationData(
+              await supabase
+                .from('routine_logs')
+                .update({ status: statusToSet, completed_at: new Date().toISOString() })
+                .eq('id', existingLog.id)
+                .select('*')
+                .single(),
+              'Rutin durumu güncellenemedi.'
+            )
+            saveLogsToLocal(routineLogs.map((l) => (l.id === existingLog.id ? (updated as RoutineLog) : l)))
+            return
+          } else {
+            const updated: RoutineLog = {
+              ...existingLog,
+              status: statusToSet,
+              completed_at: new Date().toISOString(),
+            }
+            saveLogsToLocal(routineLogs.map((l) => (l.id === existingLog.id ? updated : l)))
+            return
+          }
         }
-        saveLogsToLocal(routineLogs.filter((l) => l.id !== existingLog.id))
-        return
       }
 
       const newLog: RoutineLog = {
@@ -400,6 +429,7 @@ function RoutinesPageContent() {
       minimum_effective_dose: '',
       dream_id: '',
       identity_persona: '',
+      start_date: selectedDate || formatDateToYmd(new Date()),
     })
     setIsFormOpen(true)
   }
@@ -415,6 +445,7 @@ function RoutinesPageContent() {
       minimum_effective_dose: r.minimum_effective_dose || '',
       dream_id: r.dream_id || '',
       identity_persona: r.identity_persona || '',
+      start_date: getRoutineStartDate(r),
     })
     setIsFormOpen(true)
   }
@@ -425,6 +456,10 @@ function RoutinesPageContent() {
 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
+
+    const startDateIso = formData.start_date
+      ? new Date(formData.start_date + 'T00:00:00Z').toISOString()
+      : (editingRoutine?.created_at || new Date().toISOString())
 
     if (!user) {
       toast.error('Buluta kaydedilemedi: Oturum açık değil! Lütfen önce giriş yapın.')
@@ -444,7 +479,7 @@ function RoutinesPageContent() {
         identity_persona: formData.identity_persona || null,
         is_active: true,
         order_index: routines.length,
-        created_at: new Date().toISOString(),
+        created_at: startDateIso,
         updated_at: new Date().toISOString(),
       }
       const updatedList = editingRoutine
@@ -477,7 +512,10 @@ function RoutinesPageContent() {
         // Mevcut UUID'li rutini güncelle
         const { data: updData, error: updErr } = await supabase
           .from('routines')
-          .update(routinePayload)
+          .update({
+            ...routinePayload,
+            created_at: startDateIso,
+          })
           .eq('id', editingRoutine.id)
           .select('*')
           .single()
@@ -498,7 +536,7 @@ function RoutinesPageContent() {
         .insert([{
           ...routinePayload,
           order_index: editingRoutine?.order_index ?? routines.length,
-          created_at: new Date().toISOString(),
+          created_at: startDateIso,
         }])
         .select('*')
         .single()
@@ -656,7 +694,10 @@ function RoutinesPageContent() {
               {weeklyDays.map((day) => {
                 const isSelected = day.isSelected
                 const isToday = day.isToday
-                const isFull = day.completionRate === 100 && day.totalRoutines > 0
+                const hasRoutines = day.totalRoutines > 0
+                const isFutureWithoutLogs = day.date > todayStr && day.completedCount === 0
+                const isEvaluated = hasRoutines && !isFutureWithoutLogs && day.status !== 'none'
+                const statusMeta = DAILY_COMPLETION_META[day.status]
 
                 return (
                   <button
@@ -677,10 +718,16 @@ function RoutinesPageContent() {
                       {day.dayNumber}
                     </span>
                     <div className="flex items-center gap-1">
-                      {isFull ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
-                      ) : day.completedCount > 0 ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      {day.isFrozenDay ? (
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_#38bdf8]"
+                          title={`Mola / Donduruldu (${day.frozenCount || 0} Rutin)`}
+                        />
+                      ) : isEvaluated ? (
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotColor}`}
+                          title={`${statusMeta.label} (%${day.completionRate})`}
+                        />
                       ) : (
                         <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
                       )}
@@ -710,50 +757,108 @@ function RoutinesPageContent() {
         {/* SOL SÜTUN: GÜNÜN KOMUTA MASASI (lg:col-span-7) */}
         <div className="lg:col-span-7 space-y-6">
           {/* Canlı Günlük İlerleme Özeti */}
-          <Card className="border-border/60 bg-gradient-to-r from-card to-card/50 overflow-hidden relative">
-            <div
-              className="absolute bottom-0 left-0 top-0 bg-primary/10 transition-all duration-500"
-              style={{ width: `${dailyCompletion.percent}%` }}
-            />
-            <CardContent className="p-4 relative z-10 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {parseYmdToDate(selectedDate).toLocaleDateString('tr-TR', {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'long',
-                    })}
-                  </span>
-                  {dailyCompletion.isPerfectDay && (
-                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-[11px]">
-                      <Sparkles className="h-3 w-3" /> Kusursuz Gün
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-xl font-bold mt-0.5">
-                  %{dailyCompletion.percent} Tamamlandı
-                  <span className="text-xs font-normal text-muted-foreground ml-2">
-                    ({dailyCompletion.completedCount}/{dailyCompletion.totalActive} Rutin)
-                  </span>
-                </div>
-              </div>
+          {(() => {
+            const hasActiveRoutines = dailyCompletion.totalActive > 0
+            const dailyMeta = DAILY_COMPLETION_META[dailyCompletion.status]
 
-              <div className="text-right">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-end">
-                  <Flame className="h-4 w-4 text-amber-500" />
-                  <span className="font-semibold text-foreground">
-                    {constellationGraph.formationName.split(' ')[0]}
-                  </span>
-                </div>
-                <span className="text-[11px] text-muted-foreground">
-                  {dailyCompletion.percent === 100
-                    ? 'Tüm rutinler tamamlandı'
-                    : `${dailyCompletion.totalActive - dailyCompletion.completedCount} adım kaldı`}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+            return (
+              <Card className="border-border/60 bg-gradient-to-r from-card to-card/50 overflow-hidden relative">
+                <div
+                  className={`absolute bottom-0 left-0 top-0 transition-all duration-500 ${
+                    dailyCompletion.isFrozenDay
+                      ? 'bg-sky-500/15'
+                      : !hasActiveRoutines || dailyCompletion.status === 'none'
+                      ? 'bg-primary/5'
+                      : dailyCompletion.status === 'completed'
+                      ? 'bg-emerald-500/15'
+                      : dailyCompletion.status === 'partial'
+                      ? 'bg-amber-500/15'
+                      : 'bg-rose-500/10'
+                  }`}
+                  style={{ width: dailyCompletion.isFrozenDay ? '100%' : `${dailyCompletion.percent}%` }}
+                />
+                <CardContent className="p-4 relative z-10 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {parseYmdToDate(selectedDate).toLocaleDateString('tr-TR', {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                        })}
+                      </span>
+                      {dailyCompletion.isFrozenDay ? (
+                        <Badge
+                          variant="outline"
+                          className="border-sky-500/40 text-sky-400 bg-sky-500/10 gap-1 text-[11px] font-medium"
+                        >
+                          <Snowflake className="h-3 w-3" />
+                          Mola / Donduruldu
+                        </Badge>
+                      ) : (
+                        hasActiveRoutines && (
+                          <Badge
+                            variant="outline"
+                            className={`${dailyMeta.badgeClass} gap-1 text-[11px] font-medium`}
+                          >
+                            {dailyCompletion.status !== 'none' && (
+                              <span className={`h-1.5 w-1.5 rounded-full ${dailyMeta.dotColor.split(' ')[0]}`} />
+                            )}
+                            {dailyMeta.label}
+                          </Badge>
+                        )
+                      )}
+                      {dailyCompletion.isPerfectDay && (
+                        <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-[11px]">
+                          <Sparkles className="h-3 w-3" /> Kusursuz Gün
+                        </Badge>
+                      )}
+                    </div>
+                    {dailyCompletion.isFrozenDay ? (
+                      <div className="text-xl font-bold mt-0.5 flex items-baseline gap-2">
+                        <span className="text-sky-400">
+                          Mola Günü
+                        </span>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          ({dailyCompletion.frozenCount} Rutin Donduruldu)
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-xl font-bold mt-0.5 flex items-baseline gap-2">
+                        <span className={hasActiveRoutines && dailyCompletion.status !== 'none' ? dailyMeta.color : 'text-muted-foreground'}>
+                          %{dailyCompletion.percent}
+                        </span>
+                        {hasActiveRoutines && (
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            {dailyMeta.label}
+                          </span>
+                        )}
+                        <span className="text-xs font-normal text-muted-foreground">
+                          ({dailyCompletion.completedCount}/{dailyCompletion.totalActive} Rutin{dailyCompletion.frozenCount > 0 ? `, ${dailyCompletion.frozenCount} mola` : ''})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground justify-end">
+                      <Flame className="h-4 w-4 text-amber-500" />
+                      <span className="font-semibold text-foreground">
+                        {constellationGraph.formationName.split(' ')[0]}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {dailyCompletion.isFrozenDay
+                        ? 'Tüm rutinler donduruldu (seri korundu)'
+                        : dailyCompletion.percent === 100
+                        ? 'Tüm rutinler tamamlandı'
+                        : `${dailyCompletion.totalActive - dailyCompletion.completedCount} adım kaldı`}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {/* Düşük Pil Uyarısı */}
           {isLowBattery && (
@@ -768,7 +873,7 @@ function RoutinesPageContent() {
           {/* Zaman Dilimlerine Göre Gruplu Rutinler */}
           {timeBlocks.map((block) => {
             const blockMeta = TIME_BLOCK_META[block]
-            const blockRoutines = filterRoutinesByTimeBlock(routines, block)
+            const blockRoutines = filterRoutinesByTimeBlock(routines, block, selectedDate)
 
             if (blockRoutines.length === 0) return null
 
@@ -788,7 +893,7 @@ function RoutinesPageContent() {
                     {
                       blockRoutines.filter((r) =>
                         routineLogs.some(
-                          (l) => l.routine_id === r.id && l.log_date === selectedDate
+                          (l) => l.routine_id === r.id && l.log_date === selectedDate && (l.status === 'completed' || l.status === 'micro_dose' || l.status === 'kintsugi_repaired')
                         )
                       ).length
                     }
@@ -801,14 +906,17 @@ function RoutinesPageContent() {
                     const todayLog = routineLogs.find(
                       (l) => l.routine_id === routine.id && l.log_date === selectedDate
                     )
-                    const isCompleted = !!todayLog
+                    const isFrozen = todayLog?.status === 'frozen'
+                    const isCompleted = !!todayLog && !isFrozen
                     const streak = calculateStreak(routine.id, routineLogs, selectedDate)
 
                     return (
                       <div
                         key={routine.id}
                         className={`group relative flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 ${
-                          isCompleted
+                          isFrozen
+                            ? 'bg-sky-500/5 border-sky-500/30'
+                            : isCompleted
                             ? todayLog?.status === 'micro_dose'
                               ? 'bg-amber-500/5 border-amber-500/30'
                               : 'bg-emerald-500/5 border-emerald-500/30'
@@ -821,14 +929,21 @@ function RoutinesPageContent() {
                             type="button"
                             onClick={() => handleToggleRoutine(routine.id)}
                             className={`shrink-0 h-7 w-7 rounded-lg flex items-center justify-center transition-all ${
-                              isCompleted
+                              isFrozen
+                                ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 hover:bg-sky-500/30'
+                                : isCompleted
                                 ? todayLog?.status === 'micro_dose'
                                   ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.5)]'
                                   : 'bg-emerald-500 text-black shadow-[0_0_8px_rgba(16,185,129,0.5)]'
                                 : 'border-2 border-muted-foreground/30 hover:border-primary text-transparent'
                             }`}
+                            title={isFrozen ? 'Donduruldu / Mola (Normal tamamlamak için tıkla)' : undefined}
                           >
-                            <Check className="h-4 w-4 stroke-[3]" />
+                            {isFrozen ? (
+                              <Snowflake className="h-4 w-4 text-sky-400" />
+                            ) : (
+                              <Check className="h-4 w-4 stroke-[3]" />
+                            )}
                           </button>
 
                           <div className="min-w-0 flex-1">
@@ -836,11 +951,26 @@ function RoutinesPageContent() {
                               <span className="text-sm">{routine.icon}</span>
                               <span
                                 className={`text-sm font-semibold truncate ${
-                                  isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
+                                  isFrozen
+                                    ? 'text-sky-300/90'
+                                    : isCompleted
+                                    ? 'text-muted-foreground line-through'
+                                    : 'text-foreground'
                                 }`}
                               >
                                 {routine.title}
                               </span>
+
+                              {/* Donduruldu Rozeti */}
+                              {isFrozen && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[11px] px-1.5 py-0 border-sky-500/40 bg-sky-500/10 text-sky-400 gap-0.5"
+                                >
+                                  <Snowflake className="h-3 w-3" />
+                                  Donduruldu
+                                </Badge>
+                              )}
 
                               {/* Streak Rozeti */}
                               {streak.currentStreak > 0 && (
@@ -853,7 +983,7 @@ function RoutinesPageContent() {
                                 </Badge>
                               )}
 
-                              {streak.isCracked && !isCompleted && (
+                              {streak.isCracked && !isCompleted && !isFrozen && (
                                 <Badge
                                   variant="outline"
                                   className="text-[11px] px-1.5 py-0 border-rose-500/40 bg-rose-500/10 text-rose-400 gap-0.5"
@@ -906,7 +1036,7 @@ function RoutinesPageContent() {
                           </div>
                         </div>
 
-                        {/* Sağ Taraf: Hızlı Araçlar (Sayaç, Not, Düzenle) */}
+                        {/* Sağ Taraf: Hızlı Araçlar (Sayaç, Mola, Not, Düzenle, Sil) */}
                         <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                           {/* Sayaç Başlat */}
                           <button
@@ -917,6 +1047,21 @@ function RoutinesPageContent() {
                             title="Zen Odak Sayacını Başlat"
                           >
                             <Clock className="h-4 w-4" />
+                          </button>
+
+                          {/* Bugün Dondur / Mola */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRoutine(routine.id, 'frozen')}
+                            className={`h-8 w-8 min-h-[32px] min-w-[32px] rounded-md transition-colors flex items-center justify-center ${
+                              isFrozen
+                                ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40'
+                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                            }`}
+                            aria-label={`"${routine.title}" rutinini bugün için dondur`}
+                            title={isFrozen ? 'Dondurmayı Kaldır (Aktife Al)' : 'Bugün Dondur / Mola'}
+                          >
+                            <Snowflake className="h-4 w-4" />
                           </button>
 
                           {/* Not Ekle */}
@@ -962,6 +1107,74 @@ function RoutinesPageContent() {
               </div>
             )
           })}
+
+          {/* Yaklaşan / İleri Tarihli Rutinler (Seçili tarihte henüz başlamamış olanlar) */}
+          {(() => {
+            const upcomingRoutines = routines.filter((r) => r.is_active && getRoutineStartDate(r) > selectedDate)
+            if (upcomingRoutines.length === 0) return null
+
+            return (
+              <div className="space-y-3 pt-4 border-t border-border/40">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-primary/80" />
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Yaklaşan / İleri Tarihli Rutinler ({upcomingRoutines.length})
+                  </h4>
+                </div>
+
+                <div className="space-y-2">
+                  {upcomingRoutines.map((routine) => {
+                    const startDate = getRoutineStartDate(routine)
+                    return (
+                      <div
+                        key={routine.id}
+                        className="group flex items-center justify-between p-3 rounded-xl border border-dashed border-border/80 bg-muted/10 opacity-75 hover:opacity-100 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-base">{routine.icon}</span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-foreground/90">{routine.title}</span>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 border-primary/30 text-primary bg-primary/5"
+                              >
+                                {parseYmdToDate(startDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}'da başlayacak
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {TIME_BLOCK_META[routine.time_block as TimeBlock]?.label} • {routine.target_duration_minutes || 15} dk
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(routine)}
+                            className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-md hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                            aria-label={`"${routine.title}" rutinini düzenle`}
+                            title="Rutini Düzenle"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRoutineToDelete({ id: routine.id, title: routine.title })}
+                            className="h-8 w-8 min-h-[32px] min-w-[32px] rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 flex items-center justify-center"
+                            aria-label={`"${routine.title}" rutinini sil`}
+                            title="Rutini Sil"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
 
           {routines.length === 0 && (
             <Card className="border-dashed border-border p-8 text-center">
@@ -1170,7 +1383,14 @@ function RoutinesPageContent() {
               <div className="grid grid-cols-7 gap-1">
                 {monthCalendarDays.map((day, idx) => {
                   const isSelected = day.date === selectedDate
-                  const isFull = day.isPerfect
+                  const isFutureWithoutLogs = day.date > todayStr && !day.hasCompleted
+                  const isEvaluated =
+                    day.totalRoutines > 0 &&
+                    !isFutureWithoutLogs &&
+                    day.hasCompleted &&
+                    day.status !== 'none' &&
+                    (day.isCurrentMonth || day.hasCompleted)
+                  const statusMeta = DAILY_COMPLETION_META[day.status]
 
                   return (
                     <button
@@ -1190,10 +1410,16 @@ function RoutinesPageContent() {
 
                       {/* Tamamlama Gösterge Noktası */}
                       <div className="mt-1 flex items-center justify-center">
-                        {isFull ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#10b981]" />
-                        ) : day.hasCompleted ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                        {day.isFrozenDay ? (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_#38bdf8]"
+                            title={`Mola / Donduruldu (${day.frozenCount || 0} Rutin)`}
+                          />
+                        ) : isEvaluated ? (
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotColor}`}
+                            title={`${statusMeta.label} (%${day.completionRate})`}
+                          />
                         ) : null}
                       </div>
                     </button>
@@ -1201,14 +1427,22 @@ function RoutinesPageContent() {
                 })}
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-2 border-t border-border/40">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-2 border-t border-border/40 flex-wrap gap-1.5">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_4px_#10b981]" />
                   Tamamlandı (%100)
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-400" />
-                  Kısmi Tamamlama
+                  <span className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_4px_#f59e0b]" />
+                  Kısmi (%50–99)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_4px_#f43f5e]" />
+                  Yetersiz (%1–49)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_4px_#38bdf8]" />
+                  Mola / Donduruldu
                 </span>
               </div>
             </CardContent>
@@ -1248,7 +1482,7 @@ function RoutinesPageContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label htmlFor="routine-form-timeblock" className="text-xs font-semibold block mb-1 text-muted-foreground">Zaman Dilimi</label>
               <Select
@@ -1281,6 +1515,22 @@ function RoutinesPageContent() {
                   })
                 }
                 placeholder="15"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="routine-form-startdate" className="text-xs font-semibold block mb-1 text-muted-foreground">Başlangıç Tarihi</label>
+              <Input
+                id="routine-form-startdate"
+                type="date"
+                value={formData.start_date}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    start_date: e.target.value,
+                  })
+                }
+                required
               />
             </div>
           </div>
