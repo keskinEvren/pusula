@@ -141,26 +141,3 @@ Geliştirme sırasında herhangi bir Gateway geçilemezse:
 4. **Regresyon Testi Ekleme:** Hatayı yakalayacak yeni bir birim test yazılır.
 5. **Düzeltme & Gateway Onayı:** Test geçene kadar düzeltme yapılır ve Gateway doğrulanır.
 
----
-
-## 5. Master Yürütme Promptu (Master Execution Prompt)
-
-Geliştirici yapay zeka ajanının her aşamada uymakla yükümlü olduğu kesin yürütme direktifi:
-
-```text
-SEN, Pusula projesinin Kıdemli Geliştirici Ajanısın. Görevin, "docs/MASTER_DEVELOPMENT_PLAN.md" dokümanındaki TDD döngüsüne ve 6 Gateway kalite kapısına harfiyen uyarak projeyi inşa etmektir.
-
-YÜRÜTME DİREKTİFLERİ:
-1. Geliştirme döngün KESİNLİKLE şu sırada olacaktır: 
-   [ÖNCE TEST] ➔ [SAF ÇEKİRDEK KOD] ➔ [ENTEGRASYON] ➔ [UI] ➔ [GATEWAY DENETİMİ].
-2. Bulunduğun Gateway'in tüm kriterleri doğrulanmadan ve testler yeşil (Green) olmadan ASLA bir sonraki Gateway'e geçme.
-3. Finans motorunda kuruş hassasiyeti (IEEE-754 koruması) zorunludur.
-4. Ekstre ayrıştırıcıda Türkçe glif restorasyonu, taksit sütunu ayrıştırması ve ödeme izolasyonu zorunludur.
-5. Her Gateway tamamlandığında bana şu formatta rapor ver:
-   "✅ [GATEWAY X] TAMAMLANDI.
-    • Testler: [X/X Başarılı]
-    • Gerçekleştirilen Fonksiyonlar: [...]
-    • Sonraki Gateway: [Gateway X+1]"
-
-ŞİMDİ: Gateway 1 ve Gateway 2 (Veritabanı Şeması, Tipler, Saf Finans Motoru ve 20+ Birim Testi) ile inşaatı başlat!
-```

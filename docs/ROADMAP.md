@@ -2,45 +2,49 @@
 
 ---
 
-## 🎯 Aşama 1 — Çekirdek Motor & Veritabanı Mimarisi (Foundations)
+## 🎯 Tamamlanan Aşamalar (v1.0.0 — v2.1.0)
+
+### Aşama 1 — Çekirdek Mimari & Veri Modeli
 - [x] Temel mimari dökümanların (`VISION.md`, `DOMAIN_MODEL.md`, `SYSTEM_DYNAMICS.md`, `SPEC_PARSER.md`) hazırlanması.
-- [ ] Supabase PostgreSQL şemasının oluşturulması (12 tablo, RLS politikaları, triggerlar, enumlar).
-- [ ] Saf Finans Motoru (`finance-engine.ts`) ve Vitest test süitinin kurulması.
-- [ ] Supabase Auth (e-posta & şifre) entegrasyonu ve oturum koruması (middleware).
+- [x] Supabase PostgreSQL şemasının oluşturulması (tablolar, RLS politikaları, tetikleyiciler, RPC fonksiyonları).
+- [x] Kuruş hassasiyetli finans hesaplama motoru (`finance-engine.ts`) ve birim test süitinin kurulması.
+- [x] Supabase Auth ve oturum koruma katmanı (`proxy.ts`).
+
+### Aşama 2 — Ekstre Ayrıştırma & Reaktif Veri Akışı
+- [x] İstemci taraflı PDF metin çıkarma ve X-koordinat sütun sıralaması (`pdfjs-dist`).
+- [x] Türkçe karakter ve glif onarım motoru (`turkish-cleaner.ts`).
+- [x] Banka format tespiti (Enpara, Akbank, Ziraat, Garanti) ve satır ayrıştırıcı.
+- [x] İşyeri normalizasyon kuralları ve kullanıcı eşleştirme desteği (`merchant_mappings`).
+- [x] Kullanıcı onay ekranı ve geri alma (rollback) destekli içe aktarım servisi.
+
+### Aşama 3 — Finansal Takip & Nakit Yükü
+- [x] Kredi kartları görünümü ve ekstre geçmişi tablosu (dönemsel değişim trendi).
+- [x] Borç & Kesin Alacak yönetimi (tek tıkla tahsilat ve bakiye senkronizasyonu).
+- [x] Abonelikler ve 6 aylık planlı nakit yükü matrisi.
+- [x] Vadesiz banka ve nakit hesap bakiyeleri yönetimi.
+
+### Aşama 4 — Proje Portföyü & Finans Köprüsü
+- [x] Projeler Kanban Panosu (Fikir ➔ Planlama ➔ Geliştirmede ➔ Canlı ➔ Arşiv).
+- [x] Kapasite uyarısı (aynı anda odaklanılan aktif proje limiti).
+- [x] Proje detay çalışma alanı, şartname önizleme ve notlar.
+- [x] Proje Gerçek Maliyeti: Projeye bağlanan hareketlerin ve aboneliklerin otomatik maliyet köprüsü.
+- [x] Fikir kuluçka havuzu ve tek tıkla projeye dönüştürme.
+
+### Aşama 5 — Bütünleşik Yaşam & Güvenlik Modülleri
+- [x] Ajanda & Günlük Odak Masası (pomodoro zamanlayıcı, taşınabilir görevler).
+- [x] Rutinler & Alışkanlıklar (3 seviyeli tamamlama skoru, streak zinciri, mola/dondurma).
+- [x] Kaptanın Seyir Defteri (Jurnal) (markdown destekli günlük kayıtlar).
+- [x] Hayaller & Vizyon panosu.
+- [x] Hibrit Yatırımlar portföy takibi.
+- [x] Kasa (Credentials Vault): PBKDF2 + AES-GCM 256-bit istemci taraflı şifrelenmiş kimlik kasası.
+- [x] Keyset pagination ile yüksek hacimli işlem defteri optimizasyonu.
 
 ---
 
-## 📄 Aşama 2 — Ekstre Ayrıştırma & Reaktif Veri Akışı (Data Ingestion)
-- [ ] İstemci taraflı PDF metin çıkarma ve X-koordinat sütun sıralaması (`pdfjs-dist`).
-- [ ] Türkçe karakter onarım motoru (`turkish-cleaner.ts`).
-- [ ] Otomatik banka tespiti ve satır regex ayrıştırıcısı.
-- [ ] İşyeri normalizasyon sözlüğü ve kullanıcı eşleştirme kuralları (`merchant_mappings`).
-- [ ] Kullanıcı Onay Ekranı (`Review & Confirm Screen`):
-  - Satır bazında grup, işyeri, bağlı proje düzenleme.
-  - Kart ödemelerinin otomatik `Hariç` olarak işaretlenmesi.
-  - Toplu onaylama ve Supabase'e tek tıkla senkronizasyon.
+## 🔮 Gelecek Yol Haritası & Planlanan İyileştirmeler
 
----
-
-## 💳 Aşama 3 — Finansal Takip & Zincirleme Etkiler (Finance Hub)
-- [ ] Kredi kartları kart görünümü ve ekstre geçmişi tablosu (▲/▼ değişim trendi ve % analizi).
-- [ ] Borç & Kesin Alacak yönetimi (Maaş hakedişleri, açık borçlar, tek tıkla tahsilat/kapatma).
-- [ ] Abonelikler ve 6 Aylık Planlı Nakit Yükü Matrisi (İptal/Devam kararları).
-- [ ] Banka ve nakit hesap bakiyeleri yönetimi.
-
----
-
-## 🚀 Aşama 4 — Proje Portföyü & Finans Köprüsü (Projects & Bridge)
-- [ ] Projeler Kanban Panosu (💡 Fikir ➔ 📐 Planlama ➔ 🚧 Geliştirmede ➔ ✅ Canlı ➔ ⏸️ Arşiv).
-- [ ] Kapasite Kapısı Uyarısı (Aktif planlama + geliştirme $\ge 2$ uyarısı).
-- [ ] Proje Çalışma Alanı (Görevler / Epics kontrol listesi).
-- [ ] **💰 Proje Gerçek Maliyeti:** O projeye bağlanan hareketler ve aboneliklerin otomatik toplamı.
-- [ ] **⏳ Kurucu Runway Sayacı:** Mevcut nakit ve harcama hızına göre kaç ay sürdürülebilirlik tahmini.
-- [ ] Fikir Havuzu (Inbox, Maybe, Killed, Promoted).
-
----
-
-## 📊 Aşama 5 — Görselleştirme & Rafine Deneyim (Analytics & Polish)
-- [ ] Harcama dağılımı grafiği (Kişisel vs İş vs Finansman).
-- [ ] 6 aylık nakit çıkış projeksiyon trend grafiği.
-- [ ] Mobil uyumluluk ve karanlık tema (Dark mode) detay cilaları.
+### Aşama 6 — İleri Entegrasyonlar & Analitik
+- [ ] Açık bankacılık / hesap ekstresi entegrasyonu (izinli API köprüsü).
+- [ ] Çoklu para birimi desteği (USD / EUR / GBP çapraz kur takibi).
+- [ ] Dönemsel bütçe hedefleri ve harcama kategorisi sapma alarmları.
+- [ ] Veri dışa aktarım seçenekleri (detaylı Excel / CSV ve şifreli yerel yedekleme).
