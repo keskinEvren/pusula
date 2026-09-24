@@ -5,13 +5,14 @@ import * as path from 'path'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const USER_ID = process.env.TARGET_USER_ID || process.env.USER_ID
-const PLANNER_PATH = process.env.PLANNER_PATH || '/Users/evren/Documents/GitHub/projects-planner'
+const PLANNER_PATH = process.env.PLANNER_PATH
 
-if (!supabaseUrl || !supabaseServiceKey || !USER_ID) {
-  console.error('❌ HATA: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY ve TARGET_USER_ID ortam değişkenleri tanımlı olmalıdır.')
+if (!supabaseUrl || !supabaseServiceKey || !USER_ID || !PLANNER_PATH) {
+  console.error('❌ HATA: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TARGET_USER_ID ve PLANNER_PATH ortam değişkenleri tanımlı olmalıdır.')
   process.exit(1)
 }
 
+const plannerPath: string = PLANNER_PATH
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 async function importPlannerData() {
@@ -126,7 +127,7 @@ async function importPlannerData() {
   for (const proj of projectsToImport) {
     let combinedDescription = ''
     for (const file of proj.descriptionFiles) {
-      const fullPath = path.join(PLANNER_PATH, file)
+      const fullPath = path.join(plannerPath, file)
       if (fs.existsSync(fullPath)) {
         const content = fs.readFileSync(fullPath, 'utf8')
         combinedDescription += `\n\n# 📄 ${path.basename(file)}\n\n${content}\n\n---\n`
@@ -260,7 +261,7 @@ async function importPlannerData() {
 
   console.log('\n💡 Fikirler aktarılıyor...')
   for (const item of ideasToImport) {
-    const fullPath = path.join(PLANNER_PATH, item.file)
+    const fullPath = path.join(plannerPath, item.file)
     let content = ''
     if (fs.existsSync(fullPath)) {
       content = fs.readFileSync(fullPath, 'utf8')

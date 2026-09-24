@@ -43,4 +43,11 @@ supabase/.temp/
 # local AI/chat session exports may contain credentials and personal data
 /docs/chat-history/
 
+# environment files (all variants)
 .env*
+
+# personal backup and data files
+scripts/backup-*.json
+
+# AI agent auto-generated config (Next.js 16)
+AGENTS.md

@@ -2,7 +2,7 @@
 
 **Tarih:** 2026-09-02  
 **Mimari Versiyon:** 1.0.0 (Strict Gateway Architecture)  
-**Hedef Repo:** `C:\Users\DELL\Documents\GitHub\pusula`
+**Hedef Repo:** `github.com/keskinEvren/pusula`
 
 ---
 

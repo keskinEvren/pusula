@@ -65,13 +65,16 @@ async function run() {
 
   // 3. CareerAttack (Local)
   let caDescription = ''
-  const caReadmePath = '/Users/evren/Documents/GitHub/careerattack/README.md'
-  const caVisionPath = '/Users/evren/Documents/GitHub/careerattack/PROJE_VIZYONU.md'
-  if (fs.existsSync(caReadmePath)) {
-    caDescription += fs.readFileSync(caReadmePath, 'utf8')
-  }
-  if (fs.existsSync(caVisionPath)) {
-    caDescription += `\n\n---\n# 🎯 Proje Vizyonu\n\n${fs.readFileSync(caVisionPath, 'utf8')}`
+  const caBasePath = process.env.CAREERATTACK_PATH
+  if (caBasePath) {
+    const caReadmePath = path.join(caBasePath, 'README.md')
+    const caVisionPath = path.join(caBasePath, 'PROJE_VIZYONU.md')
+    if (fs.existsSync(caReadmePath)) {
+      caDescription += fs.readFileSync(caReadmePath, 'utf8')
+    }
+    if (fs.existsSync(caVisionPath)) {
+      caDescription += `\n\n---\n# 🎯 Proje Vizyonu\n\n${fs.readFileSync(caVisionPath, 'utf8')}`
+    }
   }
 
   // 4. Sarıoğlu
