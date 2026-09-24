@@ -48,6 +48,9 @@ supabase/.temp/
 
 # personal backup and data files
 scripts/backup-*.json
+scripts/clean-all-transactions.ts
+scripts/clean-user-cards.ts
 
 # AI agent auto-generated config (Next.js 16)
 AGENTS.md
+
