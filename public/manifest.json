@@ -1,7 +1,7 @@
 {
   "name": "Pusula — Kişisel Finans & Kokpit",
   "short_name": "Pusula",
-  "description": "Kişisel finans ve proje yönetiminin tek bir ekranda buluştuğu solo kurucu komuta merkezi",
+  "description": "Geliştiriciler ve bağımsız çalışanlar için kişisel finans ve proje yönetim paneli",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0f19",

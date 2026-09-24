@@ -1,4 +1,5 @@
-# 🧭 Pusula: Solo Kurucu Komuta Merkezi
+# 🧭 Pusula
+### Kişisel Finans ve Proje Yönetim Paneli
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.3-black?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
@@ -6,11 +7,11 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)](https://supabase.com/)
 
-> Solo kurucular (indie hackers) ve bağımsız geliştiriciler için kişisel finans ile proje yönetimini tek bir ekranda birleştiren komuta merkezi. Paranın nereden gelip nereye gittiğini, borç/alacak dengesini ve projelerin bu denklemi nasıl etkilediğini şeffaf bir hesaplama modeliyle görünür kılar.
+> Geliştiriciler ve bağımsız çalışanlar için kişisel bütçe, kredi kartı ekstreleri ve proje harcamalarını tek ekranda toplayan yönetim aracı.
 
 ---
 
-## 📸 Canlı Arayüz & Komuta Merkezi
+## 📸 Arayüz & Ekran Görüntüleri
 
 ### Finans & Proje Kokpiti
 ![Finans & Proje Kokpiti](docs/screenshots/03_dashboard_cockpit.png)
@@ -120,7 +121,7 @@ npm run build
 
 Pusula'nın mimari temelleri, domain modelleri ve ayrıştırma kuralları `docs/` klasöründe detaylandırılmıştır:
 
-1. 🎯 [**Vizyon & Zihinsel Model** (`docs/VISION.md`)](docs/VISION.md) — Solo kurucunun ikilemleri ve finans-proje köprüsü felsefesi.
+1. 🎯 [**Vizyon & Zihinsel Model** (`docs/VISION.md`)](docs/VISION.md) — Geliştiricilerin finansal ikilemleri ve finans-proje köprüsü felsefesi.
 2. 🏛️ [**Domain Modeli & Varlık İlişkileri** (`docs/DOMAIN_MODEL.md`)](docs/DOMAIN_MODEL.md) — Veritabanı varlıkları, ilişkiler ve türetilen metrikler.
 3. ⚡ [**Sistem Dinamikleri & Olay Akışları** (`docs/SYSTEM_DYNAMICS.md`)](docs/SYSTEM_DYNAMICS.md) — Finansal ve operasyonel olayların reaktif zincirleme akışı.
 4. 📄 [**Ekstre Ayrıştırma Spesifikasyonu** (`docs/SPEC_PARSER.md`)](docs/SPEC_PARSER.md) — PDF/CSV ayrıştırma mimarisi ve glif restorasyon kuralları.

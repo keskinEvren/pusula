@@ -14,7 +14,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'Pusula — Finans & Proje Kokpiti',
-  description: 'Kişisel finans ve proje yönetiminin tek bir ekranda buluştuğu solo kurucu komuta merkezi',
+  description: 'Geliştiriciler ve bağımsız çalışanlar için kişisel finans ve proje yönetim paneli',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

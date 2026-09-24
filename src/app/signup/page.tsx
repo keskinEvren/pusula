@@ -67,7 +67,7 @@ export default function SignupPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground pt-1">Pusula'ya Katılın</h1>
           <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-            Finans ve nakit akışı komuta merkezinizi oluşturun
+            Kişisel finans ve proje yönetim panelinizi oluşturun
           </p>
         </div>
 

@@ -1,7 +1,7 @@
 {
   "name": "pusula",
   "version": "1.0.0",
-  "description": "Solo kurucular için kişisel finans ve proje komuta merkezi",
+  "description": "Geliştiriciler ve bağımsız çalışanlar için kişisel finans ve proje yönetim paneli",
   "private": true,
   "scripts": {
     "dev": "next dev",
