@@ -247,15 +247,20 @@ export function calculateSpendingBreakdown(
 export function calculateProjectTotalCost(
   projectId: string,
   transactions: Array<{ project_id?: string | null; amount: number | null | undefined }>,
-  subscriptions: Array<{ project_id?: string | null; amount: number | null | undefined; status?: string | null }>
+  subscriptions: Array<{
+    project_id?: string | null
+    amount: number | null | undefined
+    status?: string | null
+    decision?: string | null
+  }>
 ): number {
-  const directCost = transactions
-    .filter((t) => t.project_id === projectId)
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+  const directCost = (transactions || [])
+    .filter((t) => t && t.project_id === projectId)
+    .reduce((sum, t) => sum + safeParseAmount(t.amount), 0)
 
-  const subCost = subscriptions
-    .filter((s) => s.project_id === projectId && s.status !== 'İptal')
-    .reduce((sum, s) => sum + Number(s.amount || 0), 0)
+  const subCost = (subscriptions || [])
+    .filter((s) => s && s.project_id === projectId && s.status !== 'İptal' && (s as any).decision !== 'İptal Et')
+    .reduce((sum, s) => sum + safeParseAmount(s.amount), 0)
 
   return round2(directCost + subCost)
 }
@@ -288,6 +293,174 @@ export function evaluateProjectBudget(
   }
 }
 
+export type SubscriptionPeriod =
+  | 'Aylık'
+  | 'Haftalık'
+  | '3 Aylık'
+  | '6 Aylık'
+  | 'Yıllık'
+  | 'Tek Seferlik'
+
+export interface SubscriptionEquivalent {
+  monthly: number
+  yearly: number
+}
+
+
+/**
+ * Kullanıcı girdisi veya veritabanındaki periyot metnini standart kanonik formata dönüştürür.
+ * Büyük/küçük harf, Türkçe karakter varyasyonları (ı/i, ü/u, ç/c), tire ve takma adları destekler.
+ */
+export function normalizeSubscriptionPeriod(period?: string | null): SubscriptionPeriod {
+  if (!period) return 'Aylık'
+  const p = period
+    .trim()
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .toLowerCase()
+    .replace(/\u0307/g, '')
+    .replace(/ı/g, 'i')
+    .replace(/ü/g, 'u')
+    .replace(/ç/g, 'c')
+    .replace(/ö/g, 'o')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+
+  if (p === 'haftalik' || p === 'weekly' || p === 'hafta') {
+    return 'Haftalık'
+  }
+  if (
+    p === '3 aylik' ||
+    p === '3-aylik' ||
+    p === '3aylik' ||
+    p === 'quarterly' ||
+    p === 'uc aylik' ||
+    p === '3 ay'
+  ) {
+    return '3 Aylık'
+  }
+  if (
+    p === '6 aylik' ||
+    p === '6-aylik' ||
+    p === '6aylik' ||
+    p === 'semi-annual' ||
+    p === 'semiannual' ||
+    p === 'biannual' ||
+    p === 'alti aylik' ||
+    p === '6 ay'
+  ) {
+    return '6 Aylık'
+  }
+  if (p === 'yillik' || p === 'annual' || p === 'yearly' || p === 'yil' || p === 'sene') {
+    return 'Yıllık'
+  }
+  if (
+    p === 'tek seferlik' ||
+    p === 'tek-seferlik' ||
+    p === 'tekseferlik' ||
+    p === 'tek' ||
+    p === 'one-time' ||
+    p === 'onetime' ||
+    p === 'once'
+  ) {
+    return 'Tek Seferlik'
+  }
+  return 'Aylık'
+}
+
+/**
+ * Kullanıcı form girdisini (Türkçe virgül veya nokta ayracı, binlik ayraçlar, para birimi sembolleri, boşluklar vb.) güvenle sayıya dönüştürür.
+ */
+export function safeParseAmount(val: unknown): number {
+  if (val === null || val === undefined || val === '') return 0
+  if (typeof val === 'number') return isFinite(val) ? Math.max(0, val) : 0
+  let clean = String(val).trim()
+  if (!clean) return 0
+  clean = clean.replace(/[^\d.,-]/g, '')
+  if (!clean) return 0
+  if (clean.startsWith('-')) return 0
+
+  const lastDot = clean.lastIndexOf('.')
+  const lastComma = clean.lastIndexOf(',')
+
+  let normalized = clean
+  if (lastDot !== -1 && lastComma !== -1) {
+    if (lastComma > lastDot) {
+      // 1.234,56 (Türkçe biçim)
+      normalized = clean.replace(/\./g, '').replace(',', '.')
+    } else {
+      // 1,234.56 (Anglo-Sakson biçim)
+      normalized = clean.replace(/,/g, '')
+    }
+  } else if (clean.split('.').length > 2) {
+    // 1.000.000 (Birden fazla nokta -> binlik ayraç)
+    normalized = clean.replace(/\./g, '')
+  } else if (clean.split(',').length > 2) {
+    // 1,000,000 (Birden fazla virgül -> binlik ayraç)
+    normalized = clean.replace(/,/g, '')
+  } else if (lastComma !== -1) {
+    // Tek virgül: 150,50
+    normalized = clean.replace(',', '.')
+  }
+
+  const parsed = parseFloat(normalized)
+  return isNaN(parsed) || !isFinite(parsed) ? 0 : Math.max(0, round2(parsed))
+}
+
+/**
+ * Abonelik / Sabit Gider Normalizasyonu
+ * Farklı periyotlardaki giderleri aylık eşdeğer ve yıllık yüke dönüştürür.
+ * - 3 Aylık: Girilen tutar / 3 = Aylık eşdeğer (Yıllık = Aylık * 12)
+ * - 6 Aylık: Girilen tutar / 6 = Aylık eşdeğer (Yıllık = Aylık * 12)
+ * - Yıllık: Girilen tutar / 12 = Aylık eşdeğer (Yıllık = Girilen tutar)
+ * - Aylık: Girilen tutar = Aylık eşdeğer (Yıllık = Aylık * 12)
+ * - Haftalık: (Girilen tutar * 52) / 12 = Aylık eşdeğer (Yıllık = Aylık * 12)
+ * - Tek Seferlik: Düzenli tekrarlayan yüke katılmaz (0 TL)
+ */
+export function calculateSubscriptionEquivalent(
+  amount: number | null | undefined,
+  period?: string | null
+): SubscriptionEquivalent {
+  const amt = Number(amount || 0)
+  if (!amt || isNaN(amt) || !isFinite(amt) || amt <= 0) {
+    return { monthly: 0, yearly: 0 }
+  }
+
+  const norm = normalizeSubscriptionPeriod(period)
+
+  switch (norm) {
+    case 'Haftalık': {
+      const monthly = round2((amt * 52) / 12)
+      const yearly = round2(monthly * 12)
+      return { monthly, yearly }
+    }
+    case '3 Aylık': {
+      const monthly = round2(amt / 3)
+      const yearly = round2(monthly * 12)
+      return { monthly, yearly }
+    }
+    case '6 Aylık': {
+      const monthly = round2(amt / 6)
+      const yearly = round2(monthly * 12)
+      return { monthly, yearly }
+    }
+    case 'Yıllık': {
+      const monthly = round2(amt / 12)
+      const yearly = round2(amt)
+      return { monthly, yearly }
+    }
+    case 'Tek Seferlik': {
+      return { monthly: 0, yearly: 0 }
+    }
+    case 'Aylık':
+    default: {
+      const monthly = round2(amt)
+      const yearly = round2(amt * 12)
+      return { monthly, yearly }
+    }
+  }
+}
+
 /**
  * 6. 6 Aylık Planlı Nakit Yükü & Taksit Projeksiyonu
  * Gelecek 6 ayın her ayı için: (Aktif Abonelikler) + (Devam Eden Taksit Tutarları)
@@ -298,7 +471,8 @@ export function projectSixMonthCashLoad(
     period?: string | null
     amount: number | null | undefined
     end_date?: string | null
-  }>,
+    decision?: string | null
+  }> = [],
   installments: InstallmentScheduleItem[] = [],
   monthCount = 6
 ): number[] {
@@ -313,22 +487,25 @@ export function projectSixMonthCashLoad(
     const targetDate = new Date(currentYear, currentMonth + month, 1)
 
     // Sum active subscriptions for this month
-    const monthSubs = subscriptions
+    const monthSubs = (subscriptions || [])
       .filter((s) => {
-        if (s.status === 'İptal') return false
-        if (s.period && s.period !== 'Aylık' && s.period !== 'Tekrarlayan') return false
+        if (!s) return false
+        if (s.status === 'İptal' || (s as any).decision === 'İptal Et') return false
         if (s.end_date) {
           const endDate = new Date(s.end_date)
-          if (targetDate > endDate) return false
+          if (!isNaN(endDate.getTime()) && targetDate > endDate) return false
         }
         return true
       })
-      .reduce((sum, s) => sum + Number(s.amount || 0), 0)
+      .reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
 
     // Sum installments that are active in this month (remainingMonths >= month)
-    const monthInstallments = installments
-      .filter((inst) => inst.remainingMonths >= month)
-      .reduce((sum, inst) => sum + Number(inst.amountPerMonth || 0), 0)
+    const monthInstallments = (installments || [])
+      .filter((inst) => inst && inst.remainingMonths >= month)
+      .reduce((sum, inst) => sum + safeParseAmount(inst.amountPerMonth), 0)
 
     projection.push(round2(monthSubs + monthInstallments))
   }
