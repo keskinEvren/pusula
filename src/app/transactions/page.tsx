@@ -38,7 +38,12 @@ import {
   formatLocalMonthInput,
   cn,
 } from '@/lib/utils'
-import { round2 } from '@/lib/finance-engine'
+import {
+  round2,
+  calculateSubscriptionEquivalent,
+  normalizeSubscriptionPeriod,
+  safeParseAmount,
+} from '@/lib/finance-engine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -283,9 +288,9 @@ function TransactionsContent() {
         service: recurringForm.service.trim(),
         group_type: recurringForm.group_type,
         model: recurringForm.category,
-        amount: parseFloat(recurringForm.amount || '0'),
+        amount: Math.max(0, safeParseAmount(recurringForm.amount)),
         currency: 'TRY',
-        period: recurringForm.period,
+        period: normalizeSubscriptionPeriod(recurringForm.period),
         end_date: recurringForm.end_date || null,
         decision: 'Devam',
         payment_method: recurringForm.payment_method || null,
@@ -1740,33 +1745,60 @@ function TransactionsContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label htmlFor="rec-amount" className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
-              <Input
-                id="rec-amount"
-                type="number"
-                step="0.01"
-                prefix="₺"
-                required
-                value={recurringForm.amount}
-                onChange={(e) => setRecurringForm({ ...recurringForm, amount: e.target.value })}
-              />
-            </div>
+          {(() => {
+            const normRecPeriod = normalizeSubscriptionPeriod(recurringForm.period)
+            const parsedAmt = safeParseAmount(recurringForm.amount)
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label htmlFor="rec-amount" className="text-xs font-semibold text-muted-foreground">
+                    {normRecPeriod === 'Tek Seferlik'
+                      ? 'Tek Seferlik Tutar'
+                      : normRecPeriod === '3 Aylık' || normRecPeriod === '6 Aylık' || normRecPeriod === 'Yıllık'
+                      ? `${normRecPeriod} Toplam Tutar`
+                      : normRecPeriod === 'Haftalık'
+                      ? 'Haftalık Tutar'
+                      : 'Aylık Tutar'}
+                  </label>
+                  <Input
+                    id="rec-amount"
+                    type="number"
+                    step="0.01"
+                    prefix="₺"
+                    required
+                    value={recurringForm.amount}
+                    onChange={(e) => setRecurringForm({ ...recurringForm, amount: e.target.value })}
+                  />
+                  {parsedAmt > 0 && normRecPeriod !== 'Aylık' && normRecPeriod !== 'Tek Seferlik' && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Aylık eşdeğer: ~{formatCurrency(calculateSubscriptionEquivalent(parsedAmt, normRecPeriod).monthly)} / ay
+                    </p>
+                  )}
+                  {parsedAmt > 0 && normRecPeriod === 'Tek Seferlik' && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Tek seferlik gider; aylık tekrarlayan yüke katılmaz.
+                    </p>
+                  )}
+                </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="rec-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
-              <Select
-                id="rec-period"
-                value={recurringForm.period}
-                onChange={(e) => setRecurringForm({ ...recurringForm, period: e.target.value })}
-              >
-                <option value="Aylık">Aylık</option>
-                <option value="Yıllık">Yıllık</option>
-                <option value="Haftalık">Haftalık</option>
-              </Select>
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="rec-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
+                  <Select
+                    id="rec-period"
+                    value={normRecPeriod}
+                    onChange={(e) => setRecurringForm({ ...recurringForm, period: e.target.value })}
+                  >
+                    <option value="Aylık">Aylık</option>
+                    <option value="Haftalık">Haftalık</option>
+                    <option value="3 Aylık">3 Aylık</option>
+                    <option value="6 Aylık">6 Aylık</option>
+                    <option value="Yıllık">Yıllık</option>
+                    <option value="Tek Seferlik">Tek Seferlik</option>
+                  </Select>
+                </div>
+              </div>
+            )
+          })()}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
