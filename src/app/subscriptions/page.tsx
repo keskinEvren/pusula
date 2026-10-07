@@ -25,6 +25,12 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import {
+  calculateSubscriptionEquivalent,
+  normalizeSubscriptionPeriod,
+  safeParseAmount,
+  round2,
+} from '@/lib/finance-engine'
 import { PageHeader } from '@/components/layout/page-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -111,7 +117,7 @@ export default function SubscriptionsPage() {
       decision: prefill?.decision || 'Devam',
       group_type: prefill?.group_type || 'Kişisel',
       amount: prefill?.amount || '',
-      period: prefill?.period || 'Aylık',
+      period: normalizeSubscriptionPeriod(prefill?.period || 'Aylık'),
       payment_method: prefill?.payment_method || 'Kredi Kartı',
       project_id: prefill?.project_id || '',
     })
@@ -129,15 +135,15 @@ export default function SubscriptionsPage() {
       'Diğer',
     ].includes(sub.model)
       ? (sub.model as ExpenseCategory)
-      : 'Eğlence & Medya'
+      : 'Diğer'
 
     setForm({
       service: sub.service,
       category,
       decision: (sub.decision as StrategicDecision) || 'Devam',
       group_type: sub.group_type || 'Kişisel',
-      amount: sub.amount.toString(),
-      period: sub.period || 'Aylık',
+      amount: sub.amount != null ? sub.amount.toString() : '',
+      period: normalizeSubscriptionPeriod(sub.period),
       payment_method: sub.payment_method || 'Kredi Kartı',
       project_id: sub.project_id || '',
     })
@@ -162,9 +168,9 @@ export default function SubscriptionsPage() {
         service: form.service.trim(),
         group_type: form.group_type,
         model: form.category,
-        amount: parseFloat(form.amount || '0'),
+        amount: Math.max(0, safeParseAmount(form.amount)),
         currency: 'TRY',
-        period: form.period,
+        period: normalizeSubscriptionPeriod(form.period),
         decision: form.decision,
         payment_method: form.payment_method || null,
         project_id: form.project_id || null,
@@ -265,10 +271,22 @@ export default function SubscriptionsPage() {
 
   // Total active monthly load & yearly load
   const totalMonthlyLoad = useMemo(() => {
-    return activeSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
+    return round2(
+      activeSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
+    )
   }, [activeSubs])
 
-  const totalYearlyLoad = totalMonthlyLoad * 12
+  const totalYearlyLoad = useMemo(() => {
+    return round2(
+      activeSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.yearly
+      }, 0)
+    )
+  }, [activeSubs])
 
   // Essential (Vazgeçilmez - decision === 'Devam')
   const essentialSubs = useMemo(() => {
@@ -276,7 +294,12 @@ export default function SubscriptionsPage() {
   }, [activeSubs])
 
   const essentialMonthlyTotal = useMemo(() => {
-    return essentialSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
+    return round2(
+      essentialSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
+    )
   }, [essentialSubs])
 
   // Potential Savings (Gözden Geçir / Esnek - decision === 'Kararsız')
@@ -285,17 +308,57 @@ export default function SubscriptionsPage() {
   }, [activeSubs])
 
   const potentialMonthlySavings = useMemo(() => {
-    return reviewSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
+    return round2(
+      reviewSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
+    )
   }, [reviewSubs])
 
-  const potentialYearlySavings = potentialMonthlySavings * 12
+  const potentialYearlySavings = useMemo(() => {
+    return round2(
+      reviewSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.yearly
+      }, 0)
+    )
+  }, [reviewSubs])
+
+  const potentialOneTimeSavings = useMemo(() => {
+    return round2(
+      reviewSubs
+        .filter((s) => normalizeSubscriptionPeriod(s.period) === 'Tek Seferlik')
+        .reduce((sum, s) => sum + safeParseAmount(s.amount), 0)
+    )
+  }, [reviewSubs])
 
   // Realized Savings (İptal Edilenler - cancelledSubs)
   const realizedMonthlySavings = useMemo(() => {
-    return cancelledSubs.reduce((sum, s) => sum + Number(s.amount || 0), 0)
+    return round2(
+      cancelledSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
+    )
   }, [cancelledSubs])
 
-  const realizedYearlySavings = realizedMonthlySavings * 12
+  const realizedYearlySavings = useMemo(() => {
+    return round2(
+      cancelledSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.yearly
+      }, 0)
+    )
+  }, [cancelledSubs])
+
+  const realizedOneTimeSavings = useMemo(() => {
+    return round2(
+      cancelledSubs
+        .filter((s) => normalizeSubscriptionPeriod(s.period) === 'Tek Seferlik')
+        .reduce((sum, s) => sum + safeParseAmount(s.amount), 0)
+    )
+  }, [cancelledSubs])
 
   // Category counts
   const categoryCounts = useMemo(() => {
@@ -491,7 +554,10 @@ export default function SubscriptionsPage() {
           </div>
           <p className="text-[11px] text-muted-foreground">
             {reviewSubs.length > 0 ? (
-              <span>Yıllık tasarruf potansiyeli: {formatCurrency(potentialYearlySavings)}</span>
+              <span>
+                Yıllık tasarruf potansiyeli: {formatCurrency(potentialYearlySavings)}
+                {potentialOneTimeSavings > 0 && ` (+ ${formatCurrency(potentialOneTimeSavings)} tek seferlik)`}
+              </span>
             ) : (
               <span>İncelenecek gider yok</span>
             )}
@@ -509,6 +575,7 @@ export default function SubscriptionsPage() {
           </div>
           <p className="text-[11px] text-muted-foreground">
             {cancelledSubs.length} adet iptal edilen üyelik
+            {realizedOneTimeSavings > 0 && ` (+ ${formatCurrency(realizedOneTimeSavings)} tek seferlik)`}
           </p>
         </div>
       </div>
@@ -644,7 +711,9 @@ export default function SubscriptionsPage() {
             const isReview = sub.decision === 'Kararsız'
             const meta = getCategoryMeta(sub.model)
             const Icon = meta.icon
-            const yearlyCost = Number(sub.amount || 0) * 12
+            const normPeriod = normalizeSubscriptionPeriod(sub.period)
+            const isOneTime = normPeriod === 'Tek Seferlik'
+            const eq = calculateSubscriptionEquivalent(sub.amount, normPeriod)
 
             return (
               <Card
@@ -669,16 +738,24 @@ export default function SubscriptionsPage() {
                             {sub.service}
                           </CardTitle>
                           <CardDescription className="text-xs truncate">
-                            {sub.payment_method || 'Kredi Kartı'} • {sub.period}
+                            {sub.payment_method || 'Kredi Kartı'} • {normPeriod}
                           </CardDescription>
                         </div>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className="text-[11px] font-medium shrink-0"
-                      >
-                        {sub.model}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge
+                          variant={isOneTime ? 'secondary' : 'outline'}
+                          className="text-[11px] font-medium shrink-0"
+                        >
+                          {normPeriod}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-[11px] font-medium shrink-0"
+                        >
+                          {sub.model}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
 
@@ -686,15 +763,34 @@ export default function SubscriptionsPage() {
                     {/* Tutar ve Yıllık Maliyet Çarpımı */}
                     <div className="flex items-baseline justify-between border-b border-border/50 pb-2.5">
                       <div>
-                        <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
-                          {formatCurrency(sub.amount)}{' '}
-                          <span className="text-xs text-muted-foreground font-normal">/ ay</span>
-                        </div>
+                        {isOneTime ? (
+                          <div>
+                            <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                              {formatCurrency(sub.amount)}{' '}
+                              <span className="text-xs text-muted-foreground font-normal">tek seferlik</span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Tek seferlik net ödeme
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                              {formatCurrency(eq.monthly)}{' '}
+                              <span className="text-xs text-muted-foreground font-normal">/ ay</span>
+                            </div>
+                            {normPeriod !== 'Aylık' && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                Gider: {formatCurrency(sub.amount)} / {normPeriod}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <span className="text-[11px] text-muted-foreground block">Yıllık Yük:</span>
                         <span className="text-xs font-semibold text-foreground tabular-nums">
-                          {formatCurrency(yearlyCost)}
+                          {isOneTime ? '— (Tek Seferlik)' : formatCurrency(eq.yearly)}
                         </span>
                       </div>
                     </div>
@@ -750,7 +846,11 @@ export default function SubscriptionsPage() {
                     ) : (
                       <div className="rounded-lg bg-muted/40 border border-border p-2 text-xs flex items-center justify-between">
                         <span className="text-muted-foreground font-medium">
-                          İptal Edildi (Yıllık <strong className="text-foreground">{formatCurrency(yearlyCost)}</strong> tasarruf)
+                          {isOneTime ? (
+                            <>İptal Edildi (<strong className="text-foreground">{formatCurrency(sub.amount)}</strong> tek seferlik tasarruf)</>
+                          ) : (
+                            <>İptal Edildi (Yıllık <strong className="text-foreground">{formatCurrency(eq.yearly)}</strong> tasarruf)</>
+                          )}
                         </span>
                         <button
                           type="button"
@@ -856,34 +956,61 @@ export default function SubscriptionsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label htmlFor="sub-amount" className="text-xs font-semibold text-muted-foreground">Aylık Tutar</label>
-              <Input
-                id="sub-amount"
-                type="number"
-                step="0.01"
-                prefix="₺"
-                required
-                placeholder="0.00"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </div>
+          {(() => {
+            const normFormPeriod = normalizeSubscriptionPeriod(form.period)
+            const parsedAmt = safeParseAmount(form.amount)
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label htmlFor="sub-amount" className="text-xs font-semibold text-muted-foreground">
+                    {normFormPeriod === 'Tek Seferlik'
+                      ? 'Tek Seferlik Tutar'
+                      : normFormPeriod === '3 Aylık' || normFormPeriod === '6 Aylık' || normFormPeriod === 'Yıllık'
+                      ? `${normFormPeriod} Toplam Tutar`
+                      : normFormPeriod === 'Haftalık'
+                      ? 'Haftalık Tutar'
+                      : 'Aylık Tutar'}
+                  </label>
+                  <Input
+                    id="sub-amount"
+                    type="number"
+                    step="0.01"
+                    prefix="₺"
+                    required
+                    placeholder="0.00"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  />
+                  {parsedAmt > 0 && normFormPeriod !== 'Aylık' && normFormPeriod !== 'Tek Seferlik' && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Aylık eşdeğer: ~{formatCurrency(calculateSubscriptionEquivalent(parsedAmt, normFormPeriod).monthly)} / ay
+                    </p>
+                  )}
+                  {parsedAmt > 0 && normFormPeriod === 'Tek Seferlik' && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Tek seferlik gider; aylık tekrarlayan yüke katılmaz.
+                    </p>
+                  )}
+                </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="sub-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
-              <Select
-                id="sub-period"
-                value={form.period}
-                onChange={(e) => setForm({ ...form, period: e.target.value })}
-              >
-                <option value="Aylık">Aylık</option>
-                <option value="Yıllık">Yıllık</option>
-                <option value="Haftalık">Haftalık</option>
-              </Select>
-            </div>
-          </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="sub-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
+                  <Select
+                    id="sub-period"
+                    value={normFormPeriod}
+                    onChange={(e) => setForm({ ...form, period: e.target.value })}
+                  >
+                    <option value="Aylık">Aylık</option>
+                    <option value="Haftalık">Haftalık</option>
+                    <option value="3 Aylık">3 Aylık</option>
+                    <option value="6 Aylık">6 Aylık</option>
+                    <option value="Yıllık">Yıllık</option>
+                    <option value="Tek Seferlik">Tek Seferlik</option>
+                  </Select>
+                </div>
+              </div>
+            )
+          })()}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

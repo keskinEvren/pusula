@@ -25,7 +25,12 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, formatLocalDateInput, slugify } from '@/lib/utils'
-import { calculateProjectTotalCost, evaluateProjectBudget } from '@/lib/finance-engine'
+import {
+  calculateProjectTotalCost,
+  evaluateProjectBudget,
+  calculateSubscriptionEquivalent,
+  normalizeSubscriptionPeriod,
+} from '@/lib/finance-engine'
 import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -351,9 +356,15 @@ export default function ProjectDetailPage({
   const totalRevenue = Number(projectSummary.direct_revenue)
   const totalExpense = Number(projectSummary.direct_expense)
   
-  const monthlySubCost = subscriptions
-    .filter((s) => s.status === 'Aktif')
-    .reduce((sum, s) => sum + s.amount, 0)
+  const monthlySubCost = Number(
+    subscriptions
+      .filter((s) => s.status === 'Aktif' && (s as any).decision !== 'İptal Et')
+      .reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
+      .toFixed(2)
+  )
     
   const netStatus = totalRevenue - totalExpense
   
@@ -536,7 +547,7 @@ export default function ProjectDetailPage({
                 {formatCurrency(monthlySubCost)} / ay
               </div>
               <div className="text-[11px] text-muted-foreground mt-0.5">
-                {subscriptions.filter(s => s.status === 'Aktif').length} aktif abonelik
+                {subscriptions.filter(s => s.status === 'Aktif' && (s as any).decision !== 'İptal Et').length} aktif abonelik
               </div>
             </div>
 
@@ -826,17 +837,31 @@ export default function ProjectDetailPage({
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0 font-mono">
-                    <div className="text-xs font-bold text-destructive">
-                      {formatCurrency(sub.amount)}
-                      <span className="text-[10px] text-muted-foreground font-normal"> / {sub.period}</span>
-                    </div>
-                    {sub.decision && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
-                        Karar: {sub.decision}
+                  {(() => {
+                    const normPeriod = normalizeSubscriptionPeriod(sub.period)
+                    const isOneTime = normPeriod === 'Tek Seferlik'
+                    const eq = calculateSubscriptionEquivalent(sub.amount, normPeriod)
+                    return (
+                      <div className="text-right shrink-0 font-mono">
+                        <div className="text-xs font-bold text-destructive">
+                          {formatCurrency(sub.amount)}
+                          <span className="text-[10px] text-muted-foreground font-normal">
+                            {isOneTime ? ' (Tek Seferlik)' : ` / ${normPeriod}`}
+                          </span>
+                        </div>
+                        {!isOneTime && normPeriod !== 'Aylık' && (
+                          <div className="text-[10px] text-muted-foreground font-sans">
+                            ~{formatCurrency(eq.monthly)} / ay
+                          </div>
+                        )}
+                        {sub.decision && (
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            Karar: {sub.decision}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>

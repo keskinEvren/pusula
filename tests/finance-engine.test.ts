@@ -12,7 +12,10 @@ import {
   payDebt,
   calculateDcaAverageCost,
   calculateMonthlyCashFlow,
-  calculatePortfolioMetrics
+  calculatePortfolioMetrics,
+  calculateSubscriptionEquivalent,
+  normalizeSubscriptionPeriod,
+  safeParseAmount
 } from '@/lib/finance-engine'
 
 vi.mock('@/lib/supabase/client')
@@ -164,12 +167,20 @@ describe('finance-engine', () => {
       expect(result).toBe(120)
     })
 
-    it('iptal edilmiş abonelikleri hariç tutar', () => {
+    it('iptal edilmiş veya kararı İptal Et olan abonelikleri hariç tutar', () => {
       const subscriptions = [
-        { project_id: 'p1', amount: 20, status: 'İptal' }
+        { project_id: 'p1', amount: 20, status: 'İptal' },
+        { project_id: 'p1', amount: 30, status: 'Aktif', decision: 'İptal Et' }
       ]
       const result = calculateProjectTotalCost('p1', [], subscriptions)
       expect(result).toBe(0)
+    })
+
+    it('boş/tanımsız diziler, null ve geçersiz metin girdileri için güvenli çalışır', () => {
+      expect(calculateProjectTotalCost('p1', undefined as any, undefined as any)).toBe(0)
+      expect(calculateProjectTotalCost('p1', [null as any], [null as any])).toBe(0)
+      expect(calculateProjectTotalCost('p1', [{ project_id: 'p1', amount: 'abc' as any }], [{ project_id: 'p1', amount: 'def' as any }])).toBe(0)
+      expect(calculateProjectTotalCost('p1', [{ project_id: 'p1', amount: '150,50' as any }], [{ project_id: 'p1', amount: '50' as any }])).toBe(200.5)
     })
   })
 
@@ -194,6 +205,162 @@ describe('finance-engine', () => {
     it('limit yoksa veya sıfırsa NO_BUDGET döner', () => {
       const result = evaluateProjectBudget(50, 0)
       expect(result.status).toBe('NO_BUDGET')
+    })
+  })
+
+  describe('normalizeSubscriptionPeriod', () => {
+    it('kanonik periyotları değiştirmeden aynen döner', () => {
+      expect(normalizeSubscriptionPeriod('Aylık')).toBe('Aylık')
+      expect(normalizeSubscriptionPeriod('Haftalık')).toBe('Haftalık')
+      expect(normalizeSubscriptionPeriod('3 Aylık')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('6 Aylık')).toBe('6 Aylık')
+      expect(normalizeSubscriptionPeriod('Yıllık')).toBe('Yıllık')
+      expect(normalizeSubscriptionPeriod('Tek Seferlik')).toBe('Tek Seferlik')
+    })
+
+    it('küçük harf, boşluk ve Türkçe karakter varyasyonlarını normalize eder', () => {
+      expect(normalizeSubscriptionPeriod('3 aylık')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('3 Aylik')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('3-aylik')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('quarterly')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('uc aylik')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('6 aylık')).toBe('6 Aylık')
+      expect(normalizeSubscriptionPeriod('6 Aylik')).toBe('6 Aylık')
+      expect(normalizeSubscriptionPeriod('semi-annual')).toBe('6 Aylık')
+      expect(normalizeSubscriptionPeriod('tek seferlik')).toBe('Tek Seferlik')
+      expect(normalizeSubscriptionPeriod('tek-seferlik')).toBe('Tek Seferlik')
+      expect(normalizeSubscriptionPeriod('one-time')).toBe('Tek Seferlik')
+      expect(normalizeSubscriptionPeriod('yıllık')).toBe('Yıllık')
+      expect(normalizeSubscriptionPeriod('yillik')).toBe('Yıllık')
+      expect(normalizeSubscriptionPeriod('yearly')).toBe('Yıllık')
+      expect(normalizeSubscriptionPeriod('haftalık')).toBe('Haftalık')
+      expect(normalizeSubscriptionPeriod('weekly')).toBe('Haftalık')
+    })
+
+    it('büyük harf ve Türkçe karakter varyasyonlarını (TEK SEFERLİK, 3 AYLIK vb.) hatasız normalize eder', () => {
+      expect(normalizeSubscriptionPeriod('TEK SEFERLİK')).toBe('Tek Seferlik')
+      expect(normalizeSubscriptionPeriod('3 AYLIK')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('ÜÇ AYLIK')).toBe('3 Aylık')
+      expect(normalizeSubscriptionPeriod('6 AYLIK')).toBe('6 Aylık')
+      expect(normalizeSubscriptionPeriod('ALTI AYLIK')).toBe('6 Aylık')
+      expect(normalizeSubscriptionPeriod('YILLIK')).toBe('Yıllık')
+      expect(normalizeSubscriptionPeriod('HAFTALIK')).toBe('Haftalık')
+      expect(normalizeSubscriptionPeriod('AYLIK')).toBe('Aylık')
+    })
+
+    it('boş, tanımsız veya bilinmeyen değerler için varsayılan olarak Aylık döner', () => {
+      expect(normalizeSubscriptionPeriod('')).toBe('Aylık')
+      expect(normalizeSubscriptionPeriod(null)).toBe('Aylık')
+      expect(normalizeSubscriptionPeriod(undefined)).toBe('Aylık')
+      expect(normalizeSubscriptionPeriod('Bilinmeyen')).toBe('Aylık')
+    })
+  })
+
+  describe('safeParseAmount', () => {
+    it('sayısal ve metinsel tutarları doğru ayrıştırır', () => {
+      expect(safeParseAmount(100)).toBe(100)
+      expect(safeParseAmount('150')).toBe(150)
+      expect(safeParseAmount(' 250.50 ')).toBe(250.5)
+    })
+
+    it('Türkçe virgüllü ve binlik noktalı tutarları doğru ayrıştırır', () => {
+      expect(safeParseAmount('150,50')).toBe(150.5)
+      expect(safeParseAmount('1.250,50')).toBe(1250.5)
+      expect(safeParseAmount('1,250.50')).toBe(1250.5)
+    })
+
+    it('para birimi sembolü içeren veya binlik noktalı/virgüllü tutarları doğru ayrıştırır', () => {
+      expect(safeParseAmount('₺ 1.250,50')).toBe(1250.5)
+      expect(safeParseAmount('150 ₺')).toBe(150)
+      expect(safeParseAmount('1.250,50 TL')).toBe(1250.5)
+      expect(safeParseAmount('$500.25')).toBe(500.25)
+      expect(safeParseAmount('1.000.000')).toBe(1000000)
+      expect(safeParseAmount('1,000,000')).toBe(1000000)
+      expect(safeParseAmount('1.000.000,50')).toBe(1000000.5)
+      expect(safeParseAmount('1,000,000.50')).toBe(1000000.5)
+    })
+
+    it('geçersiz, negatif, boş ve uç değerler için güvenli şekilde 0 döner', () => {
+      expect(safeParseAmount(0)).toBe(0)
+      expect(safeParseAmount(-50)).toBe(0)
+      expect(safeParseAmount('-100,50')).toBe(0)
+      expect(safeParseAmount('')).toBe(0)
+      expect(safeParseAmount(null)).toBe(0)
+      expect(safeParseAmount(undefined)).toBe(0)
+      expect(safeParseAmount(NaN)).toBe(0)
+      expect(safeParseAmount(Infinity)).toBe(0)
+      expect(safeParseAmount('abc')).toBe(0)
+    })
+  })
+
+  describe('calculateSubscriptionEquivalent', () => {
+    it('Aylık periyot için girilen tutarı aylık ve yıllık eşdeğer olarak hesaplar', () => {
+      const res = calculateSubscriptionEquivalent(150, 'Aylık')
+      expect(res.monthly).toBe(150)
+      expect(res.yearly).toBe(1800)
+    })
+
+    it('3 Aylık periyot için girilen tutarı 3\'e bölerek aylık ve yıllık eşdeğer hesaplar', () => {
+      const res = calculateSubscriptionEquivalent(300, '3 Aylık')
+      expect(res.monthly).toBe(100)
+      expect(res.yearly).toBe(1200)
+    })
+
+    it('6 Aylık periyot için girilen tutarı 6\'ya bölerek aylık ve yıllık eşdeğer hesaplar', () => {
+      const res = calculateSubscriptionEquivalent(600, '6 Aylık')
+      expect(res.monthly).toBe(100)
+      expect(res.yearly).toBe(1200)
+    })
+
+    it('Yıllık periyot için girilen tutarı 12\'ye bölerek aylık ve girilen tutarı yıllık hesaplar', () => {
+      const res = calculateSubscriptionEquivalent(1200, 'Yıllık')
+      expect(res.monthly).toBe(100)
+      expect(res.yearly).toBe(1200)
+    })
+
+    it('Haftalık periyot için (tutar * 52) / 12 formülüyle normalize eder', () => {
+      const res = calculateSubscriptionEquivalent(120, 'Haftalık')
+      expect(res.monthly).toBe(520)
+      expect(res.yearly).toBe(6240)
+    })
+
+    it('Tek Seferlik periyot için aylık ve yıllık düzenli yüke 0 katkı verir', () => {
+      const res = calculateSubscriptionEquivalent(500, 'Tek Seferlik')
+      expect(res.monthly).toBe(0)
+      expect(res.yearly).toBe(0)
+    })
+
+    it('kuruş hassasiyeti ve yuvarlamaları doğru yapar', () => {
+      const res = calculateSubscriptionEquivalent(100, '3 Aylık')
+      expect(res.monthly).toBe(33.33)
+      expect(res.yearly).toBe(399.96)
+    })
+
+    it('boş, tanımsız, negatif veya geçersiz tutarlar için güvenli şekilde sıfır döner', () => {
+      expect(calculateSubscriptionEquivalent(0, 'Aylık')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(-50, '3 Aylık')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(null, '3 Aylık')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(undefined, 'Tek Seferlik')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(NaN, 'Aylık')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(Infinity, 'Aylık')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(100, null)).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(100, '')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(100, 'Tekrarlayan')).toEqual({ monthly: 100, yearly: 1200 })
+    })
+
+    it('küçük/büyük harf ve Türkçe karakter varyasyonlarını (3 aylık, tek seferlik, yillik vb.) doğru işler', () => {
+      expect(calculateSubscriptionEquivalent(300, '3 aylık')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(300, '3 Aylik')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(600, '6 aylık')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(600, '6 Aylik')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(500, 'tek seferlik')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(500, 'Tek seferlik')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(500, 'tek-seferlik')).toEqual({ monthly: 0, yearly: 0 })
+      expect(calculateSubscriptionEquivalent(1200, 'yıllık')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(1200, 'Yillik')).toEqual({ monthly: 100, yearly: 1200 })
+      expect(calculateSubscriptionEquivalent(120, 'haftalık')).toEqual({ monthly: 520, yearly: 6240 })
+      expect(calculateSubscriptionEquivalent(120, 'Haftalik')).toEqual({ monthly: 520, yearly: 6240 })
+      expect(calculateSubscriptionEquivalent(150, '  3 Aylık  ')).toEqual({ monthly: 50, yearly: 600 })
     })
   })
 
@@ -226,6 +393,77 @@ describe('finance-engine', () => {
       expect(result[0]).toBe(100)
       expect(result[1]).toBe(100)
       expect(result[2]).toBe(0)
+    })
+
+    it('yeni periyotları (3 Aylık, 6 Aylık, Tek Seferlik) doğru normalize ederek projeksiyona yansıtır', () => {
+      const subscriptions = [
+        { status: 'Aktif', period: '3 Aylık', amount: 300 }, // monthly: 100
+        { status: 'Aktif', period: '6 Aylık', amount: 600 }, // monthly: 100
+        { status: 'Aktif', period: 'Tek Seferlik', amount: 500 }, // monthly: 0
+        { status: 'Aktif', period: 'Aylık', amount: 50 }, // monthly: 50
+      ]
+      const result = projectSixMonthCashLoad(subscriptions, [], 6)
+      expect(result.length).toBe(6)
+      result.forEach((monthTotal) => {
+        expect(monthTotal).toBe(250)
+      })
+    })
+
+    it('taksitler ve karma periyotlu abonelikleri birlikte doğru hesaplar', () => {
+      const subscriptions = [
+        { status: 'Aktif', period: '3 Aylık', amount: 150 }, // monthly: 50
+        { status: 'Aktif', period: 'Tek Seferlik', amount: 1000 }, // monthly: 0
+      ]
+      const installments = [
+        { amountPerMonth: 100, remainingMonths: 1 }
+      ]
+      const result = projectSixMonthCashLoad(subscriptions, installments, 6)
+      expect(result[0]).toBe(150) // 50 + 100
+      expect(result[1]).toBe(50) // 50 + 0
+      expect(result[5]).toBe(50)
+    })
+
+    it('tüm periyotların (Haftalık, Aylık, 3 Aylık, 6 Aylık, Yıllık, Tek Seferlik) karma kombinasyonunu hatasız projeksiyonlar', () => {
+      const subscriptions = [
+        { status: 'Aktif', period: 'Haftalık', amount: 120 }, // monthly: 520
+        { status: 'Aktif', period: 'Aylık', amount: 100 }, // monthly: 100
+        { status: 'Aktif', period: '3 Aylık', amount: 300 }, // monthly: 100
+        { status: 'Aktif', period: '6 Aylık', amount: 600 }, // monthly: 100
+        { status: 'Aktif', period: 'Yıllık', amount: 1200 }, // monthly: 100
+        { status: 'Aktif', period: 'Tek Seferlik', amount: 5000 }, // monthly: 0
+      ]
+      const result = projectSixMonthCashLoad(subscriptions, [], 6)
+      expect(result.length).toBe(6)
+      result.forEach((monthTotal) => {
+        expect(monthTotal).toBe(920) // 520 + 100 + 100 + 100 + 100 + 0
+      })
+    })
+
+    it('boş girdi, tanımsız liste veya geçersiz bitiş tarihi için çökmeden güvenli çalışır', () => {
+      expect(projectSixMonthCashLoad([], [], 3)).toEqual([0, 0, 0])
+      expect(projectSixMonthCashLoad(undefined as any, undefined as any, 2)).toEqual([0, 0])
+      const subsWithInvalidDate = [
+        { status: 'Aktif', period: 'Aylık', amount: 100, end_date: 'gecersiz-tarih' }
+      ]
+      expect(projectSixMonthCashLoad(subsWithInvalidDate, [], 2)).toEqual([100, 100])
+    })
+
+    it('kararı İptal Et olan abonelikleri projeksiyona dahil etmez', () => {
+      const subscriptions = [
+        { status: 'Aktif', period: 'Aylık', amount: 100 },
+        { status: 'Aktif', decision: 'İptal Et', period: 'Aylık', amount: 200 },
+      ]
+      const result = projectSixMonthCashLoad(subscriptions, [], 2)
+      expect(result).toEqual([100, 100])
+    })
+
+    it('geçersiz veya metin formatlı taksit tutarlarında NaN üretmeden güvenle çalışır', () => {
+      const installments = [
+        { amountPerMonth: 'abc' as any, remainingMonths: 2 },
+        { amountPerMonth: '150,50' as any, remainingMonths: 1 }
+      ]
+      const result = projectSixMonthCashLoad([], installments, 2)
+      expect(result).toEqual([150.5, 0])
     })
   })
 
