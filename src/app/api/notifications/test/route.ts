@@ -68,7 +68,8 @@ export async function POST(request: Request) {
           accounts: accounts || [],
           debts: debts || [],
           investments: investments || [],
-          forceWeeklyFinance: true, // Testte kartları ve özeti zengin görmek için
+          forceWeeklyFinance: pref?.weekly_finance_enabled ?? true,
+          weeklyFinanceEnabled: pref?.weekly_finance_enabled ?? true,
         },
         todayStr
       )

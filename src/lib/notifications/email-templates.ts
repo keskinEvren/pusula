@@ -15,20 +15,22 @@ export function escapeHtml(str: string | null | undefined): string {
     .replace(/'/g, '&#39;')
 }
 
-function formatTRY(amount: number): string {
+function formatTRY(amount: number | null | undefined): string {
+  const valid = typeof amount === 'number' && !isNaN(amount) ? amount : 0
   return new Intl.NumberFormat('tr-TR', {
     style: 'currency',
     currency: 'TRY',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount)
+  }).format(valid)
 }
 
 /**
  * 🌅 Sabah Odak ve Ajanda Brifingi HTML Şablonu
  */
 export function renderMorningEmailHtml(digest: MorningDigest, appUrl: string): string {
-  const safeAppUrl = escapeHtml(appUrl.replace(/\/$/, ''))
+  const baseUrl = (appUrl && appUrl.trim()) ? appUrl.trim() : 'http://localhost:3000'
+  const safeAppUrl = escapeHtml(baseUrl.replace(/\/$/, ''))
 
   // Odak Görevleri Listesi
   const agendaListHtml =
@@ -319,7 +321,8 @@ export function renderMorningEmailHtml(digest: MorningDigest, appUrl: string): s
  * 🌙 Akşam Rutin ve Seri Koruması Kapanış HTML Şablonu
  */
 export function renderEveningEmailHtml(digest: EveningDigest, appUrl: string): string {
-  const safeAppUrl = escapeHtml(appUrl.replace(/\/$/, ''))
+  const baseUrl = (appUrl && appUrl.trim()) ? appUrl.trim() : 'http://localhost:3000'
+  const safeAppUrl = escapeHtml(baseUrl.replace(/\/$/, ''))
 
   // Tehlikedeki Seriler (Streak at risk)
   let atRiskHtml = ''

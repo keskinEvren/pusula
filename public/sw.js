@@ -54,7 +54,7 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of windowClients) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
           if ('navigate' in client) {
-            client.navigate(absoluteUrl)
+            return client.navigate(absoluteUrl).then((c) => (c && 'focus' in c ? c.focus() : client.focus()))
           }
           return client.focus()
         }

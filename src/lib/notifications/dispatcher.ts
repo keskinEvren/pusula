@@ -36,8 +36,8 @@ export interface PushSendResult {
  */
 export async function sendEmail({ to, subject, html }: EmailSendParams): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const host = process.env.SMTP_HOST
-  const port = process.env.SMTP_PORT
-  const secure = process.env.SMTP_SECURE === 'true' || port === '465'
+  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 465
+  const secure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : port === 465
   const user = process.env.SMTP_USER
   const pass = process.env.SMTP_PASS
   const from = process.env.SMTP_FROM || `"Pusula Kokpit" <${user}>`
@@ -52,7 +52,7 @@ export async function sendEmail({ to, subject, html }: EmailSendParams): Promise
   try {
     const transporter = nodemailer.createTransport({
       host,
-      port: Number(port) || 465,
+      port,
       secure,
       auth: {
         user,
@@ -89,9 +89,11 @@ export async function sendPushToUser(
   userId: string,
   payload: PushPayload
 ): Promise<PushSendResult> {
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  const privateKey = process.env.VAPID_PRIVATE_KEY
-  const subject = process.env.VAPID_SUBJECT || 'mailto:pusula@example.com'
+  const rawPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const rawPrivateKey = process.env.VAPID_PRIVATE_KEY
+  const publicKey = rawPublicKey ? rawPublicKey.trim().replace(/^"(.*)"$/, '$1') : ''
+  const privateKey = rawPrivateKey ? rawPrivateKey.trim().replace(/^"(.*)"$/, '$1') : ''
+  const subject = (process.env.VAPID_SUBJECT || 'mailto:pusula@example.com').trim().replace(/^"(.*)"$/, '$1')
 
   if (!publicKey || !privateKey) {
     return {

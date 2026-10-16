@@ -70,6 +70,7 @@ export async function GET(request: Request) {
             accounts: accounts || [],
             debts: debts || [],
             investments: investments || [],
+            weeklyFinanceEnabled: pref.weekly_finance_enabled,
           },
           todayStr
         )

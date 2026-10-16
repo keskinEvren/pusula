@@ -16,6 +16,7 @@ export interface MorningDigestInput {
   accounts?: Account[]
   debts?: Debt[]
   investments?: Investment[]
+  weeklyFinanceEnabled?: boolean
   forceWeeklyFinance?: boolean
 }
 
@@ -143,9 +144,12 @@ export function buildMorningDigest(input: MorningDigestInput, todayStr: string):
   const isMonday = dateObj.getUTCDay() === 1
   const dayOfMonthStr = String(parts[2]).padStart(2, '0')
 
-  // 1. Ajanda Filtreleme
+  // 1. Ajanda Filtreleme (YYYY-MM-DD normalizasyonu ile)
   const todayAgendaItems = (input.agendaItems || [])
-    .filter((item) => item.plan_date === todayStr && (item.status === 'planned' || item.status === 'in_progress'))
+    .filter((item) => {
+      const pDate = item.plan_date ? item.plan_date.slice(0, 10) : null
+      return pDate === todayStr && (item.status === 'planned' || item.status === 'in_progress')
+    })
     .sort((a, b) => (a.plan_time || '99:99').localeCompare(b.plan_time || '99:99'))
     .map((item) => ({
       id: item.id,
@@ -155,21 +159,25 @@ export function buildMorningDigest(input: MorningDigestInput, todayStr: string):
       duration_seconds: item.duration_seconds || 0,
     }))
 
-  const overdueList = (input.agendaItems || []).filter(
-    (item) => item.plan_date && item.plan_date < todayStr && (item.status === 'planned' || item.status === 'in_progress')
-  )
+  const overdueList = (input.agendaItems || []).filter((item) => {
+    const pDate = item.plan_date ? item.plan_date.slice(0, 10) : null
+    return Boolean(pDate && pDate < todayStr && (item.status === 'planned' || item.status === 'in_progress'))
+  })
 
   const overdueAgendaCount = overdueList.length
   const overdueAgendaItems = overdueList.slice(0, 5).map((item) => ({
     id: item.id,
     title: item.title,
-    plan_date: item.plan_date!,
+    plan_date: item.plan_date!.slice(0, 10),
   }))
 
   // 2. Sabah Rutinleri (time_block === 'morning' ve bugün tamamlanmamış)
   const todayCompletedRoutineIds = new Set(
     (input.routineLogs || [])
-      .filter((l) => l.log_date === todayStr && ['completed', 'micro_dose', 'kintsugi_repaired', 'frozen'].includes(l.status))
+      .filter((l) => {
+        const lDate = l.log_date ? l.log_date.slice(0, 10) : ''
+        return lDate === todayStr && ['completed', 'micro_dose', 'kintsugi_repaired', 'frozen'].includes(l.status)
+      })
       .map((l) => l.routine_id)
   )
 
@@ -188,13 +196,19 @@ export function buildMorningDigest(input: MorningDigestInput, todayStr: string):
     })
 
   // 3. Modüler Finansal Olaylar
-  // A. Kredi Kartı Ekstre Kesim Günü
+  // A. Kredi Kartı Ekstre Kesim Günü (Tam tarih, YYYY-MM-DD günü veya gün numarası eşleşmesi)
   const statementCards = (input.creditCards || [])
     .filter((c) => {
       if (!c.statement_date) return false
-      // Exact date match (e.g. 2026-10-16) or day-of-month match (e.g. statement_date day === 16)
-      const cDay = c.statement_date.slice(8, 10)
-      return c.statement_date === todayStr || cDay === dayOfMonthStr
+      const raw = String(c.statement_date).trim()
+      const normalizedDate = raw.slice(0, 10)
+      if (normalizedDate === todayStr) return true
+      if (raw.length >= 10 && raw.includes('-')) {
+        const cDay = raw.slice(8, 10)
+        return cDay === dayOfMonthStr
+      }
+      const num = parseInt(raw, 10)
+      return !isNaN(num) && num === parts[2]
     })
     .map((c) => ({
       id: c.id,
@@ -205,50 +219,57 @@ export function buildMorningDigest(input: MorningDigestInput, todayStr: string):
       current_debt: Number(c.current_debt || 0),
     }))
 
-  // B. Kredi Kartı Son Ödeme Uyarısı (Bugün veya Yarın & Borç > 0)
+  // B. Kredi Kartı Son Ödeme Uyarısı (Bugün veya Yarın & Borç > 0, hem statement_debt hem current_debt kontrolü)
   const tomorrowStr = addDaysYmd(todayStr, 1)
   const dueCards = (input.creditCards || [])
     .filter((c) => {
       if (!c.due_date) return false
-      const debt = Number(c.statement_debt || 0)
+      const debt = Number(c.statement_debt || c.current_debt || 0)
       if (debt <= 0) return false
-      return c.due_date === todayStr || c.due_date === tomorrowStr
+      const cDueDate = c.due_date.slice(0, 10)
+      return cDueDate === todayStr || cDueDate === tomorrowStr
     })
-    .map((c) => ({
-      id: c.id,
-      card_name: c.card_name,
-      bank: c.bank,
-      last_four: c.last_four,
-      due_date: c.due_date!,
-      statement_debt: Number(c.statement_debt || 0),
-      isToday: c.due_date === todayStr,
-    }))
+    .map((c) => {
+      const cDueDate = c.due_date!.slice(0, 10)
+      return {
+        id: c.id,
+        card_name: c.card_name,
+        bank: c.bank,
+        last_four: c.last_four,
+        due_date: cDueDate,
+        statement_debt: Number(c.statement_debt || c.current_debt || 0),
+        isToday: cDueDate === todayStr,
+      }
+    })
 
-  // C. Abonelik Karar / Yaklaşan Yenileme
+  // C. Abonelik Karar / Yaklaşan Yenileme (ISO tarih normalizasyonu ile)
   const in3DaysStr = addDaysYmd(todayStr, 3)
   const subscriptionAlerts = (input.subscriptions || [])
     .filter((s) => {
       if (s.status !== 'Aktif') return false
       const isDecisionFlag = s.decision === 'İptal Et' || s.decision === 'Kararsız'
-      const isExpiring = s.end_date && s.end_date >= todayStr && s.end_date <= in3DaysStr
+      const normalizedEnd = s.end_date ? s.end_date.slice(0, 10) : null
+      const isExpiring = Boolean(normalizedEnd && normalizedEnd >= todayStr && normalizedEnd <= in3DaysStr)
       return isDecisionFlag || isExpiring
     })
     .map((s) => {
       const isDecisionFlag = s.decision === 'İptal Et' || s.decision === 'Kararsız'
+      const normalizedEnd = s.end_date ? s.end_date.slice(0, 10) : null
       return {
         id: s.id,
         service: s.service,
         amount: Number(s.amount || 0),
         currency: s.currency || 'TRY',
-        end_date: s.end_date,
+        end_date: normalizedEnd,
         decision: s.decision || 'Devam',
         reason: isDecisionFlag ? ('decision_needed' as const) : ('renewal_approaching' as const),
       }
     })
 
-  // D. Haftalık Finans Özeti (Pazartesi veya zorunlu test)
+  // D. Haftalık Finans Özeti (Pazartesi ve kullanıcı tercihi aktifse veya zorunlu test)
+  const weeklyFinanceEnabled = input.weeklyFinanceEnabled ?? true
   let weeklyFinanceSummary: MorningDigest['weeklyFinanceSummary'] = null
-  if ((isMonday || input.forceWeeklyFinance) && (input.accounts || input.debts || input.creditCards)) {
+  if (((isMonday && weeklyFinanceEnabled) || input.forceWeeklyFinance) && (input.accounts || input.debts || input.creditCards)) {
     const nw = calculateNetWorth(
       input.accounts || [],
       input.debts || [],
@@ -316,7 +337,10 @@ export function buildEveningDigest(input: EveningDigestInput, todayStr: string):
 
   const todayCompletedRoutineIds = new Set(
     (input.routineLogs || [])
-      .filter((l) => l.log_date === todayStr && ['completed', 'micro_dose', 'kintsugi_repaired', 'frozen'].includes(l.status))
+      .filter((l) => {
+        const lDate = l.log_date ? l.log_date.slice(0, 10) : ''
+        return lDate === todayStr && ['completed', 'micro_dose', 'kintsugi_repaired', 'frozen'].includes(l.status)
+      })
       .map((l) => l.routine_id)
   )
 
@@ -346,8 +370,11 @@ export function buildEveningDigest(input: EveningDigestInput, todayStr: string):
     }
   }
 
-  // Ajanda Tamamlanma Durumu
-  const todayAgenda = (input.agendaItems || []).filter((item) => item.plan_date === todayStr)
+  // Ajanda Tamamlanma Durumu (YYYY-MM-DD normalizasyonu ile)
+  const todayAgenda = (input.agendaItems || []).filter((item) => {
+    const pDate = item.plan_date ? item.plan_date.slice(0, 10) : null
+    return pDate === todayStr
+  })
   const completedAgendaCount = todayAgenda.filter((item) => item.status === 'completed').length
   const pendingAgendaCount = todayAgenda.filter((item) => item.status === 'planned' || item.status === 'in_progress').length
 

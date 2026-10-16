@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
   try {
@@ -20,7 +21,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Eksik push abonelik parametreleri' }, { status: 400 })
     }
 
-    const { error: upsertError } = await supabase.from('push_subscriptions').upsert(
+    const admin = createAdminClient()
+
+    // 1. Aboneliği upsert et (admin istemcisi sayesinde aynı cihazda farklı kullanıcı oturum açmış olsa bile RLS çakışması yaşanmaz)
+    const { error: upsertError } = await admin.from('push_subscriptions').upsert(
       {
         user_id: user.id,
         endpoint,
@@ -38,6 +42,20 @@ export async function POST(request: Request) {
       console.error('Error upserting push subscription:', upsertError)
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
+
+    // 2. Kullanıcının push_enabled tercihini de aktif hale getir
+    await admin
+      .from('notification_preferences')
+      .upsert(
+        {
+          user_id: user.id,
+          push_enabled: true,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id',
+        }
+      )
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
@@ -65,7 +83,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Endpoint parametresi zorunludur' }, { status: 400 })
     }
 
-    const { error: deleteError } = await supabase
+    const admin = createAdminClient()
+    const { error: deleteError } = await admin
       .from('push_subscriptions')
       .delete()
       .eq('user_id', user.id)
