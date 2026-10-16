@@ -208,7 +208,7 @@ describe('Notifications Engine', () => {
       expect(digest.subscriptionAlerts[1].reason).toBe('renewal_approaching')
     })
 
-    it('includes weekly finance summary on Mondays or when forced', () => {
+    it('includes weekly finance summary on Mondays or when forced, but honors weeklyFinanceEnabled false', () => {
       const accounts: Partial<Account>[] = [{ id: 'a1', balance: 50000 }]
       const debts: Partial<Debt>[] = [{ id: 'd1', type: 'Alacak', remaining: 10000, status: 'Açık' }]
       const creditCards: Partial<CreditCard>[] = [{ id: 'c1', current_debt: 15000 }]
@@ -228,7 +228,7 @@ describe('Notifications Engine', () => {
       )
       expect(fridayDigest.weeklyFinanceSummary).toBeNull()
 
-      // Monday (2026-10-19) -> computed
+      // Monday (2026-10-19) with weeklyFinanceEnabled=true (default) -> computed
       const mondayDigest = buildMorningDigest(
         {
           agendaItems: [],
@@ -246,6 +246,92 @@ describe('Notifications Engine', () => {
         totalReceivables: 10000,
         netWorth: 45000, // 50000 + 10000 - 15000
       })
+
+      // Monday with weeklyFinanceEnabled=false -> suppressed (null)
+      const mondayDisabledDigest = buildMorningDigest(
+        {
+          agendaItems: [],
+          routines: [],
+          routineLogs: [],
+          accounts: accounts as Account[],
+          debts: debts as Debt[],
+          creditCards: creditCards as CreditCard[],
+          weeklyFinanceEnabled: false,
+        },
+        '2026-10-19' // Monday
+      )
+      expect(mondayDisabledDigest.weeklyFinanceSummary).toBeNull()
+    })
+
+    it('triggers due card alert using current_debt when statement_debt is 0', () => {
+      const cards: Partial<CreditCard>[] = [
+        {
+          id: 'c-curr',
+          card_name: 'QNB Miles',
+          bank: 'QNB',
+          due_date: '2026-10-16T00:00:00.000Z', // ISO string
+          statement_debt: 0,
+          current_debt: 9200,
+        },
+      ]
+
+      const digest = buildMorningDigest(
+        {
+          agendaItems: [],
+          routines: [],
+          routineLogs: [],
+          creditCards: cards as CreditCard[],
+        },
+        today
+      )
+
+      expect(digest.dueCards.length).toBe(1)
+      expect(digest.dueCards[0].card_name).toBe('QNB Miles')
+      expect(digest.dueCards[0].statement_debt).toBe(9200)
+      expect(digest.dueCards[0].isToday).toBe(true)
+    })
+
+    it('handles ISO timestamp in subscription end_date and day number in statement_date', () => {
+      const subscriptions: Partial<Subscription>[] = [
+        {
+          id: 's-iso',
+          service: 'Cloud Storage',
+          amount: 150,
+          currency: 'TRY',
+          status: 'Aktif',
+          decision: 'Devam',
+          end_date: '2026-10-18T00:00:00.000Z', // ISO string expiring in 2 days
+        },
+      ]
+
+      const cards: Partial<CreditCard>[] = [
+        {
+          id: 'c-day',
+          card_name: 'Akbank Wings',
+          bank: 'Akbank',
+          statement_date: '16', // raw day number 16 matching today's day (16)
+          statement_debt: 1200,
+          current_debt: 1200,
+        },
+      ]
+
+      const digest = buildMorningDigest(
+        {
+          agendaItems: [],
+          routines: [],
+          routineLogs: [],
+          subscriptions: subscriptions as Subscription[],
+          creditCards: cards as CreditCard[],
+        },
+        today
+      )
+
+      expect(digest.subscriptionAlerts.length).toBe(1)
+      expect(digest.subscriptionAlerts[0].service).toBe('Cloud Storage')
+      expect(digest.subscriptionAlerts[0].reason).toBe('renewal_approaching')
+
+      expect(digest.statementCards.length).toBe(1)
+      expect(digest.statementCards[0].card_name).toBe('Akbank Wings')
     })
   })
 
@@ -374,6 +460,18 @@ describe('Notifications Engine', () => {
       expect(html).toContain('1 GÜNLÜK SERİ TEHLİKEDE')
       expect(html).toContain('Kitap Okuma')
       expect(html).toContain('https://pusula.app/routines')
+    })
+
+    it('falls back safely to default absolute URL when appUrl is empty or whitespace', () => {
+      const digest = buildMorningDigest({ agendaItems: [], routines: [], routineLogs: [] }, '2026-10-16')
+      const morningHtml = renderMorningEmailHtml(digest, '   ')
+      expect(morningHtml).toContain('http://localhost:3000/agenda')
+      expect(morningHtml).not.toContain('href="/agenda"')
+
+      const eveningDigest = buildEveningDigest({ agendaItems: [], routines: [], routineLogs: [] }, '2026-10-16')
+      const eveningHtml = renderEveningEmailHtml(eveningDigest, '')
+      expect(eveningHtml).toContain('http://localhost:3000/routines')
+      expect(eveningHtml).not.toContain('href="/routines"')
     })
   })
 

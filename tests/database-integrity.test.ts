@@ -398,6 +398,52 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     await expect(db.query('select fn_restore_vault_replace_atomic($1::jsonb)',[JSON.stringify(invalid)])).rejects.toThrow()
     expect((await db.query('select name,balance from accounts where id=$1',[source])).rows).toEqual(before.rows)
   })
+
+  it('notification triggers schema: isolates push_subscriptions and preferences across users', async () => {
+    // 1. User A inserts push subscription and preferences
+    await asUser(userA)
+    const endpointA = 'https://fcm.googleapis.com/fcm/send/device-user-a'
+    await db.query(
+      `insert into push_subscriptions(user_id, endpoint, p256dh, auth, user_agent)
+       values ($1, $2, 'key-a', 'auth-a', 'Chrome')`,
+      [userA, endpointA]
+    )
+    await db.query(
+      `insert into notification_preferences(user_id, email, morning_enabled, evening_enabled, weekly_finance_enabled)
+       values ($1, 'user-a@example.com', true, true, true)`,
+      [userA]
+    )
+
+    // User A can read own subscription and preferences
+    const subsA = await db.query('select endpoint from push_subscriptions')
+    expect(subsA.rows).toEqual([{ endpoint: endpointA }])
+    const prefsA = await db.query('select email from notification_preferences')
+    expect(prefsA.rows).toEqual([{ email: 'user-a@example.com' }])
+
+    // 2. User B cannot read, update, or delete User A's push subscriptions or preferences
+    await asUser(userB)
+    const subsB = await db.query('select endpoint from push_subscriptions')
+    expect(subsB.rows).toEqual([])
+    const prefsB = await db.query('select email from notification_preferences')
+    expect(prefsB.rows).toEqual([])
+
+    // User B cannot delete User A's subscription
+    await db.query('delete from push_subscriptions where endpoint = $1', [endpointA])
+    // User B cannot update User A's preferences
+    await db.query(`update notification_preferences set email = 'hacked@example.com' where user_id = $1`, [userA])
+
+    // 3. User A's data remains untouched
+    await asUser(userA)
+    const checkSubs = await db.query('select endpoint from push_subscriptions')
+    expect(checkSubs.rows).toEqual([{ endpoint: endpointA }])
+    const checkPrefs = await db.query('select email, last_morning_sent_date from notification_preferences')
+    expect(checkPrefs.rows).toEqual([{ email: 'user-a@example.com', last_morning_sent_date: null }])
+
+    // Update idempotency field works for owner
+    await db.query(`update notification_preferences set last_morning_sent_date = '2026-10-16' where user_id = $1`, [userA])
+    const updatedPrefs = await db.query('select last_morning_sent_date from notification_preferences where user_id = $1', [userA])
+    expect(updatedPrefs.rows).toEqual([{ last_morning_sent_date: '2026-10-16' }])
+  })
 })
 
 
