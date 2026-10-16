@@ -928,6 +928,84 @@ export interface Database {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          user_agent: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          user_agent?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          endpoint?: string
+          p256dh?: string
+          auth?: string
+          user_agent?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          user_id: string
+          email: string | null
+          push_enabled: boolean
+          email_enabled: boolean
+          morning_enabled: boolean
+          morning_time: string
+          evening_enabled: boolean
+          evening_time: string
+          weekly_finance_enabled: boolean
+          last_morning_sent_date: string | null
+          last_evening_sent_date: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          email?: string | null
+          push_enabled?: boolean
+          email_enabled?: boolean
+          morning_enabled?: boolean
+          morning_time?: string
+          evening_enabled?: boolean
+          evening_time?: string
+          weekly_finance_enabled?: boolean
+          last_morning_sent_date?: string | null
+          last_evening_sent_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          email?: string | null
+          push_enabled?: boolean
+          email_enabled?: boolean
+          morning_enabled?: boolean
+          morning_time?: string
+          evening_enabled?: boolean
+          evening_time?: string
+          weekly_finance_enabled?: boolean
+          last_morning_sent_date?: string | null
+          last_evening_sent_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1071,3 +1149,10 @@ export type AgendaItemUpdate = Database['public']['Tables']['agenda_items']['Upd
 export type Credential = Database['public']['Tables']['credentials']['Row']
 export type CredentialInsert = Database['public']['Tables']['credentials']['Insert']
 export type CredentialUpdate = Database['public']['Tables']['credentials']['Update']
+export type PushSubscriptionRow = Database['public']['Tables']['push_subscriptions']['Row']
+export type PushSubscriptionInsert = Database['public']['Tables']['push_subscriptions']['Insert']
+export type PushSubscriptionUpdate = Database['public']['Tables']['push_subscriptions']['Update']
+export type NotificationPreference = Database['public']['Tables']['notification_preferences']['Row']
+export type NotificationPreferenceInsert = Database['public']['Tables']['notification_preferences']['Insert']
+export type NotificationPreferenceUpdate = Database['public']['Tables']['notification_preferences']['Update']
+
