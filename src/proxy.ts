@@ -2,6 +2,18 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Service worker, public assets and cron routes bypass cookie-based auth
+  const isPublicFile = pathname === '/manifest.json' || pathname === '/icon.svg' || pathname === '/sw.js' || pathname.startsWith('/_next/')
+  const isCronRoute = pathname.startsWith('/api/cron/')
+
+  if (isPublicFile || isCronRoute) {
+    return NextResponse.next({
+      request,
+    })
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -38,13 +50,10 @@ export async function proxy(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
-    const { pathname } = request.nextUrl
-
     // Protected routes check
     const isAuthRoute = pathname === '/login' || pathname === '/signup' || pathname === '/auth/callback'
-    const isPublicFile = pathname === '/manifest.json' || pathname === '/icon.svg' || pathname.startsWith('/_next/')
 
-    if (!user && !isAuthRoute && !isPublicFile) {
+    if (!user && !isAuthRoute) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       const redirectResponse = NextResponse.redirect(url)
@@ -65,8 +74,7 @@ export async function proxy(request: NextRequest) {
     }
   } catch (err) {
     console.error('Proxy auth error:', err)
-    const pathname = request.nextUrl.pathname
-    if (pathname !== '/login' && pathname !== '/signup' && pathname !== '/auth/callback' && pathname !== '/manifest.json') {
+    if (pathname !== '/login' && pathname !== '/signup' && pathname !== '/auth/callback' && pathname !== '/manifest.json' && pathname !== '/sw.js' && !pathname.startsWith('/api/cron/')) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.search = ''
