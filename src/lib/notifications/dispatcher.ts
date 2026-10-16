@@ -50,13 +50,16 @@ export async function sendEmail({ to, subject, html }: EmailSendParams): Promise
   }
 
   try {
+    const cleanUser = user.trim().replace(/^["']|["']$/g, '')
+    const cleanPass = pass.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '')
+
     const transporter = nodemailer.createTransport({
       host,
       port,
       secure,
       auth: {
-        user,
-        pass,
+        user: cleanUser,
+        pass: cleanPass,
       },
     })
 
