@@ -25,6 +25,8 @@ import {
   Calendar,
   Layers,
   Image as ImageIcon,
+  LayoutGrid,
+  TableProperties,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { isMissingRelationError, requireMutationData } from '@/lib/supabase/mutation'
@@ -35,6 +37,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { Sheet } from '@/components/ui/sheet'
+import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
@@ -64,6 +68,19 @@ function DreamsContent() {
   // Navigation & Filtering
   const [activeTab, setActiveTab] = useState<'active' | 'incubating' | 'achieved'>('active')
   const [selectedHorizon, setSelectedHorizon] = useState<string>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+
+  useEffect(() => {
+    const saved = localStorage.getItem('pusula_dreams_view')
+    if (saved === 'table' || saved === 'grid') {
+      setViewMode(saved)
+    }
+  }, [])
+
+  const handleViewChange = (v: ViewMode) => {
+    setViewMode(v)
+    localStorage.setItem('pusula_dreams_view', v)
+  }
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -381,6 +398,179 @@ function DreamsContent() {
     setIsZenModeOpen(true)
   }
 
+  const renderDreamsTable = (items: Dream[], tabType: 'active' | 'incubating' | 'achieved') => {
+    return (
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-muted/50 border-b border-border text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <tr>
+              <th scope="col" className="py-3 px-4 min-w-[280px]">Hedef / Vizyon</th>
+              <th scope="col" className="py-3 px-3 min-w-[130px]">Ufuk & Kategori</th>
+              <th scope="col" className="py-3 px-3 min-w-[160px]">Sıradaki Odak</th>
+              <th scope="col" className="py-3 px-3 min-w-[180px]">
+                {tabType === 'achieved' ? 'Tamamlama Notu' : 'Motivasyon'}
+              </th>
+              <th scope="col" className="py-3 px-4 text-right min-w-[130px]">İşlemler</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60">
+            {items.map((dream) => (
+              <tr key={dream.id} className="hover:bg-muted/30 transition-colors group">
+                {/* Title & Preview */}
+                <td className="py-3 px-4">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={
+                        (tabType === 'achieved' && dream.achieved_image_url) ||
+                        dream.cover_image_url ||
+                        getDefaultVisionWallpaper(dream.category)
+                      }
+                      alt={dream.title}
+                      className="h-11 w-11 rounded-lg object-cover border border-border/70 shrink-0 bg-muted"
+                    />
+                    <div className="min-w-0 space-y-0.5">
+                      <button
+                        onClick={() => handleOpenEditModal(dream)}
+                        className="font-semibold text-foreground hover:text-primary transition-colors text-left truncate block max-w-[240px] sm:max-w-xs"
+                      >
+                        {dream.title}
+                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {dream.identity_persona && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-500 font-medium">
+                            <Sparkles className="h-3 w-3 shrink-0" />
+                            <span>{dream.identity_persona}</span>
+                          </span>
+                        )}
+                        {dream.target_year && (
+                          <span className="text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border/60">
+                            {dream.target_year}
+                          </span>
+                        )}
+                      </div>
+                      {dream.description && (
+                        <p className="text-[11px] text-muted-foreground line-clamp-1 max-w-[260px]">
+                          {dream.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+
+                {/* Horizon & Category */}
+                <td className="py-3 px-3">
+                  <div className="space-y-1">
+                    <Badge variant="outline" className="text-[11px] font-semibold border-border">
+                      {formatShortHorizonLabel(dream.horizon)}
+                    </Badge>
+                    <div className="text-[11px] text-muted-foreground">
+                      {dream.category}
+                    </div>
+                  </div>
+                </td>
+
+                {/* Next Focus Note */}
+                <td className="py-3 px-3">
+                  {dream.next_focus_note ? (
+                    <div className="flex items-center gap-1.5 text-xs text-foreground bg-muted/50 px-2 py-1 rounded-md border border-border/70 max-w-[190px]">
+                      <Target className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="truncate">{dream.next_focus_note}</span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground/40 text-xs">-</span>
+                  )}
+                </td>
+
+                {/* Motivation / Achieved Note */}
+                <td className="py-3 px-3">
+                  {tabType === 'achieved' && dream.achieved_note ? (
+                    <span className="text-[11px] text-muted-foreground italic line-clamp-2">
+                      "{dream.achieved_note}"
+                    </span>
+                  ) : dream.motivation_why ? (
+                    <span className="text-[11px] text-muted-foreground italic line-clamp-2">
+                      "{dream.motivation_why}"
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/40 text-xs">-</span>
+                  )}
+                </td>
+
+                {/* Actions */}
+                <td className="py-3 px-4 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    {tabType === 'active' && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenCelebration(dream)}
+                          className="h-7 px-2 text-[11px] font-medium gap-1 text-foreground border-border hover:bg-muted"
+                          title="Tamamla"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                          <span className="hidden xl:inline">Tamamla</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDemoteToIncubating(dream)}
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          title="Bekleyenlere Taşı"
+                        >
+                          <Clock className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+
+                    {tabType === 'incubating' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePromoteToActive(dream)}
+                        className="h-7 px-2 text-[11px] font-medium gap-1 text-primary border-border hover:bg-muted"
+                        title="Aktife Al"
+                      >
+                        <Target className="h-3.5 w-3.5 text-primary" />
+                        <span className="hidden xl:inline">Aktife Al</span>
+                      </Button>
+                    )}
+
+                    {tabType === 'achieved' && (
+                      <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 gap-1 text-[11px] py-1 mr-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>Tamamlandı</span>
+                      </Badge>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleOpenEditModal(dream)}
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      title="Düzenle"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDreamToDelete({ id: dream.id, title: dream.title })}
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      title="Sil"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -389,6 +579,14 @@ function DreamsContent() {
         description="Kişisel hedeflerinizi zaman dilimlerine göre planlayın, takip edin ve tamamlananları arşivleyin."
         actions={
           <div className="flex items-center gap-2">
+            <ViewToggle
+              value={viewMode}
+              onChange={handleViewChange}
+              options={[
+                { value: 'grid', label: 'Kartlar', icon: LayoutGrid },
+                { value: 'table', label: 'Tablo', icon: TableProperties },
+              ]}
+            />
             <Button
               variant="outline"
               size="sm"
@@ -397,7 +595,7 @@ function DreamsContent() {
               className="gap-2 h-9 text-xs font-semibold shadow-sm border-border text-foreground hover:bg-muted"
             >
               <Maximize2 className="h-3.5 w-3.5" />
-              <span>Odak Görünümü</span>
+              <span className="hidden sm:inline">Odak Görünümü</span>
             </Button>
             <Button
               onClick={() => handleOpenAddModal(activeTab === 'incubating' ? 'incubating' : 'active')}
@@ -545,6 +743,8 @@ function DreamsContent() {
                 </Button>
               </div>
             </Card>
+          ) : viewMode === 'table' ? (
+            renderDreamsTable(displayedActiveDreams, 'active')
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {displayedActiveDreams.map((dream) => (
@@ -708,6 +908,8 @@ function DreamsContent() {
             <Card className="border-border border-dashed p-10 text-center bg-card/40">
               <p className="text-xs text-muted-foreground">Bekleyen bir hedef bulunmuyor.</p>
             </Card>
+          ) : viewMode === 'table' ? (
+            renderDreamsTable(incubatingDreams, 'incubating')
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {incubatingDreams.map((dream) => (
@@ -797,6 +999,8 @@ function DreamsContent() {
                 Aktif hedeflerinizden birini tamamladığınızda <strong>"Tamamla"</strong> butonuna basarak buraya taşıyabilirsiniz.
               </p>
             </Card>
+          ) : viewMode === 'table' ? (
+            renderDreamsTable(achievedDreams, 'achieved')
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {achievedDreams.map((dream) => (
@@ -873,11 +1077,12 @@ function DreamsContent() {
         </div>
       )}
 
-      {/* Add / Edit Dream Modal */}
-      <Modal
+      {/* Add / Edit Dream Slide-over Sheet */}
+      <Sheet
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingDream ? 'Hedefi Düzenle' : 'Yeni Hedef & Vizyon Ekle'}
+        description="Hedeflerinizi, kimlik vizyonunuzu ve aksiyon adımlarınızı belirleyin."
         size="xl"
       >
         <form onSubmit={handleSaveDream} className="space-y-4">
@@ -894,10 +1099,10 @@ function DreamsContent() {
             />
           </div>
 
-          {/* Horizon & Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Horizon, Category & Target Year */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <label htmlFor="dream-input-horizon" className="text-xs font-semibold text-foreground">Yaşam Ufku (Zaman Tüneli)</label>
+              <label htmlFor="dream-input-horizon" className="text-xs font-semibold text-foreground">Yaşam Ufku</label>
               <Select
                 id="dream-input-horizon"
                 value={formHorizon}
@@ -924,21 +1129,6 @@ function DreamsContent() {
                 ))}
               </Select>
             </div>
-          </div>
-
-          {/* Identity & Target Year */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 space-y-1.5">
-              <label htmlFor="dream-input-persona" className="text-xs font-semibold text-foreground">
-                Kimlik / Persona <span className="text-muted-foreground font-normal">(Bu hayal kime ait?)</span>
-              </label>
-              <Input
-                id="dream-input-persona"
-                value={formIdentityPersona}
-                onChange={(e) => setFormIdentityPersona(e.target.value)}
-                placeholder="Örn: Özgür Kaşif, Bağımsız Üretici, Disiplinli Sporcu..."
-              />
-            </div>
             <div className="space-y-1.5">
               <label htmlFor="dream-input-year" className="text-xs font-semibold text-foreground">Hedef Yıl / Dönem</label>
               <Input
@@ -950,49 +1140,65 @@ function DreamsContent() {
             </div>
           </div>
 
-          {/* Motivation Why */}
-          <div className="space-y-1.5">
-            <label htmlFor="dream-input-why" className="text-xs font-semibold text-foreground">
-              Neden İstiyorum? <span className="text-muted-foreground font-normal">(İçsel motivasyonun)</span>
-            </label>
-            <Textarea
-              id="dream-input-why"
-              value={formMotivationWhy}
-              onChange={(e) => setFormMotivationWhy(e.target.value)}
-              placeholder="Örn: Dünyayı deneyimlemek ve zihnimi bağımsız üretmeye açmak için..."
-              rows={2}
-              className="text-xs min-h-[60px]"
-            />
+          {/* Identity & Next Focus Note */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label htmlFor="dream-input-persona" className="text-xs font-semibold text-foreground">
+                Kimlik / Persona <span className="text-muted-foreground font-normal">(Kim olacaksın?)</span>
+              </label>
+              <Input
+                id="dream-input-persona"
+                value={formIdentityPersona}
+                onChange={(e) => setFormIdentityPersona(e.target.value)}
+                placeholder="Örn: Özgür Kaşif, Bağımsız Üretici..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="dream-input-focus" className="text-xs font-semibold text-foreground">
+                Sıradaki Odak Notu <span className="text-muted-foreground font-normal">(İlk adım)</span>
+              </label>
+              <Input
+                id="dream-input-focus"
+                value={formNextFocusNote}
+                onChange={(e) => setFormNextFocusNote(e.target.value)}
+                placeholder="Örn: Pasaport randevusu al..."
+              />
+            </div>
           </div>
 
-          {/* Next Focus Note */}
-          <div className="space-y-1.5">
-            <label htmlFor="dream-input-focus" className="text-xs font-semibold text-foreground">
-              Sıradaki Odak Notu <span className="text-muted-foreground font-normal">(Aklındaki basit hatırlatıcı)</span>
-            </label>
-            <Input
-              id="dream-input-focus"
-              value={formNextFocusNote}
-              onChange={(e) => setFormNextFocusNote(e.target.value)}
-              placeholder="Örn: Pasaport randevusu al, inceleme videosu izle..."
-            />
-          </div>
+          {/* Motivation Why & Detailed Description (Side-by-side) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label htmlFor="dream-input-why" className="text-xs font-semibold text-foreground">
+                Neden İstiyorum? <span className="text-muted-foreground font-normal">(Motivasyon)</span>
+              </label>
+              <Textarea
+                id="dream-input-why"
+                value={formMotivationWhy}
+                onChange={(e) => setFormMotivationWhy(e.target.value)}
+                placeholder="Örn: Zihnimi bağımsız üretmeye açmak için..."
+                rows={3}
+                className="text-xs min-h-[64px]"
+              />
+            </div>
 
-          {/* Detailed Description */}
-          <div className="space-y-1.5">
-            <label htmlFor="dream-input-desc" className="text-xs font-semibold text-foreground">Detaylı Açıklama (İsteğe Bağlı)</label>
-            <Textarea
-              id="dream-input-desc"
-              value={formDescription}
-              onChange={(e) => setFormDescription(e.target.value)}
-              placeholder="Hayalinle ilgili aklındaki özel detaylar, hisler..."
-              rows={2}
-              className="text-xs min-h-[60px]"
-            />
+            <div className="space-y-1.5">
+              <label htmlFor="dream-input-desc" className="text-xs font-semibold text-foreground">
+                Detaylı Açıklama <span className="text-muted-foreground font-normal">(Opsiyonel)</span>
+              </label>
+              <Textarea
+                id="dream-input-desc"
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                placeholder="Hayalinle ilgili özel detaylar, hisler..."
+                rows={3}
+                className="text-xs min-h-[64px]"
+              />
+            </div>
           </div>
 
           {/* Cover Image & Presets Picker */}
-          <div className="space-y-2 pt-1 border-t border-border/60">
+          <div className="space-y-2 pt-2 border-t border-border/60">
             <div className="flex items-center justify-between">
               <label htmlFor="dream-input-cover" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5 text-primary" />
@@ -1009,7 +1215,7 @@ function DreamsContent() {
 
             {/* Quick Presets Grid */}
             {showWallpaperPicker && (
-              <div className="grid grid-cols-4 gap-2 max-h-44 overflow-y-auto p-1.5 bg-muted/30 rounded-lg border border-border/70">
+              <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-2 bg-muted/30 rounded-lg border border-border/70">
                 {CURATED_VISION_WALLPAPERS.map((wp) => (
                   <button
                     key={wp.id}
@@ -1018,7 +1224,7 @@ function DreamsContent() {
                       setFormCoverImageUrl(wp.url)
                       setShowWallpaperPicker(false)
                     }}
-                    className={`relative rounded-md overflow-hidden h-14 group border transition-all ${
+                    className={`relative rounded-md overflow-hidden h-16 group border transition-all ${
                       formCoverImageUrl === wp.url ? 'border-primary ring-2 ring-primary/40' : 'border-border/50'
                     }`}
                   >
@@ -1041,7 +1247,7 @@ function DreamsContent() {
           </div>
 
           {/* Submit / Cancel */}
-          <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <div className="flex justify-end gap-2 pt-4 border-t border-border">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsModalOpen(false)}>
               İptal
             </Button>
@@ -1050,7 +1256,7 @@ function DreamsContent() {
             </Button>
           </div>
         </form>
-      </Modal>
+      </Sheet>
 
       {/* Celebration Modal (Mark as Achieved) */}
       {celebratingDream && (

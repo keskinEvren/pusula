@@ -1444,10 +1444,10 @@ function TransactionsContent() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         title="Yeni Hareket Ekle"
-        size="lg"
+        size="md"
       >
-        <form onSubmit={handleAddTransaction} className="space-y-4">
-          <div className="space-y-1.5">
+        <form onSubmit={handleAddTransaction} className="space-y-3">
+          <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">İşlem Türü</label>
             <SegmentedControl
               value={newTx.type}
@@ -1470,8 +1470,8 @@ function TransactionsContent() {
             placeholder="0.00"
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
               <label htmlFor="add-tx-date" className="text-xs font-semibold text-foreground">Tarih</label>
               <Input
                 id="add-tx-date"
@@ -1481,7 +1481,7 @@ function TransactionsContent() {
                 required
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label htmlFor="add-tx-account" className="text-xs font-semibold text-foreground">Hesap / Kart</label>
               <Select
                 id="add-tx-account"
@@ -1507,7 +1507,7 @@ function TransactionsContent() {
           </div>
 
           {newTx.type === 'Transfer' && (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label htmlFor="add-tx-target-account" className="text-xs font-semibold text-foreground">Hedef Hesap</label>
               <Select id="add-tx-target-account" value={targetAccountId} onChange={(e) => setTargetAccountId(e.target.value)} required aria-label="Hedef Hesap">
                 <option value="">Hedef hesap seçin</option>
@@ -1519,7 +1519,7 @@ function TransactionsContent() {
           )}
 
           {newTx.type === 'Kart Ödemesi' && (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label htmlFor="add-tx-target-card" className="text-xs font-semibold text-foreground">Ödenecek Kart</label>
               <Select id="add-tx-target-card" value={targetCardId} onChange={(e) => setTargetCardId(e.target.value)} required aria-label="Ödenecek Kart">
                 <option value="">Kart seçin</option>
@@ -1530,18 +1530,19 @@ function TransactionsContent() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label htmlFor="add-tx-merchant" className="text-xs font-semibold text-foreground">İşyeri / Başlık</label>
-              <Input
-                id="add-tx-merchant"
-                value={newTx.merchant}
-                onChange={(e) => setNewTx({ ...newTx, merchant: e.target.value })}
-                placeholder="Örn: Cursor, Market..."
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
+          <div className="space-y-1">
+            <label htmlFor="add-tx-merchant" className="text-xs font-semibold text-foreground">İşyeri / Başlık</label>
+            <Input
+              id="add-tx-merchant"
+              value={newTx.merchant}
+              onChange={(e) => setNewTx({ ...newTx, merchant: e.target.value })}
+              placeholder="Örn: Cursor, Market..."
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
               <label htmlFor="add-tx-group" className="text-xs font-semibold text-foreground">Analiz Grubu</label>
               <Select
                 id="add-tx-group"
@@ -1555,25 +1556,25 @@ function TransactionsContent() {
                 <option value="Gelir">Gelir</option>
               </Select>
             </div>
+
+            <div className="space-y-1">
+              <label htmlFor="add-tx-project" className="text-xs font-semibold text-foreground">Bağlı Proje (Opsiyonel)</label>
+              <Select
+                id="add-tx-project"
+                value={newTx.project_id}
+                onChange={(e) => setNewTx({ ...newTx, project_id: e.target.value })}
+              >
+                <option value="">(Proje Yok)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="add-tx-project" className="text-xs font-semibold text-foreground">Bağlı Proje (Opsiyonel)</label>
-            <Select
-              id="add-tx-project"
-              value={newTx.project_id}
-              onChange={(e) => setNewTx({ ...newTx, project_id: e.target.value })}
-            >
-              <option value="">(Proje Yok)</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
               İptal
             </Button>
@@ -1702,10 +1703,10 @@ function TransactionsContent() {
         isOpen={isRecurringModalOpen}
         onClose={() => setIsRecurringModalOpen(false)}
         title="Düzenli Gider / Abonelik / Fatura Olarak Ekle"
-        size="lg"
+        size="md"
       >
-        <form onSubmit={handleSaveRecurring} className="space-y-4">
-          <div className="space-y-1.5">
+        <form onSubmit={handleSaveRecurring} className="space-y-3">
+          <div className="space-y-1">
             <label htmlFor="rec-service" className="text-xs font-semibold text-muted-foreground">
               Hizmet / Kurum / Fatura Adı
             </label>
@@ -1714,16 +1715,18 @@ function TransactionsContent() {
               required
               value={recurringForm.service}
               onChange={(e) => setRecurringForm({ ...recurringForm, service: e.target.value })}
+              className="text-xs"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="space-y-1">
               <label htmlFor="rec-category" className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
               <Select
                 id="rec-category"
                 value={recurringForm.category}
                 onChange={(e) => setRecurringForm({ ...recurringForm, category: e.target.value as any })}
+                className="text-xs"
               >
                 <option value="Abonelik">💳 SaaS / Abonelik</option>
                 <option value="Fatura">⚡ Fatura (GSM, Elektrik, vb.)</option>
@@ -1732,12 +1735,13 @@ function TransactionsContent() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label htmlFor="rec-group" className="text-xs font-semibold text-muted-foreground">Kapsam Grubu</label>
               <Select
                 id="rec-group"
                 value={recurringForm.group_type}
                 onChange={(e) => setRecurringForm({ ...recurringForm, group_type: e.target.value as any })}
+                className="text-xs"
               >
                 <option value="Kişisel">Kişisel</option>
                 <option value="İş">İş (Girişim / Şirket)</option>
@@ -1749,8 +1753,8 @@ function TransactionsContent() {
             const normRecPeriod = normalizeSubscriptionPeriod(recurringForm.period)
             const parsedAmt = safeParseAmount(recurringForm.amount)
             return (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="space-y-1">
                   <label htmlFor="rec-amount" className="text-xs font-semibold text-muted-foreground">
                     {normRecPeriod === 'Tek Seferlik'
                       ? 'Tek Seferlik Tutar'
@@ -1768,25 +1772,27 @@ function TransactionsContent() {
                     required
                     value={recurringForm.amount}
                     onChange={(e) => setRecurringForm({ ...recurringForm, amount: e.target.value })}
+                    className="text-xs font-mono font-semibold"
                   />
                   {parsedAmt > 0 && normRecPeriod !== 'Aylık' && normRecPeriod !== 'Tek Seferlik' && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[10px] text-muted-foreground">
                       Aylık eşdeğer: ~{formatCurrency(calculateSubscriptionEquivalent(parsedAmt, normRecPeriod).monthly)} / ay
                     </p>
                   )}
                   {parsedAmt > 0 && normRecPeriod === 'Tek Seferlik' && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[10px] text-muted-foreground">
                       Tek seferlik gider; aylık tekrarlayan yüke katılmaz.
                     </p>
                   )}
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <label htmlFor="rec-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
                   <Select
                     id="rec-period"
                     value={normRecPeriod}
                     onChange={(e) => setRecurringForm({ ...recurringForm, period: e.target.value })}
+                    className="text-xs"
                   >
                     <option value="Aylık">Aylık</option>
                     <option value="Haftalık">Haftalık</option>
@@ -1800,8 +1806,8 @@ function TransactionsContent() {
             )
           })()}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="space-y-1">
               <label htmlFor="rec-payment-method" className="text-xs font-semibold text-muted-foreground">
                 Ödeme Yolu / Kart / Kasa
               </label>
@@ -1809,23 +1815,25 @@ function TransactionsContent() {
                 id="rec-payment-method"
                 value={recurringForm.payment_method}
                 onChange={(e) => setRecurringForm({ ...recurringForm, payment_method: e.target.value })}
+                className="text-xs"
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label htmlFor="rec-end-date" className="text-xs font-semibold text-muted-foreground">
-                Bitiş Tarihi (Taksitler için Opsiyonel)
+                Bitiş Tarihi (Opsiyonel)
               </label>
               <Input
                 id="rec-end-date"
                 type="date"
                 value={recurringForm.end_date}
                 onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
+                className="text-xs"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
+          <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsRecurringModalOpen(false)}>
               İptal
             </Button>

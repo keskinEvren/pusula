@@ -578,15 +578,16 @@ export default function CardsPage() {
         onClose={() => setIsCardModalOpen(false)}
         title="Yeni Kredi Kartı Ekle"
         description="Limitlerini ve ekstre tarihlerini takip edeceğiniz kredi kartınızı ekleyin."
+        size="md"
       >
-        <form onSubmit={handleAddCard} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleAddCard} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="card-bank" className="text-xs font-semibold text-muted-foreground">Banka</label>
               <Input
                 id="card-bank"
                 required
-                placeholder="Örn: Akbank, Enpara, Ziraat"
+                placeholder="Örn: Akbank, Enpara"
                 value={cardForm.bank}
                 onChange={(e) => setCardForm({ ...cardForm, bank: e.target.value })}
                 className="text-xs"
@@ -597,7 +598,7 @@ export default function CardsPage() {
               <Input
                 id="card-name"
                 required
-                placeholder="Örn: Axess Platinum, Bankkart"
+                placeholder="Örn: Axess, Bankkart"
                 value={cardForm.card_name}
                 onChange={(e) => setCardForm({ ...cardForm, card_name: e.target.value })}
                 className="text-xs"
@@ -605,7 +606,7 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2.5">
             <div className="w-28 space-y-1 shrink-0">
               <label htmlFor="card-last-four" className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
               <Input
@@ -632,9 +633,9 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
-              <label htmlFor="card-statement-date" className="text-xs font-semibold text-muted-foreground">Son Ekstre Kesim Tarihi</label>
+              <label htmlFor="card-statement-date" className="text-xs font-semibold text-muted-foreground">Ekstre Kesim Tarihi</label>
               <Input
                 id="card-statement-date"
                 type="date"
@@ -655,7 +656,7 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsCardModalOpen(false)}>
               İptal
             </Button>
@@ -672,8 +673,9 @@ export default function CardsPage() {
         onClose={() => setIsStmtModalOpen(false)}
         title="Dönem Ekstresi Kaydı Ekle"
         description="Kartınızın son kesilen dönem borcunu ve detaylarını kaydedin."
+        size="md"
       >
-        <form onSubmit={handleAddStatement} className="space-y-4">
+        <form onSubmit={handleAddStatement} className="space-y-3">
           <div className="space-y-1">
             <label htmlFor="stmt-card-id" className="text-xs font-semibold text-muted-foreground">Kredi Kartı</label>
             <Select
@@ -692,7 +694,7 @@ export default function CardsPage() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="stmt-statement-date" className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
               <Input
@@ -720,7 +722,7 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="stmt-minimum" className="text-xs font-semibold text-muted-foreground">Asgari Ödeme</label>
               <Input
@@ -735,7 +737,7 @@ export default function CardsPage() {
               />
             </div>
             <div className="space-y-1">
-              <label htmlFor="stmt-interest-fees" className="text-xs font-semibold text-muted-foreground">Faiz / Masraf Yükü</label>
+              <label htmlFor="stmt-interest-fees" className="text-xs font-semibold text-muted-foreground">Faiz / Masraf</label>
               <Input
                 id="stmt-interest-fees"
                 type="number"
@@ -760,7 +762,7 @@ export default function CardsPage() {
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsStmtModalOpen(false)}>
               İptal
             </Button>
@@ -779,10 +781,11 @@ export default function CardsPage() {
           setEditingCard(null)
         }}
         title="Kredi Kartı ve Borç Bilgilerini Düzenle"
-        description="Kartınızın güncel toplam borcunu, son dönem borcunu ve ekstre tarihlerini güncelleyin."
+        description="Kartınızın güncel toplam borcunu ve ekstre tarihlerini güncelleyin."
+        size="md"
       >
-        <form onSubmit={handleEditCard} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleEditCard} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="edit-card-bank" className="text-xs font-semibold text-muted-foreground">Banka</label>
               <Input
@@ -805,7 +808,7 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2.5">
             <div className="w-28 space-y-1 shrink-0">
               <label htmlFor="edit-card-last-four" className="text-xs font-semibold text-muted-foreground">Son 4 Hane</label>
               <Input
@@ -831,7 +834,7 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="edit-card-statement-debt" className="text-xs font-semibold text-muted-foreground">Son Dönem Borcu</label>
               <Input
@@ -858,7 +861,7 @@ export default function CardsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="edit-card-statement-date" className="text-xs font-semibold text-muted-foreground">Ekstre Tarihi</label>
               <Input

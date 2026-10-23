@@ -162,12 +162,12 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
     >
       <div 
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-t-3xl sm:rounded-2xl border-t sm:border border-border/80 bg-card p-5 sm:p-6 pb-safe shadow-[0_-12px_48px_rgba(0,0,0,0.8)] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-md rounded-t-3xl sm:rounded-2xl border-t sm:border border-border/80 bg-card p-4 sm:p-5 pb-safe shadow-[0_-12px_48px_rgba(0,0,0,0.8)] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[85vh] overflow-y-auto"
       >
         {/* Mobile Drag Handle Bar */}
-        <div className="w-12 h-1 rounded-full bg-muted-foreground/30 mx-auto mb-4 sm:hidden" />
+        <div className="w-12 h-1 rounded-full bg-muted-foreground/30 mx-auto mb-3 sm:hidden" />
 
-        <div className="flex items-center justify-between pb-3 border-b border-border/60">
+        <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
           <div>
             <h2 id="quick-capture-title" className="text-base font-bold text-foreground flex items-center gap-2">
               <span>⚡ Hızlı Harcama</span>
@@ -185,13 +185,13 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
           </Button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-3 space-y-3">
           {/* Quick Category Chips */}
           <div>
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-2">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
               Hızlı Şablonlar
             </span>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
               {QUICK_CHIPS.map((chip) => {
                 const Icon = chip.icon
                 const isSelected = description === chip.merchant
@@ -201,14 +201,14 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
                     type="button"
                     onClick={() => handleChipSelect(chip)}
                     className={cn(
-                      'flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium transition-all text-left min-h-[36px]',
+                      'flex flex-col sm:items-center justify-center gap-1 p-2 rounded-xl border text-[11px] font-medium transition-all text-center',
                       isSelected
                         ? 'bg-primary/20 border-primary text-primary-foreground shadow-sm ring-1 ring-primary/40'
                         : 'bg-muted/30 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground'
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{chip.label}</span>
+                    <Icon className="h-3.5 w-3.5 shrink-0 mx-auto" />
+                    <span className="truncate w-full">{chip.label}</span>
                   </button>
                 )
               })}

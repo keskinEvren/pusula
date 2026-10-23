@@ -22,8 +22,8 @@ const sizeClasses: Record<ModalSize, string> = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
-  xl: 'max-w-2xl',
-  '2xl': 'max-w-4xl',
+  xl: 'max-w-xl',
+  '2xl': 'max-w-3xl',
 }
 
 export function Modal({
@@ -134,21 +134,21 @@ export function Modal({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          'relative w-full rounded-t-2xl sm:rounded-2xl border border-white/[0.12] bg-[#16161b] p-5 sm:p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_24px_64px_-12px_rgba(0,0,0,0.85),0_8px_24px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto outline-none',
+          'relative flex flex-col w-full rounded-t-2xl sm:rounded-2xl border border-white/[0.12] bg-[#16161b] p-4 sm:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_24px_64px_-12px_rgba(0,0,0,0.85),0_8px_24px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] overflow-hidden outline-none',
           sizeClasses[size],
           className
         )}
       >
         {/* Mobile handle indicator */}
-        <div className="w-12 h-1 rounded-full bg-white/20 mx-auto mb-3 sm:hidden" />
+        <div className="w-12 h-1 rounded-full bg-white/20 mx-auto mb-2.5 sm:hidden shrink-0" />
 
-        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-white/[0.08]">
-          <div>
-            <h2 id={titleId} className="text-base sm:text-lg font-bold text-foreground">
+        <div className="flex items-start justify-between gap-3 pb-2.5 sm:pb-3 border-b border-white/[0.08] shrink-0">
+          <div className="min-w-0">
+            <h2 id={titleId} className="text-sm sm:text-base font-bold text-foreground leading-snug">
               {title}
             </h2>
             {description && (
-              <p id={descriptionId} className="mt-0.5 sm:mt-1 text-xs text-muted-foreground">
+              <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
                 {description}
               </p>
             )}
@@ -157,13 +157,13 @@ export function Modal({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-full shrink-0 -mr-1 -mt-0.5"
             aria-label="Kapat"
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="mt-4">{children}</div>
+        <div className="mt-3 flex-1 overflow-y-auto min-h-0 pr-0.5">{children}</div>
       </div>
     </div>
   )

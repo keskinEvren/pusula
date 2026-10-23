@@ -883,23 +883,25 @@ function IncomesContent() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingIncome ? 'Gelir Kalemini Düzenle' : 'Yeni Gelir Kalemi Tanımla'}
+        size="md"
       >
-        <form onSubmit={handleSaveIncome} className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+        <form onSubmit={handleSaveIncome} className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground block">
               Gelir Adı / Kaynağı
             </label>
             <Input
               required
-              placeholder="Örn: Maaş, Kira Geliri, X Şirketi Danışmanlık..."
+              placeholder="Örn: Maaş, Kira Geliri, Danışmanlık..."
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="text-xs"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
                 Net Tutar (₺)
               </label>
               <Input
@@ -909,15 +911,17 @@ function IncomesContent() {
                 placeholder="0.00"
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                className="text-xs font-mono font-semibold"
               />
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
                 Periyot / Sıklık
               </label>
               <Select
                 value={form.period}
                 onChange={(e) => setForm({ ...form, period: e.target.value })}
+                className="text-xs"
               >
                 <option value="Aylık">Aylık</option>
                 <option value="3 Aylık">3 Aylık</option>
@@ -931,9 +935,9 @@ function IncomesContent() {
 
           {/* Canlı Aylık & Yıllık Eşdeğer Önizlemesi */}
           {modalPreviewEq.rawAmount > 0 && (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 flex items-center justify-between text-xs">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 flex items-center justify-between text-xs">
               <div>
-                <span className="text-muted-foreground block">Aylık Net Eşdeğer:</span>
+                <span className="text-muted-foreground block text-[11px]">Aylık Net:</span>
                 <span className="text-sm font-bold font-mono text-emerald-400">
                   {modalPreviewEq.isOneTime
                     ? `${formatCurrency(modalPreviewEq.rawAmount)} (Tek Seferlik)`
@@ -942,8 +946,8 @@ function IncomesContent() {
               </div>
               {!modalPreviewEq.isOneTime && (
                 <div className="text-right">
-                  <span className="text-muted-foreground block">Yıllık Karşılık:</span>
-                  <span className="text-sm font-bold font-mono text-foreground">
+                  <span className="text-muted-foreground block text-[11px]">Yıllık Karşılık:</span>
+                  <span className="text-xs font-bold font-mono text-foreground">
                     {formatCurrency(modalPreviewEq.yearly)} / yıl
                   </span>
                 </div>
@@ -951,14 +955,15 @@ function IncomesContent() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
                 Kategori
               </label>
               <Select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value as IncomeCategory })}
+                className="text-xs"
               >
                 {INCOME_CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
@@ -968,8 +973,8 @@ function IncomesContent() {
               </Select>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
                 Gelir Tipi
               </label>
               <Select
@@ -977,6 +982,7 @@ function IncomesContent() {
                 onChange={(e) =>
                   setForm({ ...form, income_type: e.target.value as IncomeTypeOption })
                 }
+                className="text-xs"
               >
                 <option value="Sabit">Sabit / Garanti Gelir</option>
                 <option value="Değişken">Değişken / Tahmini Gelir</option>
@@ -984,14 +990,15 @@ function IncomesContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
                 Ödeme Günü (Opsiyonel)
               </label>
               <Select
                 value={form.payday}
                 onChange={(e) => setForm({ ...form, payday: e.target.value })}
+                className="text-xs"
               >
                 <option value="">Belirtilmedi</option>
                 {Array.from({ length: 31 }, (_, idx) => idx + 1).map((day) => (
@@ -1002,15 +1009,16 @@ function IncomesContent() {
               </Select>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
                 İlişkili Proje (Opsiyonel)
               </label>
               <Select
                 value={form.project_id}
                 onChange={(e) => setForm({ ...form, project_id: e.target.value })}
+                className="text-xs"
               >
-                <option value="">Yok (Kişisel / Genel)</option>
+                <option value="">Yok (Genel)</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -1020,18 +1028,19 @@ function IncomesContent() {
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground block">
               Kısa Not (Opsiyonel)
             </label>
             <Input
-              placeholder="Örn: Yıllık sözleşme, her ayın 15'inde yatar..."
+              placeholder="Örn: Yıllık sözleşme, ayın 15'inde..."
               value={form.note}
               onChange={(e) => setForm({ ...form, note: e.target.value })}
+              className="text-xs"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
               İptal
             </Button>

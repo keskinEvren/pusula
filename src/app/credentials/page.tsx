@@ -1517,13 +1517,13 @@ export default function CredentialsPage() {
         onClose={() => setIsEditModalOpen(false)}
         title={editingItem ? 'Kaydı Düzenle' : 'Yeni Güvenli Kayıt Ekle'}
         description="Verileriniz sıfır-bilgi istemci tarafı AES-GCM-256 ile şifrelenir."
-        size="xl"
+        size="lg"
       >
-        <form onSubmit={handleSaveItem} className="space-y-4 pt-1">
+        <form onSubmit={handleSaveItem} className="space-y-3 pt-0.5">
           {/* Kategori Seçimi */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">Kategori</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {(Object.keys(CATEGORY_CONFIG) as CredentialCategory[]).map((cat) => {
                 const cfg = CATEGORY_CONFIG[cat]
                 const isSelected = formCategory === cat
@@ -1532,7 +1532,7 @@ export default function CredentialsPage() {
                     key={cat}
                     type="button"
                     onClick={() => setFormCategory(cat)}
-                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all text-left flex items-center gap-1.5 ${
+                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all flex items-center gap-1 ${
                       isSelected
                         ? `${cfg.badgeClass} ring-1 ring-primary/40 font-semibold shadow-xs`
                         : 'bg-card hover:bg-muted text-muted-foreground border-border/70'
