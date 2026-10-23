@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   FileText,
   Edit3,
+  LayoutGrid,
+  TableProperties,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -23,10 +25,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
+import { Sheet } from '@/components/ui/sheet'
+import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { MarkdownEditor } from '@/components/markdown'
-import { slugify } from '@/lib/utils'
+import { slugify, formatDate } from '@/lib/utils'
 import { useToast } from '@/lib/toast-context'
 import type { Idea } from '@/types/database'
 
@@ -45,6 +49,23 @@ function IdeasContent() {
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [activeTab, setActiveTab] = useState<string>('inbox')
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pusula_ideas_view')
+      if (saved === 'table' || saved === 'grid') {
+        setViewMode(saved)
+      }
+    } catch {}
+  }, [])
+
+  const handleViewChange = (v: ViewMode) => {
+    setViewMode(v)
+    try {
+      localStorage.setItem('pusula_ideas_view', v)
+    } catch {}
+  }
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -312,10 +333,20 @@ function IdeasContent() {
         title="Fikirler"
         description="Yeni fikirlerinizi kaydedin, değerlendirin ve hayata geçirmek için projeye dönüştürün."
         actions={
-          <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm text-xs min-h-[36px] font-semibold">
-            <Plus className="h-4 w-4" />
-            Yeni Fikir
-          </Button>
+          <div className="flex items-center gap-2">
+            <ViewToggle
+              value={viewMode}
+              onChange={handleViewChange}
+              options={[
+                { value: 'grid', label: 'Kartlar', icon: LayoutGrid },
+                { value: 'table', label: 'Tablo', icon: TableProperties },
+              ]}
+            />
+            <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-sm text-xs min-h-[36px] font-semibold">
+              <Plus className="h-4 w-4" />
+              Yeni Fikir
+            </Button>
+          </div>
         }
       />
 
@@ -351,174 +382,332 @@ function IdeasContent() {
         })}
       </div>
 
-      {/* Ideas Grid */}
-      <div
-        id={`panel-${activeTab}`}
-        role="tabpanel"
-        aria-labelledby={`tab-${activeTab}`}
-        className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-      >
-        {filteredIdeas.map((idea) => (
-          <Card key={idea.id} className="border-border bg-card shadow-sm flex flex-col justify-between">
-            <CardHeader
-              className="pb-3 cursor-pointer hover:bg-muted/10 transition-colors rounded-t-xl group"
-              onClick={() => handleOpenIdeaDetail(idea)}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <CardTitle className="text-base font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors flex items-center gap-1.5">
-                  <FileText className="h-4 w-4 text-primary/70 shrink-0" />
-                  <span>{idea.title}</span>
-                </CardTitle>
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIdeaToDelete({ id: idea.id, title: idea.title })}
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    aria-label={`"${idea.title}" fikrini sil`}
-                    title="Fikri Sil"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              {idea.description ? (
-                <CardDescription className="text-xs line-clamp-3 mt-1 text-muted-foreground font-mono">
-                  {idea.description}
-                </CardDescription>
-              ) : (
-                <CardDescription className="text-xs text-muted-foreground/60 italic mt-1">
-                  Şartname / not girilmedi. Tıklayarak ekleyin.
-                </CardDescription>
-              )}
-            </CardHeader>
-
-            <CardContent className="space-y-4 pt-0">
-              {/* Score Badge */}
-              {idea.score !== null && idea.score !== undefined && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-muted-foreground">Potansiyel:</span>
-                  <span className={`text-xs font-bold font-mono ${
-                    Number(idea.score) >= 7 ? 'text-success' : 
-                    Number(idea.score) >= 4 ? 'text-amber-400' : 'text-muted-foreground'
-                  }`}>
-                    {idea.score}/10
-                  </span>
-                  <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden max-w-[80px]">
-                    <div 
-                      className={`h-full rounded-full ${
-                        Number(idea.score) >= 7 ? 'bg-success' : 
-                        Number(idea.score) >= 4 ? 'bg-amber-400' : 'bg-muted-foreground'
-                      }`}
-                      style={{ width: `${(Number(idea.score) / 10) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Tags */}
-              {idea.tags && idea.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {idea.tags.map((tag, idx) => (
-                    <Badge key={idx} variant="outline" className="text-[11px]">
-                      #{tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-3 border-t border-border gap-2">
-                <label htmlFor={`idea-status-${idea.id}`} className="sr-only">
-                  {idea.title} durumunu değiştir
-                </label>
-                <Select
-                  id={`idea-status-${idea.id}`}
-                  aria-label={`${idea.title} durumunu değiştir`}
-                  value={idea.status}
-                  onChange={(e) =>
-                    handleStatusChange(idea.id, e.target.value as Idea['status'])
-                  }
-                  className="h-7 text-xs w-32"
-                >
-                  <option value="inbox">Gelenler</option>
-                  <option value="maybe">Değerlendirilecek</option>
-                  <option value="decided">Karar Verildi</option>
-                  <option value="killed">Arşiv</option>
-                  <option value="promoted">Projeye Dönüşen</option>
-                </Select>
-
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleOpenIdeaDetail(idea)}
-                    className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground min-h-[30px]"
-                    title="Şartnameyi Aç & Düzenle"
-                    aria-label={`"${idea.title}" fikrini incele ve şartnamesini aç`}
-                  >
-                    <Edit3 className="h-3 w-3" />
-                    <span>İncele</span>
-                  </Button>
-
-                  {idea.status !== 'promoted' ? (
-                    <Button
-                      size="sm"
-                      onClick={() => handleOpenPromoteModal(idea)}
-                      className="h-7 text-xs gap-1.5 shadow-sm px-2.5 min-h-[30px]"
-                      aria-label={`"${idea.title}" fikrini projeye dönüştür`}
-                    >
-                      <FolderPlus className="h-3.5 w-3.5" />
-                      <span>Projeye</span>
-                    </Button>
-                  ) : (
-                    <Link href="/projects">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 px-2 min-h-[30px]"
-                      >
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                        <span>Projelerde</span>
-                      </Button>
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
-        {filteredIdeas.length === 0 && (
-          <div className="col-span-full rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
+      {/* Ideas View (Table or Grid) */}
+      {viewMode === 'table' ? (
+        filteredIdeas.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
             Bu sekmede henüz fikir kaydı bulunmuyor.
           </div>
-        )}
-      </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-muted/50 border-b border-border text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                <tr>
+                  <th scope="col" className="py-3 px-4 min-w-[280px]">Fikir Başlığı</th>
+                  <th scope="col" className="py-3 px-3 min-w-[140px]">Durum / Klasör</th>
+                  <th scope="col" className="py-3 px-3 min-w-[140px]">Potansiyel Skoru</th>
+                  <th scope="col" className="py-3 px-3 min-w-[110px]">Tarih</th>
+                  <th scope="col" className="py-3 px-4 text-right min-w-[170px]">İşlemler</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {filteredIdeas.map((idea) => {
+                  const scoreNum = idea.score !== null && idea.score !== undefined ? Number(idea.score) : null
+                  return (
+                    <tr key={idea.id} className="hover:bg-muted/30 transition-colors group">
+                      {/* Idea Title & Tags */}
+                      <td className="py-3 px-4">
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => handleOpenIdeaDetail(idea)}
+                            className="font-semibold text-foreground hover:text-primary transition-colors text-left flex items-center gap-1.5"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                            <span className="truncate max-w-[240px] sm:max-w-md">{idea.title}</span>
+                          </button>
+                          {idea.description && (
+                            <p className="text-[11px] text-muted-foreground line-clamp-1 max-w-[280px] sm:max-w-lg font-mono">
+                              {idea.description}
+                            </p>
+                          )}
+                          {idea.tags && idea.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {idea.tags.map((tag, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border/60"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
 
-      {/* Add Idea Modal */}
-      <Modal
+                      {/* Status select (Interactive inline editing) */}
+                      <td className="py-3 px-3">
+                        <Select
+                          aria-label={`${idea.title} durumunu değiştir`}
+                          value={idea.status}
+                          onChange={(e) =>
+                            handleStatusChange(idea.id, e.target.value as Idea['status'])
+                          }
+                          className="h-7 text-xs w-32"
+                        >
+                          <option value="inbox">Gelenler</option>
+                          <option value="maybe">Değerlendirilecek</option>
+                          <option value="decided">Karar Verildi</option>
+                          <option value="killed">Arşiv</option>
+                          <option value="promoted">Projeye Dönüşen</option>
+                        </Select>
+                      </td>
+
+                      {/* Score */}
+                      <td className="py-3 px-3">
+                        {scoreNum !== null ? (
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-xs font-bold font-mono ${
+                                scoreNum >= 7 ? 'text-success' : scoreNum >= 4 ? 'text-amber-400' : 'text-muted-foreground'
+                              }`}
+                            >
+                              {scoreNum}/10
+                            </span>
+                            <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  scoreNum >= 7 ? 'bg-success' : scoreNum >= 4 ? 'bg-amber-400' : 'bg-muted-foreground'
+                                }`}
+                                style={{ width: `${(scoreNum / 10) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/40 text-xs">-</span>
+                        )}
+                      </td>
+
+                      {/* Created Date */}
+                      <td className="py-3 px-3 text-[11px] text-muted-foreground font-mono">
+                        {formatDate(idea.created_at)}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenIdeaDetail(idea)}
+                            className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground min-h-[30px]"
+                            title="Şartnameyi Aç & Düzenle"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            <span>İncele</span>
+                          </Button>
+
+                          {idea.status !== 'promoted' ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenPromoteModal(idea)}
+                              className="h-7 text-xs gap-1 shadow-sm px-2 text-primary-foreground bg-primary hover:bg-primary/90 min-h-[30px]"
+                              title="Projeye Dönüştür"
+                            >
+                              <FolderPlus className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Projeye</span>
+                            </Button>
+                          ) : (
+                            <Link href="/projects">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 px-2 min-h-[30px]"
+                              >
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Projelerde</span>
+                              </Button>
+                            </Link>
+                          )}
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIdeaToDelete({ id: idea.id, title: idea.title })}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive min-h-[28px]"
+                            title="Fikri Sil"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : (
+        /* Ideas Grid */
+        <div
+          id={`panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+          className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+        >
+          {filteredIdeas.map((idea) => (
+            <Card key={idea.id} className="border-border bg-card shadow-sm flex flex-col justify-between">
+              <CardHeader
+                className="pb-3 cursor-pointer hover:bg-muted/10 transition-colors rounded-t-xl group"
+                onClick={() => handleOpenIdeaDetail(idea)}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-base font-semibold text-foreground line-clamp-1 group-hover:text-primary transition-colors flex items-center gap-1.5">
+                    <FileText className="h-4 w-4 text-primary/70 shrink-0" />
+                    <span>{idea.title}</span>
+                  </CardTitle>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIdeaToDelete({ id: idea.id, title: idea.title })}
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      aria-label={`"${idea.title}" fikrini sil`}
+                      title="Fikri Sil"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                {idea.description ? (
+                  <CardDescription className="text-xs line-clamp-3 mt-1 text-muted-foreground font-mono">
+                    {idea.description}
+                  </CardDescription>
+                ) : (
+                  <CardDescription className="text-xs text-muted-foreground/60 italic mt-1">
+                    Şartname / not girilmedi. Tıklayarak ekleyin.
+                  </CardDescription>
+                )}
+              </CardHeader>
+
+              <CardContent className="space-y-4 pt-0">
+                {/* Score Badge */}
+                {idea.score !== null && idea.score !== undefined && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">Potansiyel:</span>
+                    <span className={`text-xs font-bold font-mono ${
+                      Number(idea.score) >= 7 ? 'text-success' : 
+                      Number(idea.score) >= 4 ? 'text-amber-400' : 'text-muted-foreground'
+                    }`}>
+                      {idea.score}/10
+                    </span>
+                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden max-w-[80px]">
+                      <div 
+                        className={`h-full rounded-full ${
+                          Number(idea.score) >= 7 ? 'bg-success' : 
+                          Number(idea.score) >= 4 ? 'bg-amber-400' : 'bg-muted-foreground'
+                        }`}
+                        style={{ width: `${(Number(idea.score) / 10) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Tags */}
+                {idea.tags && idea.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {idea.tags.map((tag, idx) => (
+                      <Badge key={idx} variant="outline" className="text-[11px]">
+                        #{tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between pt-3 border-t border-border gap-2">
+                  <label htmlFor={`idea-status-${idea.id}`} className="sr-only">
+                    {idea.title} durumunu değiştir
+                  </label>
+                  <Select
+                    id={`idea-status-${idea.id}`}
+                    aria-label={`${idea.title} durumunu değiştir`}
+                    value={idea.status}
+                    onChange={(e) =>
+                      handleStatusChange(idea.id, e.target.value as Idea['status'])
+                    }
+                    className="h-7 text-xs w-32"
+                  >
+                    <option value="inbox">Gelenler</option>
+                    <option value="maybe">Değerlendirilecek</option>
+                    <option value="decided">Karar Verildi</option>
+                    <option value="killed">Arşiv</option>
+                    <option value="promoted">Projeye Dönüşen</option>
+                  </Select>
+
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleOpenIdeaDetail(idea)}
+                      className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground min-h-[30px]"
+                      title="Şartnameyi Aç & Düzenle"
+                      aria-label={`"${idea.title}" fikrini incele ve şartnamesini aç`}
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      <span>İncele</span>
+                    </Button>
+
+                    {idea.status !== 'promoted' ? (
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenPromoteModal(idea)}
+                        className="h-7 text-xs gap-1.5 shadow-sm px-2.5 min-h-[30px]"
+                        aria-label={`"${idea.title}" fikrini projeye dönüştür`}
+                      >
+                        <FolderPlus className="h-3.5 w-3.5" />
+                        <span>Projeye</span>
+                      </Button>
+                    ) : (
+                      <Link href="/projects">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 px-2 min-h-[30px]"
+                        >
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                          <span>Projelerde</span>
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          {filteredIdeas.length === 0 && (
+            <div className="col-span-full rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
+              Bu sekmede henüz fikir kaydı bulunmuyor.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add Idea Slide-over Sheet */}
+      <Sheet
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title="Yeni Fikir Not Et"
         description="Aklınıza gelen fikirleri, Markdown şartnamesi veya notlarıyla birlikte hızlıca kaydedin."
-        size="2xl"
+        size="xl"
       >
         <form onSubmit={handleAddIdea} className="space-y-4">
-          <div className="space-y-1">
-            <label htmlFor="idea-add-title" className="text-xs font-semibold text-muted-foreground">Fikir Başlığı</label>
-            <Input
-              id="idea-add-title"
-              required
-              placeholder="Örn: AI Destekli Fatura Okuyucu"
-              value={ideaForm.title}
-              onChange={(e) => setIdeaForm({ ...ideaForm, title: e.target.value })}
-              className="text-xs"
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label htmlFor="idea-add-title" className="text-xs font-semibold text-muted-foreground">Fikir Başlığı</label>
+              <Input
+                id="idea-add-title"
+                required
+                placeholder="Örn: AI Destekli Fatura Okuyucu"
+                value={ideaForm.title}
+                onChange={(e) => setIdeaForm({ ...ideaForm, title: e.target.value })}
+                className="text-xs"
+              />
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label htmlFor="idea-add-tags" className="text-xs font-semibold text-muted-foreground">Etiketler (Virgülle ayırın)</label>
               <Input
                 id="idea-add-tags"
@@ -528,8 +717,10 @@ function IdeasContent() {
                 className="text-xs"
               />
             </div>
+          </div>
 
-            <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
               <label htmlFor="idea-add-score" className="text-xs font-semibold text-muted-foreground">Potansiyel Skoru (0-10)</label>
               <Input
                 id="idea-add-score"
@@ -544,7 +735,7 @@ function IdeasContent() {
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label htmlFor="idea-add-status" className="text-xs font-semibold text-muted-foreground">Klasör</label>
               <Select
                 id="idea-add-status"
@@ -571,7 +762,7 @@ function IdeasContent() {
               docName={ideaForm.title || 'fikir-notu'}
               title="Fikir Notları & Dokümantasyon"
               placeholder="Fikir neyi çözer? MVP hedefleri, teknik stack veya - [ ] checklist maddeleri..."
-              minHeight="240px"
+              minHeight="220px"
               defaultMode="write"
             />
           </div>
@@ -585,10 +776,10 @@ function IdeasContent() {
             </Button>
           </div>
         </form>
-      </Modal>
+      </Sheet>
 
-      {/* Idea Detail & Full Markdown Workspace Modal */}
-      <Modal
+      {/* Idea Detail & Full Markdown Workspace Slide-over Sheet */}
+      <Sheet
         isOpen={!!selectedIdea}
         onClose={() => setSelectedIdea(null)}
         title={selectedIdea?.title || 'Fikir İncele'}
@@ -597,19 +788,19 @@ function IdeasContent() {
       >
         {selectedIdea && (
           <div className="space-y-4">
-            <div className="space-y-1">
-              <label htmlFor="idea-edit-title" className="text-xs font-semibold text-muted-foreground">Başlık</label>
-              <Input
-                id="idea-edit-title"
-                required
-                value={editForm.title}
-                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                className="text-xs"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+              <div className="sm:col-span-5 space-y-1.5">
+                <label htmlFor="idea-edit-title" className="text-xs font-semibold text-muted-foreground">Başlık</label>
+                <Input
+                  id="idea-edit-title"
+                  required
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
+              <div className="sm:col-span-3 space-y-1.5">
                 <label htmlFor="idea-edit-tags" className="text-xs font-semibold text-muted-foreground">Etiketler</label>
                 <Input
                   id="idea-edit-tags"
@@ -620,8 +811,8 @@ function IdeasContent() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label htmlFor="idea-edit-score" className="text-xs font-semibold text-muted-foreground">Potansiyel Skoru (0-10)</label>
+              <div className="sm:col-span-2 space-y-1.5">
+                <label htmlFor="idea-edit-score" className="text-xs font-semibold text-muted-foreground">Skor (0-10)</label>
                 <Input
                   id="idea-edit-score"
                   type="number"
@@ -635,7 +826,7 @@ function IdeasContent() {
                 />
               </div>
 
-              <div className="space-y-1">
+              <div className="sm:col-span-2 space-y-1.5">
                 <label htmlFor="idea-edit-status" className="text-xs font-semibold text-muted-foreground">Durum</label>
                 <Select
                   id="idea-edit-status"
@@ -665,7 +856,7 @@ function IdeasContent() {
                 docName={editForm.title || 'fikir-sartname'}
                 title={`${editForm.title || 'Fikir'} - Şartname & Notlar`}
                 placeholder="Teknik mimari, kullanıcı senaryoları, API gereksinimleri..."
-                minHeight="340px"
+                minHeight="320px"
                 defaultMode="split"
               />
             </div>
@@ -723,7 +914,7 @@ function IdeasContent() {
             </div>
           </div>
         )}
-      </Modal>
+      </Sheet>
 
       {/* Promote to Project Modal */}
       <Modal

@@ -1045,7 +1045,7 @@ function InvestmentsContent() {
         title={editingItem ? 'Yatırımı Düzenle' : 'Yeni Yatırım / Varlık Ekle'}
         size="lg"
       >
-        <form onSubmit={handleSaveInvestment} className="space-y-4">
+        <form onSubmit={handleSaveInvestment} className="space-y-3">
           {/* Quick Presets (Only for New Item) */}
           {!editingItem && (
             <div className="space-y-1.5 pb-2 border-b border-border/50">
@@ -1209,9 +1209,9 @@ function InvestmentsContent() {
 
           {/* Real-time preview */}
           {formQuantity && formUnitCost && formCurrentPrice && (
-            <div className="rounded-lg border border-border/80 bg-muted/30 p-3 text-xs space-y-1">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Toplam Yatırılan Maliyet:</span>
+            <div className="rounded-lg border border-border/80 bg-muted/30 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <span>Toplam Maliyet:</span>
                 <span className="font-mono font-semibold text-foreground">
                   {formatCurrency(
                     (parseFloat(formQuantity.replace(',', '.')) || 0) *
@@ -1219,8 +1219,8 @@ function InvestmentsContent() {
                   )}
                 </span>
               </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>Güncel Toplam Değer:</span>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <span>Güncel Değer:</span>
                 <span className="font-mono font-bold text-foreground">
                   {formatCurrency(
                     (parseFloat(formQuantity.replace(',', '.')) || 0) *
@@ -1232,7 +1232,7 @@ function InvestmentsContent() {
           )}
 
           {/* Note */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <label htmlFor="inv-note" className="text-xs font-semibold text-foreground">Not (İsteğe Bağlı)</label>
             <Input
               id="inv-note"
@@ -1243,7 +1243,7 @@ function InvestmentsContent() {
           </div>
 
           {/* Buttons */}
-          <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsModalOpen(false)}>
               İptal
             </Button>
@@ -1260,6 +1260,7 @@ function InvestmentsContent() {
           isOpen={!!quickUpdateItem}
           onClose={() => setQuickUpdateItem(null)}
           title={`Hızlı Fiyat Güncelle: ${quickUpdateItem.name}`}
+          size="sm"
         >
           <form onSubmit={handleSaveQuickPrice} className="space-y-4">
             <p className="text-xs text-muted-foreground">

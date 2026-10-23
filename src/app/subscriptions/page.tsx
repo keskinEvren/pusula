@@ -22,6 +22,8 @@ import {
   DollarSign,
   Receipt,
   RotateCcw,
+  LayoutGrid,
+  TableProperties,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
@@ -38,6 +40,8 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
+import { Sheet } from '@/components/ui/sheet'
+import { ViewToggle } from '@/components/ui/view-toggle'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
 import type { Subscription, Project, Transaction } from '@/types/database'
@@ -66,7 +70,19 @@ export default function SubscriptionsPage() {
   const [activeTab, setActiveTab] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Add / Edit Modal State
+  // View mode: 'table' | 'grid'
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pusula_sub_view')
+      if (saved === 'grid' || saved === 'table') {
+        setViewMode(saved)
+      }
+    } catch {}
+  }, [])
+
+  // Add / Edit Modal / Sheet State
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSub, setEditingSub] = useState<Subscription | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -664,18 +680,33 @@ export default function SubscriptionsPage() {
           </button>
         </div>
 
-        <div className="relative w-full sm:w-64 shrink-0">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Abonelik veya harcama ara..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-9 text-xs"
+        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          <ViewToggle
+            value={viewMode}
+            onChange={(val) => {
+              setViewMode(val)
+              try {
+                localStorage.setItem('pusula_sub_view', val)
+              } catch {}
+            }}
+            options={[
+              { value: 'table', label: 'Tablo', icon: TableProperties },
+              { value: 'grid', label: 'Kartlar', icon: LayoutGrid },
+            ]}
           />
+          <div className="relative flex-1 sm:w-56">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Abonelik ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-9 text-xs"
+            />
+          </div>
         </div>
       </div>
 
-      {/* GİDER LİSTESİ / TASARRUF KARTLARI */}
+      {/* GİDER LİSTESİ / TABLO VEYA TASARRUF KARTLARI */}
       {displayedList.length === 0 ? (
         <Card className="border-dashed border-border bg-card/40 p-12 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-3">
@@ -699,12 +730,203 @@ export default function SubscriptionsPage() {
               </Button>
               <Button size="sm" onClick={() => handleOpenCreateModal()} className="gap-1.5">
                 <Plus className="h-4 w-4" />
-                <span>Manuel Ekle</span>
+                <span>Yeni Gider Ekle</span>
               </Button>
             </div>
           )}
         </Card>
+      ) : viewMode === 'table' ? (
+        /* TABLO GÖRÜNÜMÜ (TABLE VIEW) */
+        <Card className="border border-border/80 shadow-sm overflow-hidden bg-card rounded-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border/70 bg-muted/30 text-muted-foreground font-semibold">
+                  <th className="p-3 pl-4">Hizmet / Firma</th>
+                  <th className="p-3">Kategori</th>
+                  <th className="p-3">Tutar & Periyot</th>
+                  <th className="p-3">Aylık Eşdeğer</th>
+                  <th className="p-3">Yıllık Yük</th>
+                  <th className="p-3">Ödeme Kaynağı</th>
+                  <th className="p-3">Proje</th>
+                  <th className="p-3">Stratejik Karar</th>
+                  <th className="p-3 pr-4 text-right">İşlemler</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40 font-sans">
+                {displayedList.map((sub) => {
+                  const isArchived = sub.status === 'İptal' || sub.decision === 'İptal Et'
+                  const meta = getCategoryMeta(sub.model)
+                  const Icon = meta.icon
+                  const normPeriod = normalizeSubscriptionPeriod(sub.period)
+                  const isOneTime = normPeriod === 'Tek Seferlik'
+                  const eq = calculateSubscriptionEquivalent(sub.amount, normPeriod)
+                  const projectName = projects.find((p) => p.id === sub.project_id)?.name
+
+                  return (
+                    <tr
+                      key={sub.id}
+                      className={cn(
+                        'transition-colors hover:bg-muted/20 group',
+                        isArchived && 'opacity-60 bg-muted/10'
+                      )}
+                    >
+                      {/* Hizmet */}
+                      <td className="p-3 pl-4">
+                        <div className="flex items-center gap-2.5 min-w-[180px]">
+                          <div className="p-1.5 rounded-lg bg-muted text-foreground shrink-0">
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-foreground text-xs truncate max-w-[160px]" title={sub.service}>
+                              {sub.service}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {sub.group_type || 'Kişisel'}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Kategori */}
+                      <td className="p-3 whitespace-nowrap">
+                        <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0">
+                          {sub.model}
+                        </Badge>
+                      </td>
+
+                      {/* Tutar & Periyot */}
+                      <td className="p-3 whitespace-nowrap">
+                        <div className="font-mono font-medium text-foreground">
+                          {formatCurrency(sub.amount)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {normPeriod}
+                        </div>
+                      </td>
+
+                      {/* Aylık Eşdeğer */}
+                      <td className="p-3 whitespace-nowrap">
+                        <span className="font-mono font-bold text-foreground text-xs">
+                          {isOneTime ? '—' : `${formatCurrency(eq.monthly)}/ay`}
+                        </span>
+                      </td>
+
+                      {/* Yıllık Yük */}
+                      <td className="p-3 whitespace-nowrap">
+                        <span className="font-mono text-muted-foreground text-[11px]">
+                          {isOneTime ? '—' : formatCurrency(eq.yearly)}
+                        </span>
+                      </td>
+
+                      {/* Ödeme Kaynağı */}
+                      <td className="p-3 whitespace-nowrap text-muted-foreground text-[11px]">
+                        {sub.payment_method || 'Kredi Kartı'}
+                      </td>
+
+                      {/* Proje */}
+                      <td className="p-3 whitespace-nowrap">
+                        {projectName ? (
+                          <span className="font-medium text-foreground text-[11px]">
+                            {projectName}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/60 text-[11px]">Genel</span>
+                        )}
+                      </td>
+
+                      {/* Stratejik Karar (Hücre İçi Tıklanabilir Seçim) */}
+                      <td className="p-3 whitespace-nowrap">
+                        {!isArchived ? (
+                          <div className="inline-flex rounded-lg border border-border/60 bg-muted/30 p-0.5 gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleQuickDecision(sub, 'Devam')}
+                              className={cn(
+                                'px-2 py-0.5 rounded text-[10px] font-medium transition-all',
+                                sub.decision === 'Devam'
+                                  ? 'bg-emerald-500/25 text-emerald-300 font-semibold shadow-xs'
+                                  : 'text-muted-foreground hover:text-foreground'
+                              )}
+                              title="Zorunlu Gider"
+                            >
+                              Zorunlu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickDecision(sub, 'Kararsız')}
+                              className={cn(
+                                'px-2 py-0.5 rounded text-[10px] font-medium transition-all',
+                                sub.decision === 'Kararsız'
+                                  ? 'bg-amber-500/25 text-amber-300 font-semibold shadow-xs'
+                                  : 'text-muted-foreground hover:text-foreground'
+                              )}
+                              title="Gözden Geçir / Tasarruf"
+                            >
+                              İncele
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickDecision(sub, 'İptal Et')}
+                              className={cn(
+                                'px-2 py-0.5 rounded text-[10px] font-medium transition-all',
+                                sub.decision === 'İptal Et'
+                                  ? 'bg-rose-500/25 text-rose-300 font-semibold shadow-xs'
+                                  : 'text-muted-foreground hover:text-rose-400'
+                              )}
+                              title="İptal Et"
+                            >
+                              İptal
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground italic flex items-center gap-1.5">
+                            <span>İptal Edildi</span>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickDecision(sub, 'Devam')}
+                              className="text-primary hover:underline font-semibold"
+                            >
+                              (Geri Al)
+                            </button>
+                          </span>
+                        )}
+                      </td>
+
+                      {/* İşlemler */}
+                      <td className="p-3 pr-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenEditModal(sub)}
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="Düzenle (Yan Çekmece)"
+                            aria-label="Düzenle"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteTargetSub(sub)}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Sil"
+                            aria-label="Sil"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       ) : (
+        /* KART GÖRÜNÜMÜ (GRID VIEW) */
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {displayedList.map((sub) => {
             const isArchived = sub.status === 'İptal' || sub.decision === 'İptal Et'
@@ -905,11 +1127,12 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* MODAL 1: Manuel Ekleme / Düzenleme */}
-      <Modal
+      {/* YAN ÇEKMECE (SLIDE-OVER SHEET): Manuel Ekleme / Düzenleme */}
+      <Sheet
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingSub ? 'Düzenli Gideri Düzenle' : 'Yeni Düzenli Gider / Abonelik Ekle'}
+        description="Abonelik veya tekrarlayan giderinizi yapılandırın. Sağ panel sayesinde arkadaki tablo bağlamını kaybetmeden çalışabilirsiniz."
         size="lg"
       >
         <form onSubmit={handleSaveSubscription} className="space-y-4">
@@ -926,7 +1149,7 @@ export default function SubscriptionsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label htmlFor="sub-category" className="text-xs font-semibold text-muted-foreground">Kategori Türü</label>
               <Select
@@ -934,10 +1157,10 @@ export default function SubscriptionsPage() {
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value as ExpenseCategory })}
               >
-                <option value="Eğlence & Medya">🎬 Eğlence & Medya (Netflix, Prime vb.)</option>
-                <option value="Spor & Yaşam">🏋️ Spor & Yaşam (Spor salonu, kurs)</option>
-                <option value="İletişim & Fatura">📱 İletişim & Fatura (Telefon, İnternet)</option>
-                <option value="Yazılım & SaaS">💻 Yazılım & SaaS (Cursor, ChatGPT vb.)</option>
+                <option value="Eğlence & Medya">🎬 Eğlence & Medya</option>
+                <option value="Spor & Yaşam">🏋️ Spor & Yaşam</option>
+                <option value="İletişim & Fatura">📱 İletişim & Fatura</option>
+                <option value="Yazılım & SaaS">💻 Yazılım & SaaS</option>
                 <option value="Diğer">🏠 Diğer Düzenli Gider</option>
               </Select>
             </div>
@@ -960,7 +1183,7 @@ export default function SubscriptionsPage() {
             const normFormPeriod = normalizeSubscriptionPeriod(form.period)
             const parsedAmt = safeParseAmount(form.amount)
             return (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label htmlFor="sub-amount" className="text-xs font-semibold text-muted-foreground">
                     {normFormPeriod === 'Tek Seferlik'
@@ -1012,7 +1235,7 @@ export default function SubscriptionsPage() {
             )
           })()}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label htmlFor="sub-payment-method" className="text-xs font-semibold text-muted-foreground">
                 Ödeme Yolu / Kart
@@ -1056,27 +1279,27 @@ export default function SubscriptionsPage() {
             </Select>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
               İptal
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Kaydediliyor...' : editingSub ? 'Güncelle' : 'Kaydet'}
+              {submitting ? 'Kaydediliyor...' : editingSub ? 'Değişiklikleri Kaydet' : 'Gideri Ekle'}
             </Button>
           </div>
         </form>
-      </Modal>
+      </Sheet>
 
       {/* MODAL 2: Hareketlerden Hızlı Yakala */}
       <Modal
         isOpen={isPickerOpen}
         onClose={() => setIsPickerOpen(false)}
         title="Hareketlerden Abonelik / Düzenli Gider Yakala"
-        size="lg"
+        size="md"
       >
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <p className="text-xs text-muted-foreground">
-            Geçmiş banka ve kredi kartı işlemlerinizdeki tekrarlayan harcamaları (Netflix, Turkcell, spor salonu vb.) tek tıkla radara ekleyin.
+            Geçmiş işlemlerinizdeki tekrarlayan harcamaları (Netflix, Turkcell vb.) tek tıkla radara ekleyin.
           </p>
 
           <Input
@@ -1088,7 +1311,7 @@ export default function SubscriptionsPage() {
             className="text-xs"
           />
 
-          <div className="max-h-80 overflow-y-auto divide-y divide-border/50 rounded-lg border border-border">
+          <div className="max-h-60 overflow-y-auto divide-y divide-border/50 rounded-lg border border-border">
             {candidateTransactions.length === 0 ? (
               <div className="p-6 text-center text-xs text-muted-foreground">
                 Uygun işlem hareketi bulunamadı.
@@ -1097,13 +1320,13 @@ export default function SubscriptionsPage() {
               candidateTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-2.5 hover:bg-muted/40 transition-colors"
+                  className="flex items-center justify-between p-2 hover:bg-muted/40 transition-colors"
                 >
                   <div className="min-w-0 pr-2">
                     <div className="font-semibold text-xs text-foreground truncate">
                       {tx.merchant || tx.description}
                     </div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
+                    <div className="text-[10px] text-muted-foreground flex items-center gap-2">
                       <span>Son İşlem: {formatDate(tx.date)}</span>
                       <span>•</span>
                       <span>{tx.account_or_card || 'Kart'}</span>
@@ -1117,7 +1340,7 @@ export default function SubscriptionsPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => handleSelectTransactionForSub(tx)}
-                      className="h-7 text-xs px-2 gap-1 text-primary hover:text-primary"
+                      className="h-6 text-[11px] px-2 gap-1 text-primary hover:text-primary"
                     >
                       <span>Radara Al</span>
                       <ArrowRight className="h-3 w-3" />

@@ -1080,9 +1080,10 @@ function DebtsContent() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         title="Yeni Borç / Alacak Satırı Ekle"
+        size="md"
       >
-        <form onSubmit={handleSaveAdd} className="space-y-4">
-          <div className="space-y-1.5">
+        <form onSubmit={handleSaveAdd} className="space-y-3">
+          <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">Tür</label>
             <SegmentedControl<'Alacak' | 'Borç'>
               value={rowForm.type}
@@ -1103,7 +1104,7 @@ function DebtsContent() {
             placeholder="0.00"
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="add-debt-person" className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
               <Input
@@ -1128,33 +1129,35 @@ function DebtsContent() {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="add-debt-description" className="text-xs font-semibold text-foreground">Açıklama</label>
-            <Input
-              id="add-debt-description"
-              required
-              value={rowForm.description}
-              onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
-              placeholder="Örn: Temmuz Ayı Çalışması (Ağustos Maaşı)"
-              className="text-xs"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="sm:col-span-2 space-y-1">
+              <label htmlFor="add-debt-description" className="text-xs font-semibold text-foreground">Açıklama</label>
+              <Input
+                id="add-debt-description"
+                required
+                value={rowForm.description}
+                onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
+                placeholder="Örn: Temmuz Ayı Çalışması"
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="add-debt-past-payments" className="text-xs font-semibold text-foreground">Geçmiş Ödeme</label>
+              <Input
+                id="add-debt-past-payments"
+                type="number"
+                step="0.01"
+                prefix="₺"
+                value={rowForm.past_payments}
+                onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
+                placeholder="0.00"
+                className="text-xs font-mono"
+              />
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="add-debt-past-payments" className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
-            <Input
-              id="add-debt-past-payments"
-              type="number"
-              step="0.01"
-              prefix="₺"
-              value={rowForm.past_payments}
-              onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
-              placeholder="0.00"
-              className="text-xs font-mono"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
               İptal
             </Button>
@@ -1170,9 +1173,10 @@ function DebtsContent() {
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         title="Satırı Düzenle"
+        size="md"
       >
-        <form onSubmit={handleSaveEdit} className="space-y-4">
-          <div className="space-y-1.5">
+        <form onSubmit={handleSaveEdit} className="space-y-3">
+          <div className="space-y-1">
             <label className="text-xs font-semibold text-foreground">Tür</label>
             <SegmentedControl<'Alacak' | 'Borç'>
               value={rowForm.type}
@@ -1193,7 +1197,7 @@ function DebtsContent() {
             placeholder="0.00"
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label htmlFor="edit-debt-person" className="text-xs font-semibold text-foreground">Kişi / Kurum</label>
               <Input
@@ -1216,31 +1220,33 @@ function DebtsContent() {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="edit-debt-description" className="text-xs font-semibold text-foreground">Açıklama</label>
-            <Input
-              id="edit-debt-description"
-              required
-              value={rowForm.description}
-              onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
-              className="text-xs"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="sm:col-span-2 space-y-1">
+              <label htmlFor="edit-debt-description" className="text-xs font-semibold text-foreground">Açıklama</label>
+              <Input
+                id="edit-debt-description"
+                required
+                value={rowForm.description}
+                onChange={(e) => setRowForm({ ...rowForm, description: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="edit-debt-past-payments" className="text-xs font-semibold text-foreground">Geçmiş Ödeme</label>
+              <Input
+                id="edit-debt-past-payments"
+                type="number"
+                step="0.01"
+                prefix="₺"
+                value={rowForm.past_payments}
+                onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
+                className="text-xs font-mono"
+              />
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="edit-debt-past-payments" className="text-xs font-semibold text-foreground">Geçmiş Ödeme / Mahsup</label>
-            <Input
-              id="edit-debt-past-payments"
-              type="number"
-              step="0.01"
-              prefix="₺"
-              value={rowForm.past_payments}
-              onChange={(e) => setRowForm({ ...rowForm, past_payments: e.target.value })}
-              className="text-xs font-mono"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
               İptal
             </Button>

@@ -51,11 +51,11 @@ export function HeroCurrencyInput({
   }
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn('space-y-1.5', className)}>
       {label && (
         <div className="flex items-center justify-between">
           <label htmlFor={inputId} className="text-xs font-medium text-muted-foreground cursor-pointer">{label}</label>
-          <span className={cn('px-2 py-0.5 rounded-md text-[11px] font-semibold border', badgeStyles[type])}>
+          <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-semibold border', badgeStyles[type])}>
             {typeLabels[type]}
           </span>
         </div>
@@ -63,12 +63,12 @@ export function HeroCurrencyInput({
 
       <div
         className={cn(
-          'relative flex items-center justify-between rounded-xl border border-border/80 bg-background/50 px-4 py-3 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] transition-all focus-within:ring-2',
+          'relative flex items-center justify-between rounded-xl border border-border/80 bg-background/50 px-3.5 py-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] transition-all focus-within:ring-2',
           accentStyles[type]
         )}
       >
-        <div className="flex items-baseline gap-2 w-full min-w-0">
-          <span className="text-2xl font-light text-muted-foreground/60 select-none">
+        <div className="flex items-baseline gap-1.5 w-full min-w-0">
+          <span className="text-xl font-light text-muted-foreground/60 select-none">
             {currencySymbol}
           </span>
           <input
@@ -80,12 +80,12 @@ export function HeroCurrencyInput({
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             autoFocus={autoFocus}
-            className="w-full bg-transparent font-mono text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/20 tabular-nums"
+            className="w-full bg-transparent font-mono text-xl sm:text-2xl font-extrabold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/20 tabular-nums"
           />
         </div>
 
         {!label && (
-          <div className={cn('px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border shrink-0', badgeStyles[type])}>
+          <div className={cn('px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border shrink-0', badgeStyles[type])}>
             {typeLabels[type]}
           </div>
         )}
@@ -93,7 +93,7 @@ export function HeroCurrencyInput({
 
       {/* Ergonomik Hızlı Tutar Çipleri */}
       {presets.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5">
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
           {presets.map((preset) => (
             <button
               key={preset}
@@ -102,7 +102,7 @@ export function HeroCurrencyInput({
                 const current = parseFloat(strValue) || 0
                 onChange((current + preset).toString())
               }}
-              className="rounded-lg border border-border/60 bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground hover:bg-muted/70 hover:text-foreground active:scale-95 transition-all"
+              className="rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted/70 hover:text-foreground active:scale-95 transition-all"
             >
               +{preset.toLocaleString('tr-TR')} ₺
             </button>

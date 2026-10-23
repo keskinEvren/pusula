@@ -1456,7 +1456,7 @@ function RoutinesPageContent() {
         onClose={() => setIsFormOpen(false)}
         title={editingRoutine ? 'Rutini Düzenle' : 'Yeni Rutin / Ritüel Ekle'}
       >
-        <form onSubmit={handleSaveRoutine} className="space-y-4">
+        <form onSubmit={handleSaveRoutine} className="space-y-3">
           <div className="flex gap-3">
             <div className="w-14 shrink-0">
               <label htmlFor="routine-form-icon" className="text-xs font-semibold block mb-1 text-muted-foreground">İkon</label>
@@ -1482,7 +1482,7 @@ function RoutinesPageContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
               <label htmlFor="routine-form-timeblock" className="text-xs font-semibold block mb-1 text-muted-foreground">Zaman Dilimi</label>
               <Select
@@ -1547,55 +1547,54 @@ function RoutinesPageContent() {
               }
               placeholder="Zor günlerde: 1 sayfa oku / 2 dk esne / 1 satır kod yaz"
             />
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Yorgun olduğunda zinciri kurtaracak 2 dakikalık acil durum görevi.
-            </p>
           </div>
 
           {/* Hayallerim & Kimlik Köprüsü */}
-          <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-3">
+          <div className="p-2.5 rounded-lg border border-border/60 bg-muted/20 space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-              <Compass className="h-4 w-4" />
+              <Compass className="h-3.5 w-3.5" />
               <span>Hayallerim & Kimlik Köprüsü (Life OS)</span>
             </div>
 
-            <div>
-              <label htmlFor="routine-form-dream" className="text-xs text-muted-foreground block mb-1">
-                Bağlı Hayal / Vizyon
-              </label>
-              <Select
-                id="routine-form-dream"
-                value={formData.dream_id}
-                onChange={(e) => {
-                  const selected = dreams.find((d) => d.id === e.target.value)
-                  setFormData({
-                    ...formData,
-                    dream_id: e.target.value,
-                    identity_persona: selected?.identity_persona || formData.identity_persona,
-                  })
-                }}
-              >
-                <option value="">(İsteğe bağlı bir hayale bağla)</option>
-                {dreams.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.title} ({d.identity_persona || 'Kimliksiz'})
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label htmlFor="routine-form-dream" className="text-xs text-muted-foreground block mb-1">
+                  Bağlı Hayal / Vizyon
+                </label>
+                <Select
+                  id="routine-form-dream"
+                  value={formData.dream_id}
+                  onChange={(e) => {
+                    const selected = dreams.find((d) => d.id === e.target.value)
+                    setFormData({
+                      ...formData,
+                      dream_id: e.target.value,
+                      identity_persona: selected?.identity_persona || formData.identity_persona,
+                    })
+                  }}
+                >
+                  <option value="">(İsteğe bağlı bir hayale bağla)</option>
+                  {dreams.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.title} ({d.identity_persona || 'Kimliksiz'})
+                    </option>
+                  ))}
+                </Select>
+              </div>
 
-            <div>
-              <label htmlFor="routine-form-persona" className="text-xs text-muted-foreground block mb-1">
-                Hedeflenen Kimlik Personası
-              </label>
-              <Input
-                id="routine-form-persona"
-                value={formData.identity_persona}
-                onChange={(e) =>
-                  setFormData({ ...formData, identity_persona: e.target.value })
-                }
-                placeholder="Örn: Bağımsız Üretici, Sakin Zihin, Dayanıklı Sporcu"
-              />
+              <div>
+                <label htmlFor="routine-form-persona" className="text-xs text-muted-foreground block mb-1">
+                  Hedeflenen Kimlik Personası
+                </label>
+                <Input
+                  id="routine-form-persona"
+                  value={formData.identity_persona}
+                  onChange={(e) =>
+                    setFormData({ ...formData, identity_persona: e.target.value })
+                  }
+                  placeholder="Örn: Bağımsız Üretici, Sakin Zihin"
+                />
+              </div>
             </div>
           </div>
 
@@ -1622,46 +1621,47 @@ function RoutinesPageContent() {
           setIsTimerRunning(false)
         }}
         title={`Zen Odak Sayacı: ${activeTimerRoutine?.title || 'Odak'}`}
+        size="md"
       >
-        <div className="text-center py-6 space-y-6">
-          <div className="inline-block p-8 rounded-full border-4 border-primary/30 bg-primary/5 shadow-2xl relative">
-            <div className="text-5xl sm:text-6xl font-mono font-bold tracking-tight text-foreground">
+        <div className="text-center py-3 space-y-4">
+          <div className="inline-block px-7 py-6 rounded-full border-4 border-primary/30 bg-primary/5 shadow-2xl relative">
+            <div className="text-4xl sm:text-5xl font-mono font-bold tracking-tight text-foreground">
               {String(Math.floor(timerSecondsLeft / 60)).padStart(2, '0')}:
               {String(timerSecondsLeft % 60).padStart(2, '0')}
             </div>
-            <div className="text-xs text-muted-foreground mt-2 font-medium">
+            <div className="text-xs text-muted-foreground mt-1.5 font-medium">
               {activeTimerRoutine?.identity_persona
                 ? `Oy Verilen Kimlik: ${activeTimerRoutine.identity_persona}`
                 : 'Derin Odak Seansı'}
             </div>
           </div>
 
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <Button
-              size="lg"
+              size="sm"
               variant={isTimerRunning ? 'outline' : 'default'}
               onClick={() => setIsTimerRunning(!isTimerRunning)}
-              className="gap-2 px-6"
+              className="gap-1.5 px-4"
             >
-              {isTimerRunning ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              {isTimerRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               <span>{isTimerRunning ? 'Duraklat' : 'Başlat'}</span>
             </Button>
 
             <Button
-              size="lg"
+              size="sm"
               variant="outline"
               onClick={() => {
                 setIsTimerRunning(false)
                 setTimerSecondsLeft((activeTimerRoutine?.target_duration_minutes || 25) * 60)
               }}
-              className="gap-2"
+              className="gap-1.5"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="h-3.5 w-3.5" />
               <span>Sıfırla</span>
             </Button>
 
             <Button
-              size="lg"
+              size="sm"
               variant="secondary"
               onClick={() => {
                 if (activeTimerRoutine) {
@@ -1670,9 +1670,9 @@ function RoutinesPageContent() {
                   setIsTimerRunning(false)
                 }
               }}
-              className="gap-2 text-emerald-400"
+              className="gap-1.5 text-emerald-400"
             >
-              <Check className="h-5 w-5" />
+              <Check className="h-4 w-4" />
               <span>Tamamlandı İşaretle</span>
             </Button>
           </div>
@@ -1684,6 +1684,7 @@ function RoutinesPageContent() {
         isOpen={!!noteRoutine}
         onClose={() => setNoteRoutine(null)}
         title={`Günün Notu: ${noteRoutine?.title || ''}`}
+        size="sm"
       >
         <div className="space-y-4">
           <label htmlFor="routine-note-input" className="text-xs text-muted-foreground block">
