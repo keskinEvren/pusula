@@ -14,4 +14,12 @@ describe('route protection', () => {
     const response = await proxy(new NextRequest('http://localhost/accounts'))
     expect(response.headers.get('location')).toBe('http://localhost/login')
   })
+  it.each(['/sw.js', '/manifest.json', '/icon.svg', '/api/cron/morning', '/api/cron/evening'])(
+    'allows %s without redirecting to login',
+    async (publicPath) => {
+      getUser.mockResolvedValue({ data: { user: null } })
+      const response = await proxy(new NextRequest('http://localhost' + publicPath))
+      expect(response.headers.get('location')).toBeNull()
+    }
+  )
 })

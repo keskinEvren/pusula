@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/client', () => ({
 
 describe('Reconciler Tests', () => {
   describe('reconcileBankMovement', () => {
-    it('Salary EFT inflow -> receivable match by name', () => {
+    it('Salary EFT inflow -> FREE_INCOME (debts/receivables are never auto-closed from bank statements)', () => {
       const debts: Debt[] = [{
         id: '1',
         user_id: '1',
@@ -26,10 +26,12 @@ describe('Reconciler Tests', () => {
         updated_at: '2023',
       }]
       const result = reconcileBankMovement('GELEN EFT: MAAŞ', 5000, 'inflow', debts)
-      expect(result.action).toBe('COLLECT_RECEIVABLE')
+      expect(result.action).toBe('FREE_INCOME')
+      expect(result.target_debt_id).toBeUndefined()
+      expect(result.classification_status).toBe('HIGH_CONFIDENCE')
     })
 
-    it('Amount match receivable (name unclear)', () => {
+    it('Amount matching receivable is not auto-selected -> FREE_INCOME', () => {
       const debts = [{
         id: '2',
         user_id: '1',
@@ -44,7 +46,8 @@ describe('Reconciler Tests', () => {
         created_at: '2023'
       }] as any
       const result = reconcileBankMovement('GELEN TRANSFER', 1234.56, 'inflow', debts)
-      expect(result.action).toBe('COLLECT_RECEIVABLE')
+      expect(result.action).toBe('FREE_INCOME')
+      expect(result.target_debt_id).toBeUndefined()
     })
 
     it('Free income (unrecognized inflow)', () => {
@@ -87,7 +90,7 @@ describe('Reconciler Tests', () => {
       expect(result.reasons[0]).toMatch(/birden fazla kart/)
     })
 
-    it('Personal debt repayment -> Borc Odemesi', () => {
+    it('Personal debt wording -> DIRECT_EXPENSE (debts are closed manually)', () => {
       const debts = [{
         id: '3',
         user_id: '1',
@@ -102,12 +105,14 @@ describe('Reconciler Tests', () => {
         created_at: '2023'
       }] as any
       const result = reconcileBankMovement('MEHMET BORÇ ÖDEME', 200, 'outflow', debts)
-      expect(result.action).toBe('PAY_DEBT')
+      expect(result.action).toBe('DIRECT_EXPENSE')
+      expect(result.target_debt_id).toBeUndefined()
     })
 
-    it('Inter-account transfer -> Transfer', () => {
+    it('Inter-account transfer -> Transfer + HIGH_CONFIDENCE', () => {
       const result = reconcileBankMovement('VİRMAN', 50, 'outflow')
       expect(result.action).toBe('INTERNAL_TRANSFER')
+      expect(result.classification_status).toBe('HIGH_CONFIDENCE')
     })
 
     it('FAST/cash expense -> Harcama', () => {
@@ -138,14 +143,14 @@ describe('Reconciler Tests', () => {
       expect(out.action).toBe('DIRECT_EXPENSE')
     })
 
-    it('Two debts same amount -> ambiguity handling', () => {
+    it('Two debts same amount -> does not auto-match debt, stays FREE_INCOME', () => {
       const debts = [
         { id: '1', type: 'Alacak', remaining: 100, person_or_entity: 'A', status: 'Açık', user_id: '1', principal: 100, currency: 'TRY', category: 'X', created_at: 'X' },
         { id: '2', type: 'Alacak', remaining: 100, person_or_entity: 'B', status: 'Açık', user_id: '1', principal: 100, currency: 'TRY', category: 'Y', created_at: 'X' }
       ] as any
       const result = reconcileBankMovement('GELEN EFT', 100, 'inflow', debts)
-      expect(result.action).toBe('COLLECT_RECEIVABLE')
-      expect(result.classification_status).toBe('NEEDS_REVIEW')
+      expect(result.action).toBe('FREE_INCOME')
+      expect(result.classification_status).toBe('HIGH_CONFIDENCE')
     })
   })
 })

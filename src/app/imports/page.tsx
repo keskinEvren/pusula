@@ -37,9 +37,11 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
+import { useToast } from '@/lib/toast-context'
 import type { Transaction } from '@/types/database'
 
 export default function ImportsPage() {
+  const { toast } = useToast()
   const [batches, setBatches] = useState<EnrichedImportBatch[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -123,23 +125,31 @@ export default function ImportsPage() {
       const res = await rollbackImportBatch(supabase, rollbackTarget.id, user.id)
 
       if (res.success) {
+        const msg = `"${rollbackTarget.file_name}" ekstresi başarıyla geri alındı. ${res.deletedTransactions} hareket ve bağlı ekstre özetleri temizlendi.`
         setNotice({
           type: 'success',
-          message: `"${rollbackTarget.file_name}" ekstresi başarıyla geri alındı. ${res.deletedTransactions} hareket ve bağlı ekstre özetleri temizlendi.`,
+          message: msg,
         })
+        toast.success(msg)
         setRollbackTarget(null)
         await loadBatches()
       } else {
+        const errMsg = res.error || 'Geri alma işlemi sırasında bir hata oluştu.'
         setNotice({
           type: 'error',
-          message: res.error || 'Geri alma işlemi sırasında bir hata oluştu.',
+          message: errMsg,
         })
+        toast.error(errMsg, 6000)
+        setRollbackTarget(null)
       }
     } catch (err: any) {
+      const errMsg = err.message || 'Geri alma işlemi başarısız oldu.'
       setNotice({
         type: 'error',
-        message: err.message || 'Geri alma işlemi başarısız oldu.',
+        message: errMsg,
       })
+      toast.error(errMsg, 6000)
+      setRollbackTarget(null)
     } finally {
       setRollingBack(false)
     }
@@ -161,23 +171,31 @@ export default function ImportsPage() {
 
       const res = await deleteImportBatchPermanently(supabase, deleteTarget.id, user.id)
       if (res.success) {
+        const msg = `"${deleteTarget.file_name}" kaydı geçmişten tamamen kaldırıldı.`
         setNotice({
           type: 'success',
-          message: `"${deleteTarget.file_name}" kaydı geçmişten tamamen kaldırıldı.`,
+          message: msg,
         })
+        toast.success(msg)
         setDeleteTarget(null)
         await loadBatches()
       } else {
+        const errMsg = res.error || 'Silme işlemi başarısız oldu.'
         setNotice({
           type: 'error',
-          message: res.error || 'Silme işlemi başarısız oldu.',
+          message: errMsg,
         })
+        toast.error(errMsg, 6000)
+        setDeleteTarget(null)
       }
     } catch (err: any) {
+      const errMsg = err.message || 'Silme işlemi başarısız oldu.'
       setNotice({
         type: 'error',
-        message: err.message || 'Silme işlemi başarısız oldu.',
+        message: errMsg,
       })
+      toast.error(errMsg, 6000)
+      setDeleteTarget(null)
     } finally {
       setDeleting(false)
     }

@@ -335,6 +335,60 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const restored = await db.query<{ balance: string }>('select balance from accounts where id=$1', [source])
     expect(Number(restored.rows[0].balance)).toBe(Number(before.rows[0].balance))
 
+    // Verify CARD_PAYMENT statement_date guard:
+    // A payment on/before statement_date does NOT reduce current_debt (already reflected in statement),
+    // whereas a payment strictly after statement_date reduces current_debt.
+    const stmtCard = '88888888-8888-4888-8888-888888888888'
+    await db.query(
+      'insert into credit_cards(id,user_id,bank,card_name,current_debt,statement_date) values ($1,$2,$3,$4,1000,$5)',
+      [stmtCard, userA, 'Akbank', 'Axess', '2026-09-15']
+    )
+    const cardPayPayload = {
+      ...payload,
+      idempotency_key: 'db-test-card-stmt-date-guard-v1',
+      file_hash: 'db-test-card-stmt-date-guard-hash-v1',
+      transactions: [
+        {
+          ...payload.transactions[0],
+          row_index: 0,
+          date: '2026-09-10', // before statement_date -> should NOT reduce current_debt
+          type: 'Kart Ödemesi',
+          action: 'CARD_PAYMENT',
+          target_card_id: stmtCard,
+          amount: 300,
+          analysis_group: 'Hariç',
+          classification_status: 'HIGH_CONFIDENCE',
+          external_reference: 'BANK-REF-CARD-OLD-1',
+          source_fingerprint: 'strong-fp-card-old-1',
+          weak_fingerprint: 'weak-fp-card-old-1',
+        },
+        {
+          ...payload.transactions[0],
+          row_index: 1,
+          date: '2026-09-20', // after statement_date -> SHOULD reduce current_debt by 200
+          type: 'Kart Ödemesi',
+          action: 'CARD_PAYMENT',
+          target_card_id: stmtCard,
+          amount: 200,
+          analysis_group: 'Hariç',
+          classification_status: 'HIGH_CONFIDENCE',
+          external_reference: 'BANK-REF-CARD-NEW-1',
+          source_fingerprint: 'strong-fp-card-new-1',
+          weak_fingerprint: 'weak-fp-card-new-1',
+        },
+      ],
+    }
+    const cardPayRes = await db.query<{ result: any }>(
+      'select fn_commit_statement_import_atomic($1::jsonb) as result',
+      [JSON.stringify(cardPayPayload)]
+    )
+    expect(cardPayRes.rows[0].result.success).toBe(true)
+    const cardAfter = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
+    expect(Number(cardAfter.rows[0].current_debt)).toBe(800)
+    await db.query('select rollback_statement_import($1::uuid,$2::uuid)', [cardPayRes.rows[0].result.import_id, userA])
+    const cardRestored = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
+    expect(Number(cardRestored.rows[0].current_debt)).toBe(1000)
+
     const foreignProject = '77777777-7777-4777-8777-777777777777'
     await asUser(userB)
     await db.query(
@@ -397,6 +451,52 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], subscriptions:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], project_tasks:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
     await expect(db.query('select fn_restore_vault_replace_atomic($1::jsonb)',[JSON.stringify(invalid)])).rejects.toThrow()
     expect((await db.query('select name,balance from accounts where id=$1',[source])).rows).toEqual(before.rows)
+  })
+
+  it('notification triggers schema: isolates push_subscriptions and preferences across users', async () => {
+    // 1. User A inserts push subscription and preferences
+    await asUser(userA)
+    const endpointA = 'https://fcm.googleapis.com/fcm/send/device-user-a'
+    await db.query(
+      `insert into push_subscriptions(user_id, endpoint, p256dh, auth, user_agent)
+       values ($1, $2, 'key-a', 'auth-a', 'Chrome')`,
+      [userA, endpointA]
+    )
+    await db.query(
+      `insert into notification_preferences(user_id, email, morning_enabled, evening_enabled, weekly_finance_enabled)
+       values ($1, 'user-a@example.com', true, true, true)`,
+      [userA]
+    )
+
+    // User A can read own subscription and preferences
+    const subsA = await db.query('select endpoint from push_subscriptions')
+    expect(subsA.rows).toEqual([{ endpoint: endpointA }])
+    const prefsA = await db.query('select email from notification_preferences')
+    expect(prefsA.rows).toEqual([{ email: 'user-a@example.com' }])
+
+    // 2. User B cannot read, update, or delete User A's push subscriptions or preferences
+    await asUser(userB)
+    const subsB = await db.query('select endpoint from push_subscriptions')
+    expect(subsB.rows).toEqual([])
+    const prefsB = await db.query('select email from notification_preferences')
+    expect(prefsB.rows).toEqual([])
+
+    // User B cannot delete User A's subscription
+    await db.query('delete from push_subscriptions where endpoint = $1', [endpointA])
+    // User B cannot update User A's preferences
+    await db.query(`update notification_preferences set email = 'hacked@example.com' where user_id = $1`, [userA])
+
+    // 3. User A's data remains untouched
+    await asUser(userA)
+    const checkSubs = await db.query('select endpoint from push_subscriptions')
+    expect(checkSubs.rows).toEqual([{ endpoint: endpointA }])
+    const checkPrefs = await db.query('select email, last_morning_sent_date from notification_preferences')
+    expect(checkPrefs.rows).toEqual([{ email: 'user-a@example.com', last_morning_sent_date: null }])
+
+    // Update idempotency field works for owner
+    await db.query(`update notification_preferences set last_morning_sent_date = '2026-10-16' where user_id = $1`, [userA])
+    const updatedPrefs = await db.query('select last_morning_sent_date from notification_preferences where user_id = $1', [userA])
+    expect(updatedPrefs.rows).toEqual([{ last_morning_sent_date: '2026-10-16' }])
   })
 })
 

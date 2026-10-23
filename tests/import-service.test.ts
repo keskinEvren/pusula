@@ -102,6 +102,21 @@ describe('Import Service Testleri', () => {
       expect(parsed.status).toBe('FAILED')
       expect(parsed.file_hash).toBeNull()
     })
+
+    it('parseBatchMeta SQL satır kolonlarını raw_text içindeki eski duruma tercih etmelidir', () => {
+      const parsed = parseBatchMeta({
+        id: 'imp-1',
+        status: 'ROLLED_BACK',
+        import_type: 'bank_account',
+        file_hash: 'sql-hash',
+        rolled_back_at: '2026-10-23T08:42:51Z',
+        raw_text: JSON.stringify({ status: 'COMPLETED', parser_version: '2026-09-risk-aware-v1' }),
+      })
+      expect(parsed.status).toBe('ROLLED_BACK')
+      expect(parsed.import_type).toBe('bank_account')
+      expect(parsed.file_hash).toBe('sql-hash')
+      expect(parsed.rolled_back_at).toBe('2026-10-23T08:42:51Z')
+    })
   })
 
   describe('Duplicate Hash Kontrolü', () => {
@@ -115,7 +130,16 @@ describe('Import Service Testleri', () => {
     })
 
     it('Aynı hash mevcut ama ROLLED_BACK durumunda ise duplicate dönmemelidir', async () => {
-      mockEq.mockResolvedValueOnce({ data: [{ raw_text: JSON.stringify({ file_hash: 'hash123', status: 'ROLLED_BACK' }) }], error: null })
+      mockEq.mockResolvedValueOnce({
+        data: [
+          {
+            file_hash: 'hash123',
+            status: 'ROLLED_BACK',
+            raw_text: JSON.stringify({ status: 'COMPLETED', parser_version: '2026-09-risk-aware-v1' }),
+          },
+        ],
+        error: null,
+      })
       
       const res = await checkDuplicateFileHash(mockSupabase, 'user1', 'hash123')
       expect(res.isDuplicate).toBe(false)
@@ -228,7 +252,17 @@ describe('Import Service Testleri', () => {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         order: vi.fn().mockResolvedValue({
-          data: [{ id: 'imp-1', raw_text: JSON.stringify({ status: 'COMPLETED' }) }],
+          data: [
+            { id: 'imp-1', raw_text: JSON.stringify({ status: 'COMPLETED' }) },
+            {
+              id: 'imp-2',
+              status: 'ROLLED_BACK',
+              import_type: 'bank_account',
+              file_hash: 'hash-rb',
+              rolled_back_at: '2026-10-23T08:42:51Z',
+              raw_text: JSON.stringify({ status: 'COMPLETED', parser_version: '2026-09-risk-aware-v1' }),
+            },
+          ],
           error: null
         })
       }
@@ -246,9 +280,13 @@ describe('Import Service Testleri', () => {
       })
 
       const batches = await fetchImportBatches(mockSupabase, 'u1')
-      expect(batches.length).toBe(1)
+      expect(batches.length).toBe(2)
       expect(batches[0].batch_status).toBe('COMPLETED')
       expect(batches[0].actual_tx_count).toBe(2)
+      expect(batches[1].batch_status).toBe('ROLLED_BACK')
+      expect(batches[1].import_type).toBe('bank_account')
+      expect(batches[1].file_hash).toBe('hash-rb')
+      expect(batches[1].rolled_back_at).toBe('2026-10-23T08:42:51Z')
     })
 
     it('deleteImportBatchPermanently kayıtları kaldırmalıdır', async () => {

@@ -13,6 +13,13 @@ import {
   ArrowRight,
   FolderKanban,
   ShieldCheck,
+  Bell,
+  BellRing,
+  Smartphone,
+  Mail,
+  Sun,
+  Moon,
+  Loader2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
@@ -25,7 +32,13 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
-import type { Account, MerchantMapping, Project } from '@/types/database'
+import {
+  isPushSupported,
+  subscribeBrowserToPush,
+  unsubscribeBrowserFromPush,
+  getCurrentPushSubscription,
+} from '@/lib/push-client'
+import type { Account, MerchantMapping, Project, NotificationPreference } from '@/types/database'
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -33,6 +46,17 @@ export default function SettingsPage() {
   const [mappings, setMappings] = useState<MerchantMapping[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Bildirimler & Tetikleyiciler Durumu
+  const [notificationPref, setNotificationPref] = useState<NotificationPreference | null>(null)
+  const [deviceCount, setDeviceCount] = useState<number>(0)
+  const [vapidPublicKey, setVapidPublicKey] = useState<string>('')
+  const [isSubscribedDevice, setIsSubscribedDevice] = useState<boolean>(false)
+  const [pushSupported, setPushSupported] = useState<boolean>(false)
+  const [emailInput, setEmailInput] = useState<string>('')
+  const [savingEmail, setSavingEmail] = useState<boolean>(false)
+  const [togglingPush, setTogglingPush] = useState<boolean>(false)
+  const [testingMode, setTestingMode] = useState<'morning' | 'evening' | null>(null)
 
   // Silme Onay Modalları
   const [accountToDelete, setAccountToDelete] = useState<{ id: string; name: string } | null>(null)
@@ -60,6 +84,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSettingsData()
+    loadNotificationSettings()
   }, [])
 
   async function loadSettingsData() {
@@ -79,6 +104,138 @@ export default function SettingsPage() {
       console.error('Error loading settings:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadNotificationSettings() {
+    const supported = isPushSupported()
+    setPushSupported(supported)
+    try {
+      const res = await fetch('/api/notifications/preferences')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.preferences) {
+          setNotificationPref(data.preferences)
+          setEmailInput(data.preferences.email || '')
+        }
+        setDeviceCount(data.deviceCount || 0)
+        if (data.vapidPublicKey) {
+          setVapidPublicKey(data.vapidPublicKey)
+        }
+      }
+
+      if (supported) {
+        const sub = await getCurrentPushSubscription()
+        setIsSubscribedDevice(!!sub)
+      }
+    } catch (err) {
+      console.error('Error loading notification preferences:', err)
+    }
+  }
+
+  const handleTogglePush = async () => {
+    if (!vapidPublicKey) {
+      toast.error('VAPID anahtarı yapılandırılmamış.')
+      return
+    }
+    setTogglingPush(true)
+    try {
+      if (isSubscribedDevice) {
+        const res = await unsubscribeBrowserFromPush()
+        if (res.success) {
+          setIsSubscribedDevice(false)
+          setDeviceCount((prev) => Math.max(0, prev - 1))
+          toast.success('Bu cihaz için push bildirimleri kapatıldı.')
+        } else {
+          toast.error(res.error || 'Abonelik iptal edilemedi.')
+        }
+      } else {
+        const res = await subscribeBrowserToPush(vapidPublicKey)
+        if (res.success) {
+          setIsSubscribedDevice(true)
+          setDeviceCount((prev) => prev + 1)
+          toast.success('Bu cihazda Web Push bildirimleri başarıyla etkinleştirildi! 🔔')
+        } else {
+          toast.error(res.error || 'Bildirim izni alınamadı.')
+        }
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'İşlem başarısız.')
+    } finally {
+      setTogglingPush(false)
+    }
+  }
+
+  const handleUpdatePrefToggle = async (key: keyof NotificationPreference, value: boolean) => {
+    if (!notificationPref) return
+    const prev = { ...notificationPref }
+    setNotificationPref({ ...notificationPref, [key]: value })
+
+    try {
+      const res = await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      })
+      if (!res.ok) {
+        setNotificationPref(prev)
+        toast.error('Tercih kaydedilemedi.')
+      } else {
+        toast.success('Tercih güncellendi.')
+      }
+    } catch {
+      setNotificationPref(prev)
+      toast.error('Bağlantı hatası.')
+    }
+  }
+
+  const handleSaveEmail = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingEmail(true)
+    try {
+      const res = await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailInput }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.preferences) setNotificationPref(data.preferences)
+        toast.success('Bildirim e-posta adresi kaydedildi.')
+      } else {
+        toast.error('E-posta kaydedilemedi.')
+      }
+    } catch {
+      toast.error('Bağlantı hatası.')
+    } finally {
+      setSavingEmail(false)
+    }
+  }
+
+  const handleTestNotification = async (mode: 'morning' | 'evening') => {
+    setTestingMode(mode)
+    try {
+      const res = await fetch('/api/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const emailMsg = data.emailResult?.attempted
+          ? (data.emailResult.success ? 'E-posta yollandı' : `E-posta: ${data.emailResult.error}`)
+          : 'E-posta atlandı'
+        const pushMsg = data.pushResult?.attempted
+          ? (data.pushResult.success ? `${data.pushResult.sentCount} cihaza iletildi` : `Push: ${data.pushResult.error}`)
+          : 'Push atlandı'
+        toast.success(`${mode === 'morning' ? 'Sabah Brifingi' : 'Akşam Kapanışı'} test bildirimi iletildi! (${emailMsg} • ${pushMsg})`)
+      } else {
+        toast.error(data.error || 'Test bildirimi gönderilemedi.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'İstek zaman aşımına uğradı.')
+    } finally {
+      setTestingMode(null)
     }
   }
 
@@ -260,6 +417,208 @@ export default function SettingsPage() {
               <span>Kasaya Git →</span>
             </Button>
           </Link>
+        </CardContent>
+      </Card>
+
+      {/* 🔔 BİLDİRİMLER & GÜNLÜK TETİKLEYİCİLER */}
+      <Card className="border-border/60 bg-card/60 shadow-sm overflow-hidden">
+        <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 shrink-0">
+                <BellRing className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <span>Bildirimler & Günlük Tetikleyiciler</span>
+                  <Badge variant="outline" className="border-amber-500/40 text-amber-400 bg-amber-500/10 text-[11px]">
+                    PWA Push + E-posta
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                  Sabah odak brifingi, akşam streak koruması ve finansal olay alarmları.
+                </CardDescription>
+              </div>
+            </div>
+
+            {/* Test Butonları */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleTestNotification('morning')}
+                disabled={testingMode !== null}
+                className="text-xs h-8 gap-1.5 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-300"
+              >
+                {testingMode === 'morning' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sun className="h-3.5 w-3.5 text-amber-400" />}
+                <span>Sabahı Test Et</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleTestNotification('evening')}
+                disabled={testingMode !== null}
+                className="text-xs h-8 gap-1.5 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
+              >
+                {testingMode === 'evening' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Moon className="h-3.5 w-3.5 text-emerald-400" />}
+                <span>Akşamı Test Et</span>
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-4 sm:p-5 space-y-5">
+          {/* Cihaz Push Durumu Bloğu */}
+          <div className="p-4 rounded-xl border border-border/60 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-background border border-border/80 text-primary shrink-0">
+                <Smartphone className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold flex items-center gap-2">
+                  <span>Bu Cihazda Web Push Bildirimleri</span>
+                  {!pushSupported ? (
+                    <Badge variant="outline" className="border-rose-500/40 text-rose-400 bg-rose-500/10 text-[10px]">
+                      Desteklenmiyor
+                    </Badge>
+                  ) : isSubscribedDevice ? (
+                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 text-[10px]">
+                      ✓ Bu Cihazda Aktif
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-muted-foreground/40 text-muted-foreground bg-muted/20 text-[10px]">
+                      Kapalı
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {deviceCount > 0
+                    ? `Hesabınıza bağlı ${deviceCount} kayıtlı cihaz bulunuyor.`
+                    : 'Henüz kayıtlı cihaz bulunmuyor. Kilit ekranı bildirimleri için etkinleştirin.'}
+                </p>
+              </div>
+            </div>
+
+            {pushSupported && (
+              <Button
+                size="sm"
+                variant={isSubscribedDevice ? 'outline' : 'default'}
+                onClick={handleTogglePush}
+                disabled={togglingPush}
+                className="text-xs h-8 shrink-0 gap-1.5"
+              >
+                {togglingPush ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : isSubscribedDevice ? (
+                  'Bu Cihazda Kapat'
+                ) : (
+                  <>
+                    <Bell className="h-3.5 w-3.5" />
+                    <span>Bu Cihazda Bildirimleri Aç</span>
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          {/* E-posta Adresi ve Kanal Ayarı */}
+          <div className="p-4 rounded-xl border border-border/60 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Mail className="h-4 w-4 text-primary" />
+                <div>
+                  <div className="text-xs font-semibold">HTML E-posta Bildirimleri</div>
+                  <div className="text-[11px] text-muted-foreground">Koyu tema zengin bülten formatında e-posta teslimatı</div>
+                </div>
+              </div>
+
+              <input
+                type="checkbox"
+                checked={notificationPref?.email_enabled ?? true}
+                onChange={(e) => handleUpdatePrefToggle('email_enabled', e.target.checked)}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <form onSubmit={handleSaveEmail} className="flex gap-2 pt-1">
+              <Input
+                type="email"
+                placeholder="ornek@gmail.com"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="text-xs h-8"
+              />
+              <Button type="submit" size="sm" disabled={savingEmail} className="text-xs h-8 shrink-0">
+                {savingEmail ? 'Kaydediliyor...' : 'E-postayı Kaydet'}
+              </Button>
+            </form>
+          </div>
+
+          {/* Modül & Tetikleyici Zamanlamaları */}
+          <div className="space-y-3">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Otomatik Tetikleyici Modülleri
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Sabah Brifingi */}
+              <div className="p-3.5 rounded-xl border border-border/50 bg-background/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sun className="h-4 w-4 text-amber-400" />
+                    <span className="text-xs font-semibold">Sabah Brifingi</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notificationPref?.morning_enabled ?? true}
+                    onChange={(e) => handleUpdatePrefToggle('morning_enabled', e.target.checked)}
+                    className="h-4 w-4 rounded border-border text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Her gün 08:30&apos;da bugünün odak görevleri, sabah rutinleri ve ekstre kesim alarmları.
+                </p>
+              </div>
+
+              {/* Akşam Kapanışı */}
+              <div className="p-3.5 rounded-xl border border-border/50 bg-background/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Moon className="h-4 w-4 text-emerald-400" />
+                    <span className="text-xs font-semibold">Akşam Kapanışı</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notificationPref?.evening_enabled ?? true}
+                    onChange={(e) => handleUpdatePrefToggle('evening_enabled', e.target.checked)}
+                    className="h-4 w-4 rounded border-border text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Her akşam 21:30&apos;da tamamlanmamış rutinler ve 🔥 Seri (Streak) koruma uyarısı.
+                </p>
+              </div>
+
+              {/* Haftalık Finans */}
+              <div className="p-3.5 rounded-xl border border-border/50 bg-background/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-blue-400" />
+                    <span className="text-xs font-semibold">Haftalık Finans</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notificationPref?.weekly_finance_enabled ?? true}
+                    onChange={(e) => handleUpdatePrefToggle('weekly_finance_enabled', e.target.checked)}
+                    className="h-4 w-4 rounded border-border text-blue-500 focus:ring-blue-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Pazartesi sabahları nakit, kart borcu ve net varlık değişimi durum özeti.
+                </p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
