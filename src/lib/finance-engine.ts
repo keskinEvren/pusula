@@ -685,4 +685,133 @@ export function calculateMonthlyCashFlow(
   }
 }
 
+/**
+ * 12. Beyan Odaklı Aylık Gelir Analitiği (Income Engine)
+ * Farklı periyotlardaki (Aylık, Yıllık, 3 Aylık, 6 Aylık, Tek Seferlik) gelir kalemlerini
+ * aylık net eşdeğer ve yıllık toplam kapasiteye dönüştürür.
+ */
+export interface IncomeMetricsResult {
+  totalMonthlyIncome: number
+  totalYearlyIncome: number
+  fixedMonthlyIncome: number
+  fixedYearlyIncome: number
+  variableMonthlyIncome: number
+  variableYearlyIncome: number
+  oneTimeIncomeTotal: number
+  activeCount: number
+  passiveCount: number
+  fixedCount: number
+  variableCount: number
+}
+
+export function calculateIncomeMetrics(
+  incomes: Array<{
+    amount: number | null | undefined
+    period?: string | null
+    income_type?: 'Sabit' | 'Değişken' | string | null
+    status?: 'Aktif' | 'Pasif' | string | null
+  }> = []
+): IncomeMetricsResult {
+  let totalMonthlyIncome = 0
+  let totalYearlyIncome = 0
+  let fixedMonthlyIncome = 0
+  let fixedYearlyIncome = 0
+  let variableMonthlyIncome = 0
+  let variableYearlyIncome = 0
+  let oneTimeIncomeTotal = 0
+  let activeCount = 0
+  let passiveCount = 0
+  let fixedCount = 0
+  let variableCount = 0
+
+  for (const item of incomes || []) {
+    if (!item) continue
+    if (item.status === 'Pasif') {
+      passiveCount++
+      continue
+    }
+
+    activeCount++
+    const isVariable = item.income_type === 'Değişken'
+    if (isVariable) variableCount++
+    else fixedCount++
+
+    const normPeriod = normalizeSubscriptionPeriod(item.period)
+    if (normPeriod === 'Tek Seferlik') {
+      oneTimeIncomeTotal = round2(oneTimeIncomeTotal + safeParseAmount(item.amount))
+      continue
+    }
+
+    const eq = calculateSubscriptionEquivalent(item.amount, normPeriod)
+    totalMonthlyIncome = round2(totalMonthlyIncome + eq.monthly)
+    totalYearlyIncome = round2(totalYearlyIncome + eq.yearly)
+
+    if (isVariable) {
+      variableMonthlyIncome = round2(variableMonthlyIncome + eq.monthly)
+      variableYearlyIncome = round2(variableYearlyIncome + eq.yearly)
+    } else {
+      fixedMonthlyIncome = round2(fixedMonthlyIncome + eq.monthly)
+      fixedYearlyIncome = round2(fixedYearlyIncome + eq.yearly)
+    }
+  }
+
+  return {
+    totalMonthlyIncome,
+    totalYearlyIncome,
+    fixedMonthlyIncome,
+    fixedYearlyIncome,
+    variableMonthlyIncome,
+    variableYearlyIncome,
+    oneTimeIncomeTotal,
+    activeCount,
+    passiveCount,
+    fixedCount,
+    variableCount,
+  }
+}
+
+/**
+ * 13. Aylık Gelir & Gider Dengesi (Serbest Bütçe & Net Marj Hesabı)
+ * - Serbest Bütçe = Aylık Net Gelir − Aylık Sabit Giderler (Abonelikler)
+ * - Kalan Net Marj = Serbest Bütçe − Güncel Değişken Harcama / Kart Yükü
+ */
+export interface MonthlyBudgetBalanceResult {
+  monthlyIncome: number
+  fixedExpenses: number
+  disposableBudget: number
+  currentVariableLoad: number
+  netMargin: number
+  fixedRatioPct: number
+  variableRatioPct: number
+  totalUsedRatioPct: number
+}
+
+export function calculateMonthlyBudgetBalance(
+  monthlyIncome: number,
+  fixedMonthlyExpenses: number,
+  currentVariableLoad = 0
+): MonthlyBudgetBalanceResult {
+  const inc = round2(Math.max(0, monthlyIncome || 0))
+  const fixed = round2(Math.max(0, fixedMonthlyExpenses || 0))
+  const variable = round2(Math.max(0, currentVariableLoad || 0))
+
+  const disposableBudget = round2(inc - fixed)
+  const netMargin = round2(disposableBudget - variable)
+
+  const fixedRatioPct = inc > 0 ? round2((fixed / inc) * 100) : 0
+  const variableRatioPct = inc > 0 ? round2((variable / inc) * 100) : 0
+  const totalUsedRatioPct = inc > 0 ? round2(((fixed + variable) / inc) * 100) : 0
+
+  return {
+    monthlyIncome: inc,
+    fixedExpenses: fixed,
+    disposableBudget,
+    currentVariableLoad: variable,
+    netMargin,
+    fixedRatioPct,
+    variableRatioPct,
+    totalUsedRatioPct,
+  }
+}
+
 

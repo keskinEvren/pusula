@@ -958,6 +958,56 @@ export interface Database {
         }
         Relationships: []
       }
+      incomes: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          category: string
+          income_type: 'Sabit' | 'Değişken'
+          amount: number
+          currency: string
+          period: string
+          payday: number | null
+          status: 'Aktif' | 'Pasif'
+          project_id: string | null
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          category?: string
+          income_type?: 'Sabit' | 'Değişken'
+          amount?: number
+          currency?: string
+          period?: string
+          payday?: number | null
+          status?: 'Aktif' | 'Pasif'
+          project_id?: string | null
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          category?: string
+          income_type?: 'Sabit' | 'Değişken'
+          amount?: number
+          currency?: string
+          period?: string
+          payday?: number | null
+          status?: 'Aktif' | 'Pasif'
+          project_id?: string | null
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           user_id: string
@@ -1155,4 +1205,7 @@ export type PushSubscriptionUpdate = Database['public']['Tables']['push_subscrip
 export type NotificationPreference = Database['public']['Tables']['notification_preferences']['Row']
 export type NotificationPreferenceInsert = Database['public']['Tables']['notification_preferences']['Insert']
 export type NotificationPreferenceUpdate = Database['public']['Tables']['notification_preferences']['Update']
+export type Income = Database['public']['Tables']['incomes']['Row']
+export type IncomeInsert = Database['public']['Tables']['incomes']['Insert']
+export type IncomeUpdate = Database['public']['Tables']['incomes']['Update']
 
