@@ -16,6 +16,7 @@ import {
   ReceiptText,
   UploadCloud,
   HandCoins,
+  Banknote,
   FolderKanban,
   Lightbulb,
   ChevronDown,
@@ -46,6 +47,7 @@ const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   accounts: { category: 'Finans', title: 'Hesaplar' },
   cards: { category: 'Finans', title: 'Kredi Kartları' },
   debts: { category: 'Finans', title: 'Borç & Alacak' },
+  incomes: { category: 'Finans', title: 'Gelirler' },
   subscriptions: { category: 'Finans', title: 'Abonelikler' },
   investments: { category: 'Finans', title: 'Yatırımlar' },
   projects: { category: 'Çalışma', title: 'Projeler' },
@@ -276,6 +278,14 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
                 >
                   <HandCoins className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
                   <span>Yeni Borç / Alacak</span>
+                </Link>
+                <Link
+                  href="/incomes?new=true"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
+                >
+                  <Banknote className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span>Yeni Gelir Kalemi</span>
                 </Link>
                 <Link
                   href="/investments?new=true"

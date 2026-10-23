@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Wallet,
@@ -19,6 +19,7 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownLeft,
+  Banknote,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/layout/page-header'
@@ -34,13 +35,26 @@ import {
 import {
   calculateNetWorth,
   projectSixMonthCashLoad,
+  calculateIncomeMetrics,
+  calculateSubscriptionEquivalent,
+  calculateSpendingBreakdown,
+  calculateMonthlyBudgetBalance,
   round2,
 } from '@/lib/finance-engine'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import type { Account, CreditCard as CardType, Debt, Transaction, Subscription, Project, Investment } from '@/types/database'
+import type {
+  Account,
+  CreditCard as CardType,
+  Debt,
+  Transaction,
+  Subscription,
+  Project,
+  Investment,
+  Income,
+} from '@/types/database'
 
 export default function DashboardPage() {
   const { toast } = useToast()
@@ -51,6 +65,7 @@ export default function DashboardPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [investments, setInvestments] = useState<Investment[]>([])
+  const [incomes, setIncomes] = useState<Income[]>([])
   const [loading, setLoading] = useState(true)
 
   // Kasa Acil Durum Sıfırlama Karantinası State
@@ -69,6 +84,7 @@ export default function DashboardPage() {
           { data: subs },
           { data: prjs },
           invsRes,
+          incsRes,
         ] = await Promise.all([
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
@@ -77,6 +93,7 @@ export default function DashboardPage() {
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
           supabase.from('investments').select('*'),
+          supabase.from('incomes').select('*'),
         ])
 
         if (accs) setAccounts(accs)
@@ -96,6 +113,20 @@ export default function DashboardPage() {
           } catch {}
         }
         setInvestments(finalInvs)
+
+        let finalIncomes: Income[] = []
+        if (incsRes?.data) {
+          finalIncomes = incsRes.data
+          try {
+            localStorage.setItem('pusula_local_incomes', JSON.stringify(incsRes.data))
+          } catch {}
+        } else {
+          try {
+            const cachedIncomes = localStorage.getItem('pusula_local_incomes')
+            if (cachedIncomes) finalIncomes = JSON.parse(cachedIncomes)
+          } catch {}
+        }
+        setIncomes(finalIncomes)
       } catch (err) {
         console.error('Error loading dashboard:', err)
       } finally {
@@ -105,12 +136,14 @@ export default function DashboardPage() {
 
     loadDashboardData()
 
-    const handleTxCreated = () => {
+    const handleRefresh = () => {
       loadDashboardData()
     }
-    window.addEventListener('pusula:transaction-created', handleTxCreated)
+    window.addEventListener('pusula:transaction-created', handleRefresh)
+    window.addEventListener('pusula:incomes-changed', handleRefresh)
     return () => {
-      window.removeEventListener('pusula:transaction-created', handleTxCreated)
+      window.removeEventListener('pusula:transaction-created', handleRefresh)
+      window.removeEventListener('pusula:incomes-changed', handleRefresh)
     }
   }, [])
 
@@ -143,8 +176,45 @@ export default function DashboardPage() {
     calculateNetWorth(accounts, debts, cards, investments)
 
   // 2. Active Subscriptions & 6-Month Combined Projection
-  const activeSubs = subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et')
-  const cashForecast = projectSixMonthCashLoad(activeSubs, [], 6)
+  const activeSubs = useMemo(
+    () => subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et'),
+    [subscriptions]
+  )
+  const cashForecast = useMemo(() => projectSixMonthCashLoad(activeSubs, [], 6), [activeSubs])
+
+  // 3. Monthly Income & Budget Balance
+  const incomeMetrics = useMemo(() => calculateIncomeMetrics(incomes), [incomes])
+
+  const fixedMonthlyExpenses = useMemo(() => {
+    return round2(
+      activeSubs.reduce((sum, s) => {
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        return sum + eq.monthly
+      }, 0)
+    )
+  }, [activeSubs])
+
+  const currentMonthConsumption = useMemo(() => {
+    const now = new Date()
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const monthTxs = transactions.filter((t) => (t.date || '').startsWith(ym))
+    return calculateSpendingBreakdown(monthTxs).totalConsumption
+  }, [transactions])
+
+  // Güncel harcama / kart yükü: Bu ay harcama kaydı varsa onu, yoksa güncel kart borcunu baz alır
+  const currentVariableLoad = currentMonthConsumption > 0 ? currentMonthConsumption : totalCardDebt
+  const currentVariableLoadLabel =
+    currentMonthConsumption > 0 ? 'Bu Ayki Harcama Yükü' : 'Güncel Kart Dönem Yükü'
+
+  const budgetBalance = useMemo(
+    () =>
+      calculateMonthlyBudgetBalance(
+        incomeMetrics.totalMonthlyIncome,
+        fixedMonthlyExpenses,
+        currentVariableLoad
+      ),
+    [incomeMetrics.totalMonthlyIncome, fixedMonthlyExpenses, currentVariableLoad]
+  )
 
   // 7. Capacity rule (Active planning + dev >= 2)
   const activeDevProjects = projects.filter(
@@ -162,6 +232,7 @@ export default function DashboardPage() {
             <div key={i} className="h-28 rounded-xl bg-card/60 border border-border/40" />
           ))}
         </div>
+        <div className="h-44 rounded-xl bg-card/60 border border-border/40" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="h-48 rounded-xl bg-card/60 border border-border/40" />
           <div className="h-48 rounded-xl bg-card/60 border border-border/40" />
@@ -338,6 +409,193 @@ export default function DashboardPage() {
           </div>
         </Link>
       </div>
+
+      {/* Aylık Gelir & Gider Dengesi Kartı */}
+      <Card className="border-border bg-card shadow-sm overflow-hidden">
+        <CardHeader className="pb-3 border-b border-border/50">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 shrink-0">
+                <Banknote className="h-4 w-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Aylık Gelir & Gider Dengesi</CardTitle>
+                <CardDescription className="text-xs">
+                  Beyan edilen aylık gelir kapasiteniz, sabit abonelik yükünüz ve güncel harcama marjınız
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {incomeMetrics.activeCount === 0 ? (
+                <Link href="/incomes?new=true">
+                  <Button size="sm" className="h-8 text-xs gap-1.5">
+                    <Plus className="h-3.5 w-3.5" />
+                    Aylık Gelir Tanımla
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/incomes">
+                  <Button variant="ghost" size="sm" className="h-8 text-xs">
+                    Gelirleri Yönet ({incomeMetrics.activeCount}) →
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-4 sm:p-5 space-y-4">
+          {incomeMetrics.activeCount === 0 ? (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-dashed border-border bg-muted/15 p-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-foreground">
+                  Henüz aylık gelir kalemi tanımlamadınız
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Maaş, freelance veya proje gelirlerinizi beyan ederek sabit giderleriniz düşüldükten sonra kalan serbest bütçenizi ve net marjınızı takip edin.
+                </p>
+              </div>
+              <Link href="/incomes?new=true" className="shrink-0">
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                  <Plus className="h-3.5 w-3.5" />
+                  Gelir Ekle
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-0 sm:divide-x divide-border/60">
+                {/* 1. Aylık Net Gelir */}
+                <div className="sm:pr-4">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    1. Aylık Net Gelir
+                  </div>
+                  <div className="mt-1 text-xl font-semibold tracking-tight text-success tabular-nums">
+                    {formatCurrency(budgetBalance.monthlyIncome)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    Sabit: {formatCurrency(incomeMetrics.fixedMonthlyIncome)}
+                    {incomeMetrics.variableMonthlyIncome > 0 &&
+                      ` • Değişken: ${formatCurrency(incomeMetrics.variableMonthlyIncome)}`}
+                  </div>
+                </div>
+
+                {/* 2. Sabit Giderler & Abonelikler */}
+                <div className="sm:px-4">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    2. Sabit Giderler & Abonelikler
+                  </div>
+                  <div className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">
+                    − {formatCurrency(budgetBalance.fixedExpenses)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    Gelirin %{budgetBalance.fixedRatioPct}&apos;i ({activeSubs.length} aktif gider)
+                  </div>
+                </div>
+
+                {/* 3. Serbest Bütçe (Gelir - Sabit Giderler) */}
+                <div className="sm:px-4">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    3. Serbest Bütçe (Kalan Kapasite)
+                  </div>
+                  <div
+                    className={cn(
+                      'mt-1 text-xl font-semibold tracking-tight tabular-nums',
+                      budgetBalance.disposableBudget >= 0 ? 'text-foreground' : 'text-destructive'
+                    )}
+                  >
+                    {formatCurrency(budgetBalance.disposableBudget)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    Sabit yük sonrası kullanılabilir bütçe
+                  </div>
+                </div>
+
+                {/* 4. Güncel Harcama / Kart Yükü Sonrası Net Marj */}
+                <div className="sm:pl-4">
+                  <div className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
+                    <span>4. Kalan Net Marj</span>
+                    <Badge
+                      variant={
+                        budgetBalance.netMargin >= 0
+                          ? budgetBalance.totalUsedRatioPct >= 85
+                            ? 'secondary'
+                            : 'success'
+                          : 'destructive'
+                      }
+                      className="text-[10px] px-1.5 py-0"
+                    >
+                      %{budgetBalance.totalUsedRatioPct} Kullanım
+                    </Badge>
+                  </div>
+                  <div
+                    className={cn(
+                      'mt-1 text-xl font-semibold tracking-tight tabular-nums',
+                      budgetBalance.netMargin >= 0 ? 'text-emerald-400' : 'text-destructive'
+                    )}
+                  >
+                    {formatCurrency(budgetBalance.netMargin)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {currentVariableLoadLabel}: − {formatCurrency(budgetBalance.currentVariableLoad)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Görsel Bütçe Dağılım Çubuğu */}
+              {budgetBalance.monthlyIncome > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden flex">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{
+                        width: `${Math.min(100, budgetBalance.fixedRatioPct)}%`,
+                      }}
+                      title={`Sabit Giderler: %${budgetBalance.fixedRatioPct}`}
+                    />
+                    <div
+                      className={cn(
+                        'h-full transition-all',
+                        budgetBalance.netMargin < 0 ? 'bg-destructive' : 'bg-amber-400'
+                      )}
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(100 - Math.min(100, budgetBalance.fixedRatioPct), budgetBalance.variableRatioPct)
+                        )}%`,
+                      }}
+                      title={`${currentVariableLoadLabel}: %${budgetBalance.variableRatioPct}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-4">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-primary" />
+                        Sabit Giderler (%{budgetBalance.fixedRatioPct})
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            'h-2 w-2 rounded-full',
+                            budgetBalance.netMargin < 0 ? 'bg-destructive' : 'bg-amber-400'
+                          )}
+                        />
+                        {currentVariableLoadLabel} (%{budgetBalance.variableRatioPct})
+                      </span>
+                    </div>
+                    <span>
+                      Yıllık Gelir Kapasitesi:{' '}
+                      <strong className="text-foreground">
+                        {formatCurrency(incomeMetrics.totalYearlyIncome)}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* 6-Month Cash Load Forecast */}
