@@ -335,6 +335,60 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const restored = await db.query<{ balance: string }>('select balance from accounts where id=$1', [source])
     expect(Number(restored.rows[0].balance)).toBe(Number(before.rows[0].balance))
 
+    // Verify CARD_PAYMENT statement_date guard:
+    // A payment on/before statement_date does NOT reduce current_debt (already reflected in statement),
+    // whereas a payment strictly after statement_date reduces current_debt.
+    const stmtCard = '88888888-8888-4888-8888-888888888888'
+    await db.query(
+      'insert into credit_cards(id,user_id,bank,card_name,current_debt,statement_date) values ($1,$2,$3,$4,1000,$5)',
+      [stmtCard, userA, 'Akbank', 'Axess', '2026-09-15']
+    )
+    const cardPayPayload = {
+      ...payload,
+      idempotency_key: 'db-test-card-stmt-date-guard-v1',
+      file_hash: 'db-test-card-stmt-date-guard-hash-v1',
+      transactions: [
+        {
+          ...payload.transactions[0],
+          row_index: 0,
+          date: '2026-09-10', // before statement_date -> should NOT reduce current_debt
+          type: 'Kart Ödemesi',
+          action: 'CARD_PAYMENT',
+          target_card_id: stmtCard,
+          amount: 300,
+          analysis_group: 'Hariç',
+          classification_status: 'HIGH_CONFIDENCE',
+          external_reference: 'BANK-REF-CARD-OLD-1',
+          source_fingerprint: 'strong-fp-card-old-1',
+          weak_fingerprint: 'weak-fp-card-old-1',
+        },
+        {
+          ...payload.transactions[0],
+          row_index: 1,
+          date: '2026-09-20', // after statement_date -> SHOULD reduce current_debt by 200
+          type: 'Kart Ödemesi',
+          action: 'CARD_PAYMENT',
+          target_card_id: stmtCard,
+          amount: 200,
+          analysis_group: 'Hariç',
+          classification_status: 'HIGH_CONFIDENCE',
+          external_reference: 'BANK-REF-CARD-NEW-1',
+          source_fingerprint: 'strong-fp-card-new-1',
+          weak_fingerprint: 'weak-fp-card-new-1',
+        },
+      ],
+    }
+    const cardPayRes = await db.query<{ result: any }>(
+      'select fn_commit_statement_import_atomic($1::jsonb) as result',
+      [JSON.stringify(cardPayPayload)]
+    )
+    expect(cardPayRes.rows[0].result.success).toBe(true)
+    const cardAfter = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
+    expect(Number(cardAfter.rows[0].current_debt)).toBe(800)
+    await db.query('select rollback_statement_import($1::uuid,$2::uuid)', [cardPayRes.rows[0].result.import_id, userA])
+    const cardRestored = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
+    expect(Number(cardRestored.rows[0].current_debt)).toBe(1000)
+
     const foreignProject = '77777777-7777-4777-8777-777777777777'
     await asUser(userB)
     await db.query(

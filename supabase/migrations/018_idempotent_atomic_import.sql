@@ -107,12 +107,16 @@ alter table public.import_observations enable row level security;
 alter table public.financial_effects enable row level security;
 alter table public.account_balance_snapshots enable row level security;
 
+drop policy if exists "Users can view own transaction identities" on public.transaction_identities;
 create policy "Users can view own transaction identities" on public.transaction_identities
   for select using (auth.uid() = user_id);
+drop policy if exists "Users can view own import observations" on public.import_observations;
 create policy "Users can view own import observations" on public.import_observations
   for select using (auth.uid() = user_id);
+drop policy if exists "Users can view own financial effects" on public.financial_effects;
 create policy "Users can view own financial effects" on public.financial_effects
   for select using (auth.uid() = user_id);
+drop policy if exists "Users can view own account balance snapshots" on public.account_balance_snapshots;
 create policy "Users can view own account balance snapshots" on public.account_balance_snapshots
   for select using (auth.uid() = user_id);
 
@@ -151,6 +155,7 @@ declare
   v_minimum numeric := coalesce(nullif(p_payload->>'minimum_payment','')::numeric,0);
   v_interest numeric := coalesce(nullif(p_payload->>'interest_fees','')::numeric,0);
   v_statement_date date := nullif(p_payload->>'statement_date','')::date;
+  v_card_stmt_date date;
   v_classification_status text;
   v_apply_effect boolean;
   v_identity_inserted integer;
@@ -323,8 +328,8 @@ begin
 
     v_apply_effect := v_classification_status in ('CONFIRMED','HIGH_CONFIDENCE');
     if v_apply_effect and v_tx->>'action' in ('CARD_PAYMENT','CASH_ADVANCE') and v_target_card_id is not null then
-      select current_debt into v_old from public.credit_cards where id=v_target_card_id and user_id=v_user_id for update;
-      if found then
+      select current_debt, statement_date into v_old, v_card_stmt_date from public.credit_cards where id=v_target_card_id and user_id=v_user_id for update;
+      if found and (v_card_stmt_date is null or (v_tx->>'date')::date > v_card_stmt_date) then
         if v_tx->>'action'='CARD_PAYMENT' then v_new := greatest(0,v_old-v_amount); else v_new := v_old+v_amount; end if;
         update public.credit_cards set current_debt=v_new,updated_at=now() where id=v_target_card_id;
         insert into public.financial_effects(user_id,import_id,transaction_id,entity_type,entity_id,metric,delta)
@@ -413,8 +418,13 @@ begin
 
   update public.statement_imports set status='COMPLETED',completed_at=now(),total_transactions=v_inserted,
     total_amount=(select coalesce(sum(amount),0) from public.transactions where import_id=v_import_id),
-    raw_text=jsonb_build_object('parser_version',p_payload->>'parser_version','status','COMPLETED',
-      'skipped_duplicates',v_skipped)::text
+    raw_text=jsonb_build_object(
+      'parser_version',p_payload->>'parser_version',
+      'status','COMPLETED',
+      'import_type',v_import_type,
+      'file_hash',nullif(p_payload->>'file_hash',''),
+      'skipped_duplicates',v_skipped
+    )::text
   where id=v_import_id;
 
   return jsonb_build_object('success',true,'import_id',v_import_id,'inserted_transactions',v_inserted,
@@ -446,7 +456,18 @@ begin
   select * into v_import from public.statement_imports
   where id=p_import_id and user_id=p_user_id for update;
   if not found then return jsonb_build_object('success',false,'error','Ekstre bulunamadı.'); end if;
-  if v_import.status='ROLLED_BACK' then return jsonb_build_object('success',true,'already_rolled_back',true,'deleted_transactions',0,'deleted_statements',0); end if;
+  if v_import.status='ROLLED_BACK' then
+    update public.statement_imports set
+      raw_text=jsonb_build_object(
+        'parser_version',v_import.parser_version,
+        'status','ROLLED_BACK',
+        'import_type',v_import.import_type,
+        'file_hash',v_import.file_hash,
+        'rolled_back_at',coalesce(v_import.rolled_back_at,now())
+      )::text
+    where id=p_import_id;
+    return jsonb_build_object('success',true,'already_rolled_back',true,'deleted_transactions',0,'deleted_statements',0);
+  end if;
   if v_import.parser_version is null then
     return jsonb_build_object('success',false,'error','Eski snapshot tabanlı import otomatik geri alınmadı; veri güvenliği için incelenmiş migration gerekir.');
   end if;
@@ -530,7 +551,17 @@ begin
     and imported.user_id=p_user_id;
   delete from public.transactions where import_id=p_import_id and user_id=p_user_id;
   get diagnostics v_deleted_tx = row_count;
-  update public.statement_imports set status='ROLLED_BACK',rolled_back_at=now() where id=p_import_id;
+  update public.statement_imports set
+    status='ROLLED_BACK',
+    rolled_back_at=now(),
+    raw_text=jsonb_build_object(
+      'parser_version',v_import.parser_version,
+      'status','ROLLED_BACK',
+      'import_type',v_import.import_type,
+      'file_hash',v_import.file_hash,
+      'rolled_back_at',now()
+    )::text
+  where id=p_import_id;
   return jsonb_build_object('success',true,'import_id',p_import_id,'deleted_transactions',v_deleted_tx,'deleted_statements',v_deleted_stmt);
 end;
 $$;
@@ -539,3 +570,14 @@ revoke all on function public.fn_commit_statement_import_atomic(jsonb) from publ
 grant execute on function public.fn_commit_statement_import_atomic(jsonb) to authenticated;
 revoke all on function public.rollback_statement_import(uuid,uuid) from public, anon;
 grant execute on function public.rollback_statement_import(uuid,uuid) to authenticated;
+
+update public.statement_imports
+set raw_text = jsonb_build_object(
+  'parser_version', parser_version,
+  'status', coalesce(status, 'COMPLETED'),
+  'import_type', coalesce(import_type, 'credit_card'),
+  'file_hash', file_hash,
+  'rolled_back_at', rolled_back_at,
+  'snapshot_data', coalesce(snapshot_data, '{}'::jsonb)
+)::text
+where status is not null;

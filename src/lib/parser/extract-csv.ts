@@ -126,9 +126,9 @@ export async function extractFromCSVOrExcel(
         recurrence,
         project_id,
         confidence: 'high',
-        classification_status: finalType === 'Kart Ödemesi' ? 'NEEDS_REVIEW' : 'HIGH_CONFIDENCE',
+        classification_status: 'HIGH_CONFIDENCE',
         classification_reasons: finalType === 'Kart Ödemesi'
-          ? ['Ödeme satırı bulundu; finansal etki için hedef doğrulaması gerekir.']
+          ? ['Kredi kartı ekstresindeki ödeme satırı bilgilendirme amaçlıdır (Hariç); dönem borcunu etkilemez.']
           : ['CSV/XLSX satırı deterministik parser kurallarıyla sınıflandırıldı.'],
         duplicate_status: 'NEW',
         selected: finalGroup !== 'Hariç',

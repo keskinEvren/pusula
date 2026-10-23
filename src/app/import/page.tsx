@@ -336,14 +336,24 @@ export default function ImportPage() {
         if (f.id !== fileId) return f
         return {
           ...f,
-          transactions: f.transactions.map((t) => ({
-            ...t,
-            selected: t.duplicate_status === 'EXACT_DUPLICATE' ? false : select,
-            duplicate_status:
-              select && t.duplicate_status === 'POSSIBLE_DUPLICATE'
-                ? 'USER_CONFIRMED_NEW'
-                : t.duplicate_status,
-          })),
+          transactions: f.transactions.map((t) => {
+            const requiresCardTarget = t.action === 'CARD_PAYMENT' || t.action === 'CASH_ADVANCE'
+            const requiresDebtTarget = t.action === 'COLLECT_RECEIVABLE' || t.action === 'PAY_DEBT'
+            const missingRequiredTarget =
+              (requiresCardTarget && !t.target_card_id) || (requiresDebtTarget && !t.target_debt_id)
+            return {
+              ...t,
+              selected: t.duplicate_status === 'EXACT_DUPLICATE' ? false : select,
+              duplicate_status:
+                select && t.duplicate_status === 'POSSIBLE_DUPLICATE'
+                  ? 'USER_CONFIRMED_NEW'
+                  : t.duplicate_status,
+              classification_status:
+                select && t.classification_status === 'NEEDS_REVIEW' && !missingRequiredTarget
+                  ? 'CONFIRMED'
+                  : t.classification_status,
+            }
+          }),
         }
       })
     )
@@ -365,6 +375,15 @@ export default function ImportPage() {
             const next = { ...t, [field]: value }
             if (field === 'selected' && value === true && t.duplicate_status === 'POSSIBLE_DUPLICATE') {
               next.duplicate_status = 'USER_CONFIRMED_NEW'
+            }
+            if (field === 'selected' && value === true && t.classification_status === 'NEEDS_REVIEW') {
+              const requiresCardTarget = t.action === 'CARD_PAYMENT' || t.action === 'CASH_ADVANCE'
+              const requiresDebtTarget = t.action === 'COLLECT_RECEIVABLE' || t.action === 'PAY_DEBT'
+              const missingTarget =
+                (requiresCardTarget && !t.target_card_id) || (requiresDebtTarget && !t.target_debt_id)
+              if (!missingTarget) {
+                next.classification_status = 'CONFIRMED'
+              }
             }
             if ((field === 'target_card_id' || field === 'target_debt_id') && value) {
               next.classification_status = 'CONFIRMED'
@@ -1281,8 +1300,17 @@ export default function ImportPage() {
                               {tx.duplicate_status === 'EXACT_DUPLICATE' && <Badge variant="warning">Daha önce içe aktarılmış</Badge>}
                               {tx.duplicate_status === 'POSSIBLE_DUPLICATE' && <Badge variant="warning">Muhtemel duplicate</Badge>}
                               {tx.duplicate_status === 'NEW' && <Badge variant="success">Yeni</Badge>}
-                              {tx.classification_status === 'NEEDS_REVIEW' && <Badge variant="outline">İnceleme gerekli</Badge>}
+                              {tx.classification_status === 'NEEDS_REVIEW' && (
+                                <Badge variant="outline" title={tx.classification_reasons?.join(' ')}>
+                                  İnceleme gerekli
+                                </Badge>
+                              )}
                             </div>
+                            {tx.classification_status === 'NEEDS_REVIEW' && tx.classification_reasons && tx.classification_reasons.length > 0 && (
+                              <div className="text-[11px] text-amber-400/90 leading-snug">
+                                {tx.classification_reasons.join(' ')}
+                              </div>
+                            )}
 
                             <div className="space-y-1">
                               <Input
@@ -1467,8 +1495,17 @@ export default function ImportPage() {
                                     {tx.duplicate_status === 'EXACT_DUPLICATE' && <Badge variant="warning">İçe aktarılmış</Badge>}
                                     {tx.duplicate_status === 'POSSIBLE_DUPLICATE' && <Badge variant="warning">Muhtemel duplicate</Badge>}
                                     {tx.duplicate_status === 'NEW' && <Badge variant="success">Yeni</Badge>}
-                                    {tx.classification_status === 'NEEDS_REVIEW' && <Badge variant="outline">İnceleme gerekli</Badge>}
+                                    {tx.classification_status === 'NEEDS_REVIEW' && (
+                                      <Badge variant="outline" title={tx.classification_reasons?.join(' ')}>
+                                        İnceleme gerekli
+                                      </Badge>
+                                    )}
                                   </div>
+                                  {tx.classification_status === 'NEEDS_REVIEW' && tx.classification_reasons && tx.classification_reasons.length > 0 && (
+                                    <div className="mt-1 text-[11px] text-amber-400/90 whitespace-normal leading-snug">
+                                      {tx.classification_reasons.join(' ')}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="p-2.5 font-sans">
                                   <Input

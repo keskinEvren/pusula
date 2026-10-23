@@ -81,50 +81,45 @@ export function sanitizeTransactionType(type: string | undefined, defaultType: s
  * Parses batch metadata from SQL columns or raw_text fallback.
  */
 export function parseBatchMeta(rawTextOrRow: any, fallbackStatus: ImportBatchStatus = 'COMPLETED'): ImportBatchMeta {
-  if (rawTextOrRow && typeof rawTextOrRow === 'object') {
-    if ('status' in rawTextOrRow && rawTextOrRow.status) {
-      return {
-        status: rawTextOrRow.status || fallbackStatus,
-        import_type: rawTextOrRow.import_type || 'credit_card',
-        file_hash: rawTextOrRow.file_hash || null,
-        rolled_back_at: rawTextOrRow.rolled_back_at || null,
-        snapshot_data: rawTextOrRow.snapshot_data || {},
-      }
-    }
-  }
-
   const rawText = typeof rawTextOrRow === 'string' ? rawTextOrRow : rawTextOrRow?.raw_text
-  if (!rawText) {
-    return {
-      status: fallbackStatus,
-      import_type: 'credit_card',
-      file_hash: null,
-      rolled_back_at: null,
-      snapshot_data: {},
+  let parsedFromRaw: Partial<ImportBatchMeta> = {}
+
+  if (rawText && typeof rawText === 'string') {
+    try {
+      const parsed = JSON.parse(rawText)
+      if (parsed && typeof parsed === 'object' && ('status' in parsed || 'file_hash' in parsed || 'import_type' in parsed)) {
+        parsedFromRaw = {
+          status: parsed.status,
+          import_type: parsed.import_type,
+          file_hash: parsed.file_hash,
+          rolled_back_at: parsed.rolled_back_at,
+          snapshot_data: parsed.snapshot_data,
+        }
+      }
+    } catch {
+      // rawText is regular text, not JSON metadata
     }
   }
 
-  try {
-    const parsed = JSON.parse(rawText)
-    if (parsed && typeof parsed === 'object' && ('status' in parsed || 'file_hash' in parsed)) {
-      return {
-        status: parsed.status || fallbackStatus,
-        import_type: parsed.import_type || 'credit_card',
-        file_hash: parsed.file_hash || null,
-        rolled_back_at: parsed.rolled_back_at || null,
-        snapshot_data: parsed.snapshot_data || {},
-      }
+  if (rawTextOrRow && typeof rawTextOrRow === 'object') {
+    return {
+      status: rawTextOrRow.status || parsedFromRaw.status || fallbackStatus,
+      import_type: rawTextOrRow.import_type || parsedFromRaw.import_type || 'credit_card',
+      file_hash: rawTextOrRow.file_hash ?? parsedFromRaw.file_hash ?? null,
+      rolled_back_at: rawTextOrRow.rolled_back_at ?? parsedFromRaw.rolled_back_at ?? null,
+      snapshot_data:
+        rawTextOrRow.snapshot_data && Object.keys(rawTextOrRow.snapshot_data).length > 0
+          ? rawTextOrRow.snapshot_data
+          : parsedFromRaw.snapshot_data || {},
     }
-  } catch {
-    // rawText is regular text, not JSON metadata
   }
 
   return {
-    status: fallbackStatus,
-    import_type: 'credit_card',
-    file_hash: null,
-    rolled_back_at: null,
-    snapshot_data: {},
+    status: parsedFromRaw.status || fallbackStatus,
+    import_type: parsedFromRaw.import_type || 'credit_card',
+    file_hash: parsedFromRaw.file_hash ?? null,
+    rolled_back_at: parsedFromRaw.rolled_back_at ?? null,
+    snapshot_data: parsedFromRaw.snapshot_data || {},
   }
 }
 
@@ -153,7 +148,7 @@ export async function checkDuplicateFileHash(
   if (error || !existingImports) return { isDuplicate: false }
 
   for (const imp of existingImports) {
-    const meta = parseBatchMeta(imp.raw_text)
+    const meta = parseBatchMeta(imp)
     if (meta.file_hash === fileHash && meta.status !== 'ROLLED_BACK') {
       return { isDuplicate: true, existingBatch: imp }
     }
@@ -238,7 +233,7 @@ export async function fetchImportBatches(
   }
 
   return imports.map((imp) => {
-    const meta = parseBatchMeta(imp.raw_text)
+    const meta = parseBatchMeta(imp)
     const actualCount = txCountMap.get(imp.id) || 0
 
     return {

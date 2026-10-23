@@ -33,13 +33,14 @@ function findUniqueCardMatch(description: string, creditCards: CreditCard[]): {
 
 /**
  * Akıllı Nakit Akışı Uzlaştırma Motoru (Smart Reconciliation Engine)
- * Vadesiz hesap hareketlerini analiz ederek alacak tahsilatı, aile transferi, kart ödemesi veya borç kapatma önerir.
+ * Vadesiz hesap hareketlerini analiz ederek aile transferi, kart ödemesi, yatırım transferi veya normal gelir/gider önerir.
+ * Not: Borç ve alacak kapamaları (PAY_DEBT / COLLECT_RECEIVABLE) ekstreden otomatik seçilmez; kullanıcı tarafından manuel yönetilir.
  */
 export function reconcileBankMovement(
   rawDescription: string,
   amount: number,
   direction: 'inflow' | 'outflow',
-  openDebts: Debt[] = [],
+  _openDebts: Debt[] = [],
   creditCards: CreditCard[] = [],
   userMappings: MerchantMapping[] = []
 ): ReconciliationSuggestion {
@@ -76,7 +77,7 @@ export function reconcileBankMovement(
     if (
       upper.includes('NAKİT AVANS') ||
       upper.includes('NAKIT AVANS') ||
-          (hasKkToken && upper.includes('AVANS'))
+      (hasKkToken && upper.includes('AVANS'))
     ) {
       const cardMatch = findUniqueCardMatch(upper, creditCards)
       const matchedCard = cardMatch.card
@@ -92,61 +93,20 @@ export function reconcileBankMovement(
         reasons: matchedCard
           ? ['Nakit avans ifadesi ve benzersiz kart kimliği eşleşti.']
           : [cardMatch.ambiguous
-              ? 'Nakit avans ifadesi birden fazla kartla eşleşti; hedef kart seçilmelidir.'
-              : 'Nakit avans ifadesi bulundu ancak hedef kart doğrulanamadı.'],
+              ? 'Aynı bankaya ait birden fazla kart bulundu; kart borcuna yansıması için hedef kart seçebilirsiniz.'
+              : 'Nakit avans ifadesi bulundu ancak hedef kart otomatik eşleşmedi.'],
       }
     }
 
-    const activeReceivables = openDebts.filter(
-      (d) => d.type === 'Alacak' && d.status !== 'Kapatıldı'
-    )
-
-    // 1.2. Açık Alacak Kayıtları ile İsim Eşleştirmesi (Örn: Hızır Global, Maaş vb.)
-    for (const rec of activeReceivables) {
-      const entityUpper = rec.person_or_entity.toUpperCase()
-      const categoryUpper = rec.category.toUpperCase()
-
-      if (
-        (entityUpper && upper.includes(entityUpper)) ||
-        (categoryUpper && upper.includes(categoryUpper)) ||
-        (upper.includes('MAAS') || upper.includes('MAAŞ') || upper.includes('HAKEDİŞ') || upper.includes('HAKEDIS'))
-      ) {
-        return {
-          action: 'COLLECT_RECEIVABLE',
-          type: 'Tahsilat',
-          analysis_group: 'Hariç',
-          merchant: `Tahsilat: ${rec.person_or_entity}`,
-          target_debt_id: rec.id,
-          confidence: 'high',
-          classification_status: 'NEEDS_REVIEW',
-          reasons: ['Alacak adı/kategorisi eşleşti; finansal etki kullanıcı onayı gerektirir.'],
-        }
-      }
-
-      // Tutar Birebir Eşleşmesi (Örn: 204.573 TL)
-      if (Math.abs(Number(rec.remaining) - amount) < 1.0) {
-        return {
-          action: 'COLLECT_RECEIVABLE',
-          type: 'Tahsilat',
-          analysis_group: 'Hariç',
-          merchant: `Tahsilat: ${rec.person_or_entity}`,
-          target_debt_id: rec.id,
-          confidence: 'high',
-          classification_status: 'NEEDS_REVIEW',
-          reasons: ['Yalnızca tutar eşleşti; birden fazla gerçek işlem olabileceği için onay gerekir.'],
-        }
-      }
-    }
-
-    // 1.3. Serbest / Genel Gelir
+    // 1.3. Serbest / Genel Gelir (Borç/Alacak tahsilatları ekstreden otomatik eşleştirilmez, manuel kapatılır)
     return {
       action: 'FREE_INCOME',
       type: 'Gelir',
       analysis_group: 'Hariç',
       merchant: rawDescription.replace(/^(?:GELEN\s+EFT|GELEN\s+HAVALE|GELEN\s+FAST)\s*[-:,]?\s*/i, '').trim() || 'Gelen Transfer',
-      confidence: 'medium',
+      confidence: 'high',
       classification_status: 'HIGH_CONFIDENCE',
-      reasons: ['Gelen hareket için yüksek riskli bir entity eşleşmesi bulunmadı.'],
+      reasons: ['Gelen hesap hareketi gelir/transfer olarak sınıflandırıldı.'],
     }
   }
 
@@ -185,8 +145,8 @@ export function reconcileBankMovement(
       reasons: matchedCard
         ? ['Kart ödeme ifadesi ve benzersiz kart kimliği eşleşti.']
         : [cardMatch.ambiguous
-            ? 'Kart ödeme ifadesi birden fazla kartla eşleşti; hedef kart seçilmelidir.'
-            : 'Kart ödeme ifadesi bulundu ancak hedef kart doğrulanamadı.'],
+            ? 'Aynı bankaya ait birden fazla kart bulundu; hedef kart seçilmezse işlem yalnızca Hariç olarak kaydedilir.'
+            : 'Kart ödeme ifadesi bulundu ancak hedef kart otomatik eşleşmedi; yalnızca Hariç olarak kaydedilir.'],
     }
   }
 
@@ -210,28 +170,7 @@ export function reconcileBankMovement(
     }
   }
 
-  // 2.3. Açık Şahıs Borcu Geri Ödeme Tespiti
-  const activeDebts = openDebts.filter(
-    (d) => d.type === 'Borç' && d.status !== 'Kapatıldı'
-  )
-
-  for (const debt of activeDebts) {
-    const personUpper = debt.person_or_entity.toUpperCase()
-    if (personUpper && upper.includes(personUpper)) {
-      return {
-        action: 'PAY_DEBT',
-        type: 'Borç Ödemesi',
-        analysis_group: 'Hariç',
-        merchant: `Borç Ödemesi: ${debt.person_or_entity}`,
-        target_debt_id: debt.id,
-        confidence: 'high',
-        classification_status: 'NEEDS_REVIEW',
-        reasons: ['Borç sahibi adı eşleşti; borç bakiyesi değişikliği onay gerektirir.'],
-      }
-    }
-  }
-
-  // 2.4. Hesaplar Arası Virman / Transfer
+  // 2.3. Hesaplar Arası Virman / Transfer
   if (
     upper.includes('VİRMAN') ||
     upper.includes('VIRMAN') ||
@@ -244,12 +183,12 @@ export function reconcileBankMovement(
       analysis_group: 'Hariç',
       merchant: 'Hesaplar Arası Transfer',
       confidence: 'high',
-      classification_status: 'NEEDS_REVIEW',
-      reasons: ['İç transfer ifadesi bulundu; hedef hesap doğrulanmalıdır.'],
+      classification_status: 'HIGH_CONFIDENCE',
+      reasons: ['Hesaplar arası transfer/virman ifadesi eşleşti.'],
     }
   }
 
-  // 2.5. Yatırım & Varlık Transferi Tespiti (Borsa, Aracı Kurum, Kripto, Altın/Fon)
+  // 2.4. Yatırım & Varlık Transferi Tespiti (Borsa, Aracı Kurum, Kripto, Altın/Fon)
   if (
     upper.includes('YATIRIM') ||
     upper.includes('MIDAS') ||
@@ -285,7 +224,7 @@ export function reconcileBankMovement(
     }
   }
 
-  // 2.6. Doğrudan FAST / EFT ile Harcama veya Eşleşen Diğer Transferler
+  // 2.5. Doğrudan FAST / EFT ile Harcama veya Eşleşen Diğer Transferler
   const { merchant, analysis_group, type: mappedType, project_id } = matchMerchant(rawDescription, userMappings)
 
   if (analysis_group === 'Hariç') {
@@ -299,7 +238,7 @@ export function reconcileBankMovement(
       classification_status: mappedType === 'Transfer' ? 'HIGH_CONFIDENCE' : 'NEEDS_REVIEW',
       reasons: mappedType === 'Transfer'
         ? ['Kullanıcı veya merchant kuralı işlemi tüketim dışı transfer olarak eşledi.']
-        : ['Yüksek riskli ödeme sınıflandırması için yapılandırılmış hedef kanıtı eksik.'],
+        : ['Kart ödemesi kuralı eşleşti ancak hedef kart seçilmedi; yalnızca Hariç olarak kaydedilir.'],
     }
   }
 
@@ -311,6 +250,6 @@ export function reconcileBankMovement(
     project_id,
     confidence: 'medium',
     classification_status: 'HIGH_CONFIDENCE',
-    reasons: ['Yüksek riskli bir finansal eşleşme bulunmadı; normal gider olarak önerildi.'],
+    reasons: ['Normal gider olarak sınıflandırıldı.'],
   }
 }

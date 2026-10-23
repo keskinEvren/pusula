@@ -192,7 +192,7 @@ export function parseBankAccountLines(
       classification_reasons: suggestion.reasons,
       external_reference: mov.externalReference,
       balance_after: balanceAfter,
-      selected: suggestion.classification_status !== 'NEEDS_REVIEW' && suggestion.classification_status !== 'CONFLICTING_RULES',
+      selected: suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
 
@@ -371,7 +371,7 @@ export function extractFromHtmlBankAccount(
       classification_reasons: suggestion.reasons,
       external_reference: row.externalReference,
       balance_after: row.balanceStr ? parseFlexibleAmount(row.balanceStr) : undefined,
-      selected: suggestion.classification_status !== 'NEEDS_REVIEW' && suggestion.classification_status !== 'CONFLICTING_RULES',
+      selected: suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
 
@@ -564,7 +564,7 @@ export function parseBankAccountTable(
       classification_reasons: suggestion.reasons,
       external_reference: mov.externalReference,
       balance_after: mov.balanceStr ? parseFlexibleAmount(mov.balanceStr) : undefined,
-      selected: suggestion.classification_status !== 'NEEDS_REVIEW' && suggestion.classification_status !== 'CONFLICTING_RULES',
+      selected: suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
 
