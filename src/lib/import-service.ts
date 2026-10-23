@@ -390,6 +390,7 @@ export interface CommitStatementBatchParams {
   transactions: ExtractedTransaction[]
   selectedCardId?: string
   selectedAccountId?: string
+  summaryOnly?: boolean
   cards: CreditCard[]
   accounts: Account[]
   debts: Debt[]
@@ -408,21 +409,49 @@ export interface CommitStatementBatchResult {
 async function commitStatementBatchAtomic(
   params: CommitStatementBatchParams
 ): Promise<CommitStatementBatchResult> {
-  const selectedTxs = params.transactions.filter((transaction) => transaction.selected !== false)
-  if (selectedTxs.length === 0) {
+  const summaryOnly = Boolean(params.summaryOnly)
+  const selectedTxs = summaryOnly
+    ? []
+    : params.transactions.filter((transaction) => transaction.selected !== false)
+
+  if (!summaryOnly && selectedTxs.length === 0) {
     return { success: false, error: 'Kaydedilecek seçili hareket bulunamadı.' }
+  }
+  if (summaryOnly && params.importType === 'bank_account' && params.parseResult?.closing_balance == null) {
+    return {
+      success: false,
+      error: 'Özet modunda aktarım için kapanış bakiyesi gerekli. Lütfen kapanış bakiyesini girin veya hareketleri içe aktarın.',
+    }
+  }
+  if (summaryOnly && params.importType === 'credit_card' && params.parseResult?.statement_debt == null) {
+    return {
+      success: false,
+      error: 'Özet modunda aktarım için dönem borcu gerekli. Lütfen dönem borcunu girin veya hareketleri içe aktarın.',
+    }
   }
 
   const sourceAccountRef = params.parseResult?.source_account_ref
     || params.parseResult?.last_four
     || params.parseResult?.detected_bank
     || 'unknown-source'
-  const identified = await attachTransactionIdentities(selectedTxs, {
-    sourceBank: params.parseResult?.detected_bank,
-    sourceAccountRef,
-  })
+  const identified = summaryOnly
+    ? []
+    : await attachTransactionIdentities(selectedTxs, {
+        sourceBank: params.parseResult?.detected_bank,
+        sourceAccountRef,
+      })
+
+  const latestTxDate = params.transactions.reduce<string | null>((latest, tx) => {
+    if (!tx.date) return latest
+    if (!latest || tx.date > latest) return tx.date
+    return latest
+  }, null)
+  const observedDate = params.parseResult?.statement_date || latestTxDate || new Date().toISOString().slice(0, 10)
+
   const idempotencySeed = params.fileHash
-    || identified.map((transaction) => transaction.source_fingerprint).sort().join('|')
+    || (summaryOnly
+      ? `summary|${observedDate}|${params.parseResult?.statement_debt ?? ''}|${params.parseResult?.closing_balance ?? ''}`
+      : identified.map((transaction) => transaction.source_fingerprint).sort().join('|'))
   const idempotencyKey = await calculateFileHash(
     `${params.userId}|${params.importType}|${params.fileName}|${idempotencySeed}`
   )
@@ -434,13 +463,15 @@ async function commitStatementBatchAtomic(
     file_name: params.fileName,
     file_hash: params.fileHash,
     import_type: params.importType,
+    summary_only: summaryOnly,
+    observed_date: observedDate,
     bank: params.parseResult?.detected_bank || 'Banka Dökümü',
     card_name: params.parseResult?.detected_card || null,
     last_four: params.parseResult?.last_four || null,
     card_id: params.selectedCardId || null,
     account_id: params.selectedAccountId || null,
     source_account_ref: sourceAccountRef,
-    statement_date: params.parseResult?.statement_date || null,
+    statement_date: params.parseResult?.statement_date || (summaryOnly && params.importType === 'credit_card' ? observedDate : null),
     due_date: params.parseResult?.due_date || null,
     statement_debt: params.parseResult?.statement_debt ?? null,
     minimum_payment: params.parseResult?.minimum_payment ?? null,

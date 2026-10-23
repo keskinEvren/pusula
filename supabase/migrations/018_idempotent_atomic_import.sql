@@ -149,12 +149,13 @@ declare
   v_new numeric;
   v_delta numeric;
   v_account_delta numeric := 0;
-  v_latest_date date;
+  v_summary_only boolean := coalesce((p_payload->>'summary_only')::boolean, false);
+  v_latest_date date := coalesce(nullif(p_payload->>'observed_date','')::date, nullif(p_payload->>'statement_date','')::date, current_date);
   v_closing_balance numeric := nullif(p_payload->>'closing_balance','')::numeric;
   v_statement_debt numeric := nullif(p_payload->>'statement_debt','')::numeric;
   v_minimum numeric := coalesce(nullif(p_payload->>'minimum_payment','')::numeric,0);
   v_interest numeric := coalesce(nullif(p_payload->>'interest_fees','')::numeric,0);
-  v_statement_date date := nullif(p_payload->>'statement_date','')::date;
+  v_statement_date date := coalesce(nullif(p_payload->>'statement_date','')::date, case when coalesce((p_payload->>'summary_only')::boolean, false) and p_payload->>'import_type' = 'credit_card' then coalesce(nullif(p_payload->>'observed_date','')::date, current_date) else null end);
   v_card_stmt_date date;
   v_classification_status text;
   v_apply_effect boolean;
@@ -165,7 +166,17 @@ begin
     raise exception 'Yetkisiz erişim.';
   end if;
   if v_import_type not in ('credit_card','bank_account') then raise exception 'Geçersiz import türü.'; end if;
-  if coalesce(jsonb_array_length(p_payload->'transactions'),0) = 0 then raise exception 'Aktarılacak hareket bulunamadı.'; end if;
+  if not v_summary_only and coalesce(jsonb_array_length(p_payload->'transactions'),0) = 0 then
+    raise exception 'Aktarılacak hareket bulunamadı.';
+  end if;
+  if v_summary_only then
+    if v_import_type = 'bank_account' and v_closing_balance is null then
+      raise exception 'Özet modunda aktarım için kapanış bakiyesi bulunamadı.';
+    end if;
+    if v_import_type = 'credit_card' and v_statement_debt is null then
+      raise exception 'Özet modunda aktarım için ekstre dönem borcu bulunamadı.';
+    end if;
+  end if;
 
   -- Serialize all imports for one user; this closes two-tab/hash check races.
   perform id from public.profiles where id=v_user_id for update;
@@ -417,11 +428,12 @@ begin
   end if;
 
   update public.statement_imports set status='COMPLETED',completed_at=now(),total_transactions=v_inserted,
-    total_amount=(select coalesce(sum(amount),0) from public.transactions where import_id=v_import_id),
+    total_amount=coalesce((select sum(amount) from public.transactions where import_id=v_import_id), case when v_import_type='credit_card' then v_statement_debt else v_closing_balance end, 0),
     raw_text=jsonb_build_object(
       'parser_version',p_payload->>'parser_version',
       'status','COMPLETED',
       'import_type',v_import_type,
+      'summary_only',v_summary_only,
       'file_hash',nullif(p_payload->>'file_hash',''),
       'skipped_duplicates',v_skipped
     )::text
