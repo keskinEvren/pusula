@@ -67,6 +67,8 @@ export default function ImportPage() {
 
   // Mode: credit_card vs bank_account
   const [activeMode, setActiveMode] = useState<'credit_card' | 'bank_account'>('credit_card')
+  // Whether to import individual transaction rows or only update card statement summary / bank balance
+  const [importMovements, setImportMovements] = useState(false)
   const [isGuideOpen, setIsGuideOpen] = useState(false)
   const [switchModeTarget, setSwitchModeTarget] = useState<'credit_card' | 'bank_account' | null>(null)
   const [isClearingQueue, setIsClearingQueue] = useState(false)
@@ -266,6 +268,16 @@ export default function ImportPage() {
           }
         }
 
+        if (activeMode === 'credit_card' && result.statement_debt == null && result.transactions.length > 0) {
+          const computedDebt = result.transactions
+            .filter((t) => t.analysis_group !== 'Hariç')
+            .reduce((sum, t) => sum + t.amount, 0)
+          result = {
+            ...result,
+            statement_debt: Math.round((computedDebt + Number.EPSILON) * 100) / 100,
+          }
+        }
+
         const annotatedTransactions = user
           ? await annotateDuplicateTransactions(supabase, user.id, result.transactions, {
               sourceBank: result.detected_bank,
@@ -285,6 +297,7 @@ export default function ImportPage() {
                   transactions: annotatedTransactions,
                   selectedCardId: matchedCardId,
                   selectedAccountId: matchedAccountId,
+                  expanded: importMovements && incoming.length === 1,
                 }
               : f
           )
@@ -327,6 +340,31 @@ export default function ImportPage() {
   const handleAccountChange = (fileId: string, accountId: string) => {
     setQueuedFiles((prev) =>
       prev.map((f) => (f.id === fileId ? { ...f, selectedAccountId: accountId } : f))
+    )
+  }
+
+  const handleSummaryFieldChange = (
+    fileId: string,
+    field: 'statement_debt' | 'minimum_payment' | 'statement_date' | 'due_date' | 'closing_balance',
+    rawValue: string
+  ) => {
+    setQueuedFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== fileId || !f.parseResult) return f
+        const isNumeric = field === 'statement_debt' || field === 'minimum_payment' || field === 'closing_balance'
+        const parsedValue = isNumeric
+          ? rawValue.trim() === ''
+            ? undefined
+            : Number(rawValue.replace(',', '.'))
+          : rawValue.trim() || undefined
+        return {
+          ...f,
+          parseResult: {
+            ...f.parseResult,
+            [field]: isNumeric && Number.isNaN(parsedValue as number) ? undefined : parsedValue,
+          },
+        }
+      })
     )
   }
 
@@ -473,11 +511,15 @@ export default function ImportPage() {
     const committableFiles = queuedFiles.filter(
       (f) =>
         (f.status === 'ready' || f.status === 'duplicate') &&
-        f.transactions.some((t) => t.selected !== false)
+        (!importMovements || f.transactions.some((t) => t.selected !== false))
     )
 
     if (committableFiles.length === 0) {
-      toast.warning('Aktarılacak hazır veya seçili hareketi olan dosya bulunamadı.')
+      toast.warning(
+        importMovements
+          ? 'Aktarılacak hazır veya seçili hareketi olan dosya bulunamadı.'
+          : 'Aktarılacak hazır ekstre dosyası bulunamadı.'
+      )
       return
     }
 
@@ -529,6 +571,7 @@ export default function ImportPage() {
         transactions: item.transactions,
         selectedCardId: item.selectedCardId,
         selectedAccountId: item.selectedAccountId,
+        summaryOnly: !importMovements,
         cards,
         accounts,
         debts,
@@ -558,7 +601,11 @@ export default function ImportPage() {
         filesCount: committedFilesCount,
         txCount: committedTxCount,
       })
-      toast.success(`${committedFilesCount} ekstre dosyası (${committedTxCount} hareket) başarıyla aktarıldı.`)
+      toast.success(
+        importMovements
+          ? `${committedFilesCount} ekstre dosyası (${committedTxCount} hareket) başarıyla aktarıldı.`
+          : `${committedFilesCount} ekstre özeti / bakiye başarıyla güncellendi.`
+      )
     }
   }
 
@@ -625,36 +672,66 @@ export default function ImportPage() {
       />
 
       {/* Mode Selector Tabs */}
-      <div role="tablist" aria-label="Ekstre yükleme modu" className="flex gap-3 border-b border-border pb-3">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeMode === 'credit_card'}
-          onClick={() => handleSwitchMode('credit_card')}
-          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 min-h-[44px] sm:min-h-[40px] text-sm font-semibold transition-all ${
-            activeMode === 'credit_card'
-              ? 'bg-primary text-primary-foreground shadow-md'
-              : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-        >
-          <CardIcon className="h-4 w-4" />
-          <span>💳 Kredi Kartı Ekstresi</span>
-        </button>
+      <div role="tablist" aria-label="Ekstre yükleme modu" className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeMode === 'credit_card'}
+            onClick={() => handleSwitchMode('credit_card')}
+            className={`flex items-center gap-2 rounded-xl px-5 py-2.5 min-h-[44px] sm:min-h-[40px] text-sm font-semibold transition-all ${
+              activeMode === 'credit_card'
+                ? 'bg-primary text-primary-foreground shadow-md'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <CardIcon className="h-4 w-4" />
+            <span>💳 Kredi Kartı Ekstresi</span>
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeMode === 'bank_account'}
-          onClick={() => handleSwitchMode('bank_account')}
-          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 min-h-[44px] sm:min-h-[40px] text-sm font-semibold transition-all ${
-            activeMode === 'bank_account'
-              ? 'bg-primary text-primary-foreground shadow-md'
-              : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-        >
-          <Building2 className="h-4 w-4" />
-          <span>🏦 Vadesiz Banka Hesap Dökümü</span>
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeMode === 'bank_account'}
+            onClick={() => handleSwitchMode('bank_account')}
+            className={`flex items-center gap-2 rounded-xl px-5 py-2.5 min-h-[44px] sm:min-h-[40px] text-sm font-semibold transition-all ${
+              activeMode === 'bank_account'
+                ? 'bg-primary text-primary-foreground shadow-md'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+          >
+            <Building2 className="h-4 w-4" />
+            <span>🏦 Vadesiz Banka Hesap Dökümü</span>
+          </button>
+        </div>
+
+        {/* Scope Toggle: Summary-Only vs Include Transactions */}
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-muted/50 border border-border">
+          <button
+            type="button"
+            onClick={() => setImportMovements(false)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              !importMovements
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="Hareket satırlarını işlem defterine kaydetmeden yalnızca kart dönem borcunu veya banka kapanış bakiyesini günceller."
+          >
+            ⚡ Sadece Özet / Bakiye Güncelle
+          </button>
+          <button
+            type="button"
+            onClick={() => setImportMovements(true)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              importMovements
+                ? 'bg-primary/20 text-primary border border-primary/30 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title="Tekil harcama/transfer satırlarını da işlem defterine kaydeder."
+          >
+            📋 Hareket Satırlarını da Aktar
+          </button>
+        </div>
       </div>
 
       {/* Global Error Banner */}
@@ -677,8 +754,16 @@ export default function ImportPage() {
                     Toplu Aktarım Başarıyla Tamamlandı!
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Toplam <strong>{successSummary.filesCount}</strong> ekstre paketi ve{' '}
-                    <strong>{successSummary.txCount}</strong> hareket sisteme başarıyla işlendi.
+                    {successSummary.txCount > 0 ? (
+                      <>
+                        Toplam <strong>{successSummary.filesCount}</strong> ekstre paketi ve{' '}
+                        <strong>{successSummary.txCount}</strong> hareket sisteme başarıyla işlendi.
+                      </>
+                    ) : (
+                      <>
+                        Toplam <strong>{successSummary.filesCount}</strong> ekstre özeti / bakiye hareket satırı eklenmeden başarıyla güncellendi.
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1119,13 +1204,32 @@ export default function ImportPage() {
                               </span>
                             </>
                           )}
-                          {item.transactions.length > 0 && (
+                          {item.parseResult?.closing_balance !== undefined && (
+                            <>
+                              <span>•</span>
+                              <span>
+                                Kapanış Bakiyesi:{' '}
+                                <strong className="text-emerald-400 font-mono">
+                                  {formatCurrency(item.parseResult.closing_balance)}
+                                </strong>
+                              </span>
+                            </>
+                          )}
+                          {importMovements && item.transactions.length > 0 && (
                             <>
                               <span>•</span>
                               <span>
                                 Seçili:{' '}
                                 <strong className="text-foreground">{fileSelectedCount}</strong> /{' '}
                                 {item.transactions.length} hareket ({formatCurrency(fileSelectedSum)})
+                              </span>
+                            </>
+                          )}
+                          {!importMovements && (
+                            <>
+                              <span>•</span>
+                              <span className="text-emerald-400 font-medium">
+                                Sadece Özet / Bakiye Güncellenecek (0 hareket satırı)
                               </span>
                             </>
                           )}
@@ -1175,7 +1279,7 @@ export default function ImportPage() {
                         </div>
                       )}
 
-                      {item.transactions.length > 0 && (
+                      {importMovements && item.transactions.length > 0 && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1209,6 +1313,70 @@ export default function ImportPage() {
                     </div>
                   </div>
 
+                  {/* Inline Summary Editor Strip */}
+                  {item.parseResult && item.status !== 'saved' && (
+                    <div className="border-t border-border/60 bg-muted/15 px-4 sm:px-5 py-3">
+                      {activeMode === 'credit_card' ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                          <label className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground font-medium">Dönem Borcu (₺)</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={item.parseResult.statement_debt ?? ''}
+                              onChange={(e) => handleSummaryFieldChange(item.id, 'statement_debt', e.target.value)}
+                              className="h-8 text-xs font-mono"
+                              placeholder="0.00"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground font-medium">Asgari Ödeme (₺)</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={item.parseResult.minimum_payment ?? ''}
+                              onChange={(e) => handleSummaryFieldChange(item.id, 'minimum_payment', e.target.value)}
+                              className="h-8 text-xs font-mono"
+                              placeholder="0.00"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground font-medium">Kesim Tarihi</span>
+                            <Input
+                              type="date"
+                              value={item.parseResult.statement_date ?? ''}
+                              onChange={(e) => handleSummaryFieldChange(item.id, 'statement_date', e.target.value)}
+                              className="h-8 text-xs font-mono"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground font-medium">Son Ödeme Tarihi</span>
+                            <Input
+                              type="date"
+                              value={item.parseResult.due_date ?? ''}
+                              onChange={(e) => handleSummaryFieldChange(item.id, 'due_date', e.target.value)}
+                              className="h-8 text-xs font-mono"
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs max-w-md">
+                          <label className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground font-medium">Hesap Kapanış / Güncel Bakiyesi (₺)</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={item.parseResult.closing_balance ?? ''}
+                              onChange={(e) => handleSummaryFieldChange(item.id, 'closing_balance', e.target.value)}
+                              className="h-8 text-xs font-mono"
+                              placeholder="0.00"
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Warning / Error inline notifications */}
                   {item.duplicateWarning && (
                     <div className="border-t border-amber-500/20 bg-amber-500/10 px-5 py-2.5 text-xs text-amber-400 flex items-center gap-2">
@@ -1225,7 +1393,7 @@ export default function ImportPage() {
                   )}
 
                   {/* Expanded Transaction Review Table */}
-                  {item.expanded && item.transactions.length > 0 && (
+                  {importMovements && item.expanded && item.transactions.length > 0 && (
                     <div className="border-t border-border">
                       <div className="p-3 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
