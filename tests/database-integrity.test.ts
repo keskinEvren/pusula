@@ -389,6 +389,44 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const cardRestored = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
     expect(Number(cardRestored.rows[0].current_debt)).toBe(1000)
 
+    // Summary-only mode: updates card statement & debt without inserting any transactions, and rolls back cleanly
+    const summaryCardPayload = {
+      user_id: userA,
+      idempotency_key: 'db-test-summary-only-card-v1',
+      parser_version: 'db-test-parser-v1',
+      file_name: 'ozet-kart.pdf',
+      file_hash: 'db-test-summary-only-card-hash-v1',
+      import_type: 'credit_card',
+      summary_only: true,
+      observed_date: '2026-10-15',
+      bank: 'Akbank',
+      card_id: stmtCard,
+      statement_date: '2026-10-15',
+      due_date: '2026-10-25',
+      statement_debt: 2450,
+      minimum_payment: 490,
+      interest_fees: 0,
+      transactions: [],
+    }
+    const summaryCardRes = await db.query<{ result: any }>(
+      'select fn_commit_statement_import_atomic($1::jsonb) as result',
+      [JSON.stringify(summaryCardPayload)]
+    )
+    expect(summaryCardRes.rows[0].result.success).toBe(true)
+    expect(summaryCardRes.rows[0].result.inserted_transactions).toBe(0)
+    const cardSummaryAfter = await db.query<{ current_debt: string; statement_debt: string }>(
+      'select current_debt, statement_debt from credit_cards where id=$1',
+      [stmtCard]
+    )
+    expect(Number(cardSummaryAfter.rows[0].current_debt)).toBe(2450)
+    expect(Number(cardSummaryAfter.rows[0].statement_debt)).toBe(2450)
+    await db.query('select rollback_statement_import($1::uuid,$2::uuid)', [summaryCardRes.rows[0].result.import_id, userA])
+    const cardSummaryRestored = await db.query<{ current_debt: string }>(
+      'select current_debt from credit_cards where id=$1',
+      [stmtCard]
+    )
+    expect(Number(cardSummaryRestored.rows[0].current_debt)).toBe(1000)
+
     const foreignProject = '77777777-7777-4777-8777-777777777777'
     await asUser(userB)
     await db.query(
