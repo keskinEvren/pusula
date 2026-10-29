@@ -274,6 +274,54 @@ export interface Database {
         }
         Relationships: []
       }
+      debt_installments: {
+        Row: {
+          id: string
+          debt_id: string
+          user_id: string
+          installment_no: number
+          due_date: string
+          amount: number
+          status: 'Bekliyor' | 'Ödendi'
+          paid_at: string | null
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          debt_id: string
+          user_id: string
+          installment_no: number
+          due_date: string
+          amount: number
+          status?: 'Bekliyor' | 'Ödendi'
+          paid_at?: string | null
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          debt_id?: string
+          user_id?: string
+          installment_no?: number
+          due_date?: string
+          amount?: number
+          status?: 'Bekliyor' | 'Ödendi'
+          paid_at?: string | null
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debt_installments_debt_id_fkey"
+            columns: ["debt_id"]
+            referencedRelation: "debts"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       subscriptions: {
         Row: {
           id: string
@@ -1208,4 +1256,7 @@ export type NotificationPreferenceUpdate = Database['public']['Tables']['notific
 export type Income = Database['public']['Tables']['incomes']['Row']
 export type IncomeInsert = Database['public']['Tables']['incomes']['Insert']
 export type IncomeUpdate = Database['public']['Tables']['incomes']['Update']
+export type DebtInstallment = Database['public']['Tables']['debt_installments']['Row']
+export type DebtInstallmentInsert = Database['public']['Tables']['debt_installments']['Insert']
+export type DebtInstallmentUpdate = Database['public']['Tables']['debt_installments']['Update']
 
