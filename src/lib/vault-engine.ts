@@ -16,6 +16,7 @@ import type {
   StatementImport,
   AgendaItem,
   Credential,
+  DebtInstallment,
 } from '@/types/database'
 import { z } from 'zod'
 
@@ -29,7 +30,7 @@ export interface PusulaVaultData {
   merchant_mappings: MerchantMapping[]
   investments: Investment[]
   projects: Project[]
-  project_tasks: Array<Record<string, unknown>>
+  debt_installments: DebtInstallment[]
   ideas: Idea[]
   agenda_items: AgendaItem[]
   dreams: Dream[]
@@ -64,7 +65,7 @@ export const EMPTY_VAULT_DATA: PusulaVaultData = {
   merchant_mappings: [],
   investments: [],
   projects: [],
-  project_tasks: [],
+  debt_installments: [],
   ideas: [],
   agenda_items: [],
   dreams: [],
@@ -85,7 +86,7 @@ export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; 
   investments: { label: 'Yatırımlar & Portföy', icon: '', category: 'Finans' },
   merchant_mappings: { label: 'Eşleştirme Kuralları', icon: '', category: 'Finans' },
   projects: { label: 'Projeler', icon: '', category: 'Çalışma' },
-  project_tasks: { label: 'Proje Görevleri', icon: '', category: 'Çalışma' },
+  debt_installments: { label: 'Borç Taksitleri', icon: '', category: 'Finans' },
   ideas: { label: 'Fikirler', icon: '', category: 'Çalışma' },
   agenda_items: { label: 'Ajanda & Odak Masası', icon: '', category: 'Çalışma' },
   dreams: { label: 'Hedefler & Vizyon', icon: '', category: 'Kişisel' },
@@ -111,7 +112,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     merchant_mappings: data.merchant_mappings || [],
     investments: data.investments || [],
     projects: data.projects || [],
-    project_tasks: data.project_tasks || [],
+    debt_installments: data.debt_installments || [],
     ideas: data.ideas || [],
     agenda_items: data.agenda_items || [],
     dreams: data.dreams || [],
@@ -132,7 +133,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     merchant_mappings: completeData.merchant_mappings.length,
     investments: completeData.investments.length,
     projects: completeData.projects.length,
-    project_tasks: completeData.project_tasks.length,
+    debt_installments: completeData.debt_installments.length,
     ideas: completeData.ideas.length,
     agenda_items: completeData.agenda_items.length,
     dreams: completeData.dreams.length,
@@ -213,7 +214,7 @@ export function validateVaultPayload(rawJsonOrObject: unknown): ValidationResult
       merchant_mappings: Array.isArray(payload.data.merchant_mappings) ? payload.data.merchant_mappings : [],
       investments: Array.isArray(payload.data.investments) ? payload.data.investments : [],
       projects: Array.isArray(payload.data.projects) ? payload.data.projects : [],
-      project_tasks: Array.isArray(payload.data.project_tasks) ? payload.data.project_tasks : [],
+      debt_installments: Array.isArray(payload.data.debt_installments) ? payload.data.debt_installments : [],
       ideas: Array.isArray(payload.data.ideas) ? payload.data.ideas : [],
       agenda_items: Array.isArray(payload.data.agenda_items) ? payload.data.agenda_items : [],
       dreams: Array.isArray(payload.data.dreams) ? payload.data.dreams : [],

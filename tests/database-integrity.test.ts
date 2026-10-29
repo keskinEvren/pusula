@@ -486,7 +486,7 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
   it('vault replace rolls cleanup back when any restored row is invalid', async () => {
     await asUser(userA)
     const before=await db.query('select name,balance from accounts where id=$1',[source])
-    const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], subscriptions:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], project_tasks:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
+    const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], debt_installments:[], subscriptions:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], project_tasks:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
     await expect(db.query('select fn_restore_vault_replace_atomic($1::jsonb)',[JSON.stringify(invalid)])).rejects.toThrow()
     expect((await db.query('select name,balance from accounts where id=$1',[source])).rows).toEqual(before.rows)
   })

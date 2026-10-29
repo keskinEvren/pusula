@@ -55,8 +55,11 @@ export interface FounderRunwayResult {
 }
 
 export interface InstallmentScheduleItem {
-  amountPerMonth: number
-  remainingMonths: number
+  amountPerMonth?: number | string
+  remainingMonths?: number
+  due_date?: string | null
+  amount?: number | string | null
+  status?: string | null
 }
 
 /**
@@ -502,10 +505,33 @@ export function projectSixMonthCashLoad(
         return sum + eq.monthly
       }, 0)
 
-    // Sum installments that are active in this month (remainingMonths >= month)
+    // Sum installments that are active in this month
     const monthInstallments = (installments || [])
-      .filter((inst) => inst && inst.remainingMonths >= month)
-      .reduce((sum, inst) => sum + safeParseAmount(inst.amountPerMonth), 0)
+      .filter((inst) => {
+        if (!inst) return false
+        if (inst.status === 'Ödendi') return false
+
+        // Raw debt_installment with due_date
+        if (inst.due_date) {
+          const d = new Date(inst.due_date)
+          if (isNaN(d.getTime())) return false
+          return (
+            d.getFullYear() === targetDate.getFullYear() &&
+            d.getMonth() === targetDate.getMonth()
+          )
+        }
+
+        // Legacy format with remainingMonths
+        if (typeof inst.remainingMonths === 'number') {
+          return inst.remainingMonths >= month
+        }
+
+        return false
+      })
+      .reduce((sum, inst) => {
+        const amt = inst.amount !== undefined ? inst.amount : inst.amountPerMonth
+        return sum + safeParseAmount(amt)
+      }, 0)
 
     projection.push(round2(monthSubs + monthInstallments))
   }

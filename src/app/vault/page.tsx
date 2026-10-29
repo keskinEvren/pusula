@@ -126,7 +126,7 @@ function VaultPageContent() {
           maps,
           invs,
           projs,
-          projectTasks,
+          debtInsts,
           ideas,
           agenda,
           dreams,
@@ -145,7 +145,7 @@ function VaultPageContent() {
           fetchAllRows(supabase, 'merchant_mappings'),
           fetchAllRows(supabase, 'investments'),
           fetchAllRows(supabase, 'projects'),
-          fetchAllRows(supabase, 'project_tasks'),
+          fetchAllRows(supabase, 'debt_installments'),
           fetchAllRows(supabase, 'ideas'),
           fetchAllRows(supabase, 'agenda_items'),
           fetchAllRows(supabase, 'dreams'),
@@ -165,7 +165,7 @@ function VaultPageContent() {
         if (maps) data.merchant_mappings = maps
         if (invs) data.investments = invs
         if (projs) data.projects = projs
-        if (projectTasks) data.project_tasks = projectTasks
+        if (debtInsts) data.debt_installments = debtInsts
         if (ideas) data.ideas = ideas
         if (agenda) data.agenda_items = agenda
         if (imports) data.statement_imports = imports
@@ -361,8 +361,8 @@ function VaultPageContent() {
 
         setRestoreProgress('Bağlantılı kayıtlar geri yükleniyor (Seviye 2)...')
         await upsertInChunks(supabase, 'statement_imports', finalData.statement_imports)
-        await upsertInChunks(supabase, 'project_tasks', finalData.project_tasks)
         await upsertInChunks(supabase, 'debts', finalData.debts)
+        await upsertInChunks(supabase, 'debt_installments', finalData.debt_installments)
         await upsertInChunks(supabase, 'subscriptions', finalData.subscriptions)
         await upsertInChunks(supabase, 'ideas', finalData.ideas)
         await upsertInChunks(supabase, 'agenda_items', finalData.agenda_items)

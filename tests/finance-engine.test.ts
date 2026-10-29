@@ -15,7 +15,9 @@ import {
   calculatePortfolioMetrics,
   calculateSubscriptionEquivalent,
   normalizeSubscriptionPeriod,
-  safeParseAmount
+  safeParseAmount,
+  calculateIncomeMetrics,
+  calculateMonthlyBudgetBalance
 } from '@/lib/finance-engine'
 
 vi.mock('@/lib/supabase/client')
@@ -465,6 +467,24 @@ describe('finance-engine', () => {
       const result = projectSixMonthCashLoad([], installments, 2)
       expect(result).toEqual([150.5, 0])
     })
+
+    it('due_date ve status alanlarını içeren debt_installments kayıtlarını doğru aylara projeksiyonlar', () => {
+      const now = new Date()
+      const m1 = new Date(now.getFullYear(), now.getMonth() + 1, 15).toISOString().split('T')[0]
+      const m2 = new Date(now.getFullYear(), now.getMonth() + 2, 10).toISOString().split('T')[0]
+
+      const installments = [
+        { due_date: m1, amount: 250, status: 'Bekliyor' },
+        { due_date: m1, amount: 100, status: 'Ödendi' }, // should be ignored
+        { due_date: m2, amount: 350, status: 'Gecikmede' }, // unpaid, included
+        { due_date: 'invalid-date', amount: 999, status: 'Bekliyor' }, // invalid date, ignored
+      ]
+
+      const result = projectSixMonthCashLoad([], installments, 3)
+      expect(result[0]).toBe(250)
+      expect(result[1]).toBe(350)
+      expect(result[2]).toBe(0)
+    })
   })
 
   describe('calculateFounderRunway', () => {
@@ -574,6 +594,62 @@ describe('finance-engine', () => {
       expect(portfolioResult.totalCost).toBe(0)
       expect(portfolioResult.totalValue).toBe(0)
       expect(portfolioResult.categoryAllocations.length).toBe(0)
+    })
+  })
+
+  describe('calculateIncomeMetrics', () => {
+    it('sabit, değişken ve tek seferlik gelirleri aylık ve yıllık kapasiteye doğru normalize eder', () => {
+      const incomes = [
+        { amount: 50000, period: 'Aylık', income_type: 'Sabit', status: 'Aktif' },
+        { amount: 120000, period: 'Yıllık', income_type: 'Sabit', status: 'Aktif' }, // monthly: 10000
+        { amount: 15000, period: '3 Aylık', income_type: 'Değişken', status: 'Aktif' }, // monthly: 5000
+        { amount: 25000, period: 'Tek Seferlik', income_type: 'Değişken', status: 'Aktif' }, // one-time: 25000, monthly: 0
+        { amount: 10000, period: 'Aylık', income_type: 'Sabit', status: 'Pasif' }, // passive: ignored
+      ]
+
+      const metrics = calculateIncomeMetrics(incomes)
+      expect(metrics.totalMonthlyIncome).toBe(65000) // 50000 + 10000 + 5000
+      expect(metrics.fixedMonthlyIncome).toBe(60000) // 50000 + 10000
+      expect(metrics.variableMonthlyIncome).toBe(5000)
+      expect(metrics.oneTimeIncomeTotal).toBe(25000)
+      expect(metrics.activeCount).toBe(4)
+      expect(metrics.passiveCount).toBe(1)
+    })
+
+    it('boş dizide sıfır metrikleri döner', () => {
+      const metrics = calculateIncomeMetrics([])
+      expect(metrics.totalMonthlyIncome).toBe(0)
+      expect(metrics.activeCount).toBe(0)
+      expect(metrics.passiveCount).toBe(0)
+    })
+  })
+
+  describe('calculateMonthlyBudgetBalance', () => {
+    it('gelir, sabit gider ve değişken harcamaya göre serbest bütçe ve marjı hesaplar', () => {
+      const balance = calculateMonthlyBudgetBalance(50000, 15000, 10000)
+      expect(balance.monthlyIncome).toBe(50000)
+      expect(balance.fixedExpenses).toBe(15000)
+      expect(balance.disposableBudget).toBe(35000)
+      expect(balance.currentVariableLoad).toBe(10000)
+      expect(balance.netMargin).toBe(25000)
+      expect(balance.fixedRatioPct).toBe(30)
+      expect(balance.variableRatioPct).toBe(20)
+      expect(balance.totalUsedRatioPct).toBe(50)
+    })
+
+    it('harcama geliri aştığında negatif marj ve doğru oran döner', () => {
+      const balance = calculateMonthlyBudgetBalance(20000, 15000, 10000)
+      expect(balance.disposableBudget).toBe(5000)
+      expect(balance.netMargin).toBe(-5000)
+      expect(balance.totalUsedRatioPct).toBe(125)
+    })
+
+    it('sıfır gelir durumunda sıfıra bölme hatası vermez', () => {
+      const balance = calculateMonthlyBudgetBalance(0, 5000, 2000)
+      expect(balance.disposableBudget).toBe(-5000)
+      expect(balance.netMargin).toBe(-7000)
+      expect(balance.fixedRatioPct).toBe(0)
+      expect(balance.totalUsedRatioPct).toBe(0)
     })
   })
 })
