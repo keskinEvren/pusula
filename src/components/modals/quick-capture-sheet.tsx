@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { createClient } from '@/lib/supabase/client'
-import { financialBridge } from '@/lib/financial-bridge'
 import { useToast } from '@/lib/toast-context'
 import { cn, formatLocalDateInput } from '@/lib/utils'
 import type { Account, CreditCard } from '@/types/database'
@@ -116,22 +115,34 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'local'
+      if (!user) {
+        throw new Error('Oturum bilgisi bulunamadı.')
+      }
       const today = formatLocalDateInput()
 
-      const res = await financialBridge.recordExpense({
-        userId,
+      const selectedAccount = sourceType === 'account' ? accounts.find((a) => a.id === selectedSourceId) : null
+      const selectedCard = sourceType === 'card' ? cards.find((c) => c.id === selectedSourceId) : null
+      const accountOrCardName = selectedAccount
+        ? selectedAccount.name
+        : selectedCard
+        ? `${selectedCard.bank} • ${selectedCard.last_four || 'Kart'}`
+        : null
+
+      const { error } = await supabase.from('transactions').insert({
+        user_id: user.id,
         amount: numAmount,
         description: description.trim() || 'Hızlı Harcama',
         date: today,
-        merchant: description.trim() || undefined,
-        analysisGroup,
-        accountId: sourceType === 'account' ? selectedSourceId : undefined,
-        cardId: sourceType === 'card' ? selectedSourceId : undefined,
+        merchant: description.trim() || null,
+        type: 'Harcama',
+        analysis_group: analysisGroup,
+        account_id: sourceType === 'account' ? selectedSourceId : null,
+        card_id: sourceType === 'card' ? selectedSourceId : null,
+        account_or_card: accountOrCardName,
       })
 
-      if (!res.success) {
-        throw new Error(res.error || 'Harcama kaydedilemedi.')
+      if (error) {
+        throw error
       }
 
       toast.success(`${numAmount.toLocaleString('tr-TR')} ₺ harcama kaydedildi.`)

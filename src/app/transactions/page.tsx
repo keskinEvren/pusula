@@ -55,17 +55,13 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
-import { financialBridge, getLinkedDebtId, getLinkedInvestmentId } from '@/lib/financial-bridge'
-import type { Transaction, Project, CreditCard, Account, Debt, Investment } from '@/types/database'
+import type { Transaction, CreditCard, Account } from '@/types/database'
 
 function TransactionsContent() {
   const { toast } = useToast()
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [debts, setDebts] = useState<Debt[]>([])
-  const [investments, setInvestments] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
 
   // Keyset Pagination & Server-Side States
@@ -123,7 +119,6 @@ function TransactionsContent() {
 
   const [groupFilter, setGroupFilter] = useState<string>('ALL')
   const [typeFilter, setTypeFilter] = useState<string>('ALL')
-  const [projectFilter, setProjectFilter] = useState<string>('ALL')
   const [monthFilter, setMonthFilter] = useState<string>('ALL')
   const [importFilter, setImportFilter] = useState<string>('ALL')
 
@@ -168,7 +163,6 @@ function TransactionsContent() {
     monthFilter !== 'ALL' ||
     groupFilter !== 'ALL' ||
     typeFilter !== 'ALL' ||
-    projectFilter !== 'ALL' ||
     importFilter !== 'ALL'
 
   const handleClearFilters = () => {
@@ -177,7 +171,6 @@ function TransactionsContent() {
     setMonthFilter('ALL')
     setGroupFilter('ALL')
     setTypeFilter('ALL')
-    setProjectFilter('ALL')
     setImportFilter('ALL')
   }
 
@@ -187,8 +180,6 @@ function TransactionsContent() {
     setMonthFilter(month || 'ALL')
     const group = searchParams.get('group')
     setGroupFilter(group || 'ALL')
-    const projectId = searchParams.get('project_id')
-    setProjectFilter(projectId || 'ALL')
     const search = searchParams.get('search')
     setSearchTerm(search || '')
     const importId = searchParams.get('import_id')
@@ -210,23 +201,7 @@ function TransactionsContent() {
     merchant: '',
     amount: '',
     analysis_group: 'Kişisel',
-    project_id: '',
   })
-
-  // Link to Debt Modal State
-  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
-  const [selectedTxForLink, setSelectedTxForLink] = useState<Transaction | null>(null)
-  const [targetDebtId, setTargetDebtId] = useState<string>('')
-  const [linking, setLinking] = useState(false)
-
-  // Link to Investment Modal State
-  const [isInvLinkModalOpen, setIsInvLinkModalOpen] = useState(false)
-  const [selectedTxForInvLink, setSelectedTxForInvLink] = useState<Transaction | null>(null)
-  const [targetInvestmentId, setTargetInvestmentId] = useState<string>('')
-  const [invLinkWithDca, setInvLinkWithDca] = useState(false)
-  const [invLinkUnitPrice, setInvLinkUnitPrice] = useState('')
-  const [invLinkAddedQty, setInvLinkAddedQty] = useState('')
-  const [invLinking, setInvLinking] = useState(false)
 
   // Convert to Recurring (Subscription/Bill/Installment) Modal State
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false)
@@ -239,7 +214,6 @@ function TransactionsContent() {
     period: 'Aylık',
     end_date: '',
     payment_method: '',
-    project_id: '',
   })
 
   const handleOpenRecurringModal = (tx: Transaction) => {
@@ -268,7 +242,6 @@ function TransactionsContent() {
       period: 'Aylık',
       end_date: '',
       payment_method: tx.account_or_card || 'Kredi Kartı',
-      project_id: tx.project_id || '',
     })
     setIsRecurringModalOpen(true)
   }
@@ -294,7 +267,6 @@ function TransactionsContent() {
         end_date: recurringForm.end_date || null,
         decision: 'Devam',
         payment_method: recurringForm.payment_method || null,
-        project_id: recurringForm.project_id || null,
         status: 'Aktif',
       })
 
@@ -308,36 +280,18 @@ function TransactionsContent() {
     }
   }
 
-  // Load metadata (cards, accounts, debts, projects, investments) once on mount
+  // Load metadata (cards, accounts) once on mount
   useEffect(() => {
     async function loadMetadata() {
       try {
         const supabase = createClient()
-        const [{ data: prjs }, { data: crds }, { data: accs }, { data: dbts }] = await Promise.all([
-          supabase.from('projects').select('*'),
+        const [{ data: crds }, { data: accs }] = await Promise.all([
           supabase.from('credit_cards').select('*'),
           supabase.from('accounts').select('*'),
-          supabase.from('debts').select('*').order('created_at', { ascending: false }),
         ])
 
-        if (prjs) setProjects(prjs)
         if (crds) setCards(crds)
         if (accs) setAccounts(accs)
-        if (dbts) setDebts(dbts)
-
-        const { data: invs, error: invErr } = await supabase.from('investments').select('*')
-        if (invs && !invErr) {
-          setInvestments(invs)
-        } else {
-          const cached = localStorage.getItem('pusula_local_investments')
-          if (cached) {
-            try {
-              setInvestments(JSON.parse(cached))
-            } catch {
-              setInvestments([])
-            }
-          }
-        }
       } catch (err) {
         console.error('Error loading metadata:', err)
       }
@@ -358,7 +312,7 @@ function TransactionsContent() {
         p_search: debouncedSearchTerm.trim() || null,
         p_group: groupFilter !== 'ALL' ? groupFilter : null,
         p_type: typeFilter !== 'ALL' ? typeFilter : null,
-        p_project_id: projectFilter !== 'ALL' ? projectFilter : null,
+        p_project_id: null,
         p_month: monthFilter !== 'ALL' ? monthFilter : null,
         p_import_id: importFilter !== 'ALL' ? importFilter : null,
         p_segment_tab: segmentTab,
@@ -385,7 +339,6 @@ function TransactionsContent() {
       debouncedSearchTerm,
       groupFilter,
       typeFilter,
-      projectFilter,
       importFilter,
       sortField,
       sortOrder,
@@ -400,7 +353,7 @@ function TransactionsContent() {
         p_search: debouncedSearchTerm.trim() || null,
         p_group: groupFilter !== 'ALL' ? groupFilter : null,
         p_type: typeFilter !== 'ALL' ? typeFilter : null,
-        p_project_id: projectFilter !== 'ALL' ? projectFilter : null,
+        p_project_id: null,
         p_month: monthFilter !== 'ALL' ? monthFilter : null,
         p_import_id: importFilter !== 'ALL' ? importFilter : null,
         p_segment_tab: segmentTab,
@@ -422,7 +375,6 @@ function TransactionsContent() {
     debouncedSearchTerm,
     groupFilter,
     typeFilter,
-    projectFilter,
     monthFilter,
     importFilter,
     segmentTab,
@@ -489,200 +441,6 @@ function TransactionsContent() {
     }
   }, [resetAndReload])
 
-  const handleOpenLinkModal = (tx: Transaction) => {
-    const isIncome = tx.type === 'Gelir' || tx.type === 'Tahsilat'
-    const suitableDebts = debts.filter((d) => (isIncome ? d.type === 'Alacak' : d.type === 'Borç') && d.status === 'Açık')
-    setSelectedTxForLink(tx)
-    setTargetDebtId(suitableDebts[0]?.id || '')
-    setIsLinkModalOpen(true)
-  }
-
-  const handleConfirmLink = async () => {
-    if (!selectedTxForLink || !targetDebtId) return
-    setLinking(true)
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) throw new Error('Oturum açılmamış')
-
-      const res = await financialBridge.linkTransactionToDebt({
-        userId: user.id,
-        transactionId: selectedTxForLink.id,
-        debtId: targetDebtId,
-      })
-
-      if (!res.success) throw new Error(res.error)
-
-      setIsLinkModalOpen(false)
-      setSelectedTxForLink(null)
-      await loadTransactions()
-      toast.success('Hareket başarıyla borç/alacak ile eşlendi.')
-    } catch (err: any) {
-      toast.error(err.message || 'Eşleme başarısız oldu')
-    } finally {
-      setLinking(false)
-    }
-  }
-
-  const handleUnlinkFromDebt = (tx: Transaction) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Borç / Alacak Eşleşmesini Kaldır',
-      description: 'Bu hareketin borç/alacak eşlemesini kaldırmak istiyor musunuz? Tutar borç bakiyesine iade edilecektir.',
-      confirmLabel: 'Eşleşmeyi Kaldır',
-      variant: 'warning',
-      onConfirm: async () => {
-        setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
-        try {
-          const supabase = createClient()
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
-          if (!user) throw new Error('Oturum açılmamış')
-
-          const res = await financialBridge.unlinkTransactionFromDebt({
-            userId: user.id,
-            transactionId: tx.id,
-          })
-
-          if (!res.success) throw new Error(res.error)
-          await loadTransactions()
-          toast.success('Borç/alacak eşlemesi kaldırıldı.')
-        } catch (err: any) {
-          toast.error(err.message || 'Bağlantı kaldırılamadı')
-        } finally {
-          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
-        }
-      },
-    })
-  }
-
-  const handleOpenInvestmentLinkModal = (tx: Transaction) => {
-    setSelectedTxForInvLink(tx)
-    const initialInv = investments[0]
-    setTargetInvestmentId(initialInv?.id || '')
-    setInvLinkWithDca(false)
-    if (initialInv) {
-      const price = initialInv.current_price > 0 ? initialInv.current_price : initialInv.unit_cost
-      setInvLinkUnitPrice(price > 0 ? price.toString() : '')
-      const calculatedQty = price > 0 ? round2(tx.amount / price) : 0
-      setInvLinkAddedQty(calculatedQty > 0 ? calculatedQty.toString() : '')
-    } else {
-      setInvLinkUnitPrice('')
-      setInvLinkAddedQty('')
-    }
-    setIsInvLinkModalOpen(true)
-  }
-
-  const handleTargetInvChange = (id: string) => {
-    setTargetInvestmentId(id)
-    const inv = investments.find((i) => i.id === id)
-    if (inv && selectedTxForInvLink) {
-      const price = inv.current_price > 0 ? inv.current_price : inv.unit_cost
-      setInvLinkUnitPrice(price > 0 ? price.toString() : '')
-      const calculatedQty = price > 0 ? round2(selectedTxForInvLink.amount / price) : 0
-      setInvLinkAddedQty(calculatedQty > 0 ? calculatedQty.toString() : '')
-    }
-  }
-
-  const handleConfirmInvestmentLink = async () => {
-    if (!selectedTxForInvLink || !targetInvestmentId) return
-    setInvLinking(true)
-    try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      const userId = user?.id || 'local'
-
-      const addedQtyNum = invLinkWithDca ? parseFloat(invLinkAddedQty.replace(',', '.')) : undefined
-      const unitPriceNum = invLinkWithDca ? parseFloat(invLinkUnitPrice.replace(',', '.')) : undefined
-
-      const res = await financialBridge.linkTransactionToInvestment({
-        userId,
-        transactionId: selectedTxForInvLink.id,
-        investmentId: targetInvestmentId,
-        addedQty: addedQtyNum && addedQtyNum > 0 ? addedQtyNum : undefined,
-        unitPrice: unitPriceNum && unitPriceNum > 0 ? unitPriceNum : undefined,
-      })
-
-      if (!res.success) throw new Error(res.error)
-
-      // Update local storage cache if fallback is in use
-      if (invLinkWithDca && addedQtyNum && addedQtyNum > 0 && unitPriceNum && unitPriceNum > 0) {
-        const cached = localStorage.getItem('pusula_local_investments')
-        if (cached) {
-          try {
-            const list: Investment[] = JSON.parse(cached)
-            const updated = list.map((inv) => {
-              if (inv.id === targetInvestmentId) {
-                const currentQty = Number(inv.quantity || 0)
-                const currentCost = Number(inv.unit_cost || 0)
-                const newQty = currentQty + addedQtyNum
-                const totalSpent = currentQty * currentCost + addedQtyNum * unitPriceNum
-                const newUnitCost = newQty > 0 ? Math.round((totalSpent / newQty) * 100) / 100 : 0
-                return {
-                  ...inv,
-                  quantity: newQty,
-                  unit_cost: newUnitCost,
-                  current_price: unitPriceNum,
-                  last_price_updated_at: new Date().toISOString(),
-                }
-              }
-              return inv
-            })
-            localStorage.setItem('pusula_local_investments', JSON.stringify(updated))
-            setInvestments(updated)
-          } catch {}
-        }
-      }
-
-      setIsInvLinkModalOpen(false)
-      setSelectedTxForInvLink(null)
-      await loadTransactions()
-      toast.success('Hareket başarıyla yatırıma aktarıldı.')
-    } catch (err: any) {
-      toast.error(err.message || 'Yatırıma bağlama başarısız oldu')
-    } finally {
-      setInvLinking(false)
-    }
-  }
-
-  const handleUnlinkFromInvestment = (tx: Transaction) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Yatırım Bağlantısını Kaldır',
-      description: 'Bu hareketin yatırım bağlantısını kaldırmak ve tekrar standart harcama grubuna almak istiyor musunuz?',
-      confirmLabel: 'Bağlantıyı Kaldır',
-      variant: 'warning',
-      onConfirm: async () => {
-        setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
-        try {
-          const supabase = createClient()
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
-          const userId = user?.id || 'local'
-
-          const res = await financialBridge.unlinkTransactionFromInvestment({
-            userId,
-            transactionId: tx.id,
-          })
-
-          if (!res.success) throw new Error(res.error)
-          await loadTransactions()
-          toast.success('Yatırım bağlantısı kaldırıldı.')
-        } catch (err: any) {
-          toast.error(err.message || 'Bağlantı kaldırılamadı')
-        } finally {
-          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
-        }
-      },
-    })
-  }
-
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
@@ -696,66 +454,58 @@ function TransactionsContent() {
       if (!user) throw new Error('Oturum açılmamış')
 
       const amountNum = parseFloat(newTx.amount || '0')
-      
+      if (amountNum <= 0) {
+        throw new Error('Tutar sıfırdan büyük olmalıdır.')
+      }
+
       const account = accounts.find((a) => a.name === newTx.account_or_card)
       const card = cards.find((c) => `${c.bank} • ${c.last_four || 'Kart'}` === newTx.account_or_card)
-      
+
       const accountId = account?.id || null
       const cardId = card?.id || null
 
-      let res: { success: boolean; error?: string } = { success: true }
+      let txDescription = newTx.description || newTx.merchant || 'Harcama'
+      let txMerchant = newTx.merchant || newTx.description || null
+      let txGroup = newTx.analysis_group
+      let txAccountId = accountId
+      let txCardId = cardId
+      let txAccountOrCard = newTx.account_or_card
 
-      if (newTx.type === 'Harcama') {
-        res = await financialBridge.recordExpense({
-          userId: user.id,
-          amount: amountNum,
-          accountId: accountId || undefined,
-          cardId: cardId || undefined,
-          date: newTx.date,
-          merchant: newTx.merchant || newTx.description || '',
-          description: newTx.description || newTx.merchant,
-          analysisGroup: newTx.analysis_group as any,
-          projectId: newTx.project_id || undefined,
-        })
-      } else if (newTx.type === 'Gelir') {
+      if (newTx.type === 'Gelir') {
         if (!accountId) {
           throw new Error('Gelir için bir banka hesabı seçilmelidir.')
         }
-        res = await financialBridge.recordIncome({
-          userId: user.id,
-          amount: amountNum,
-          accountId: accountId,
-          date: newTx.date,
-          merchant: newTx.merchant || newTx.description || '',
-          description: newTx.description || newTx.merchant,
-          projectId: newTx.project_id || undefined,
-        })
+        txGroup = 'Gelir'
       } else if (newTx.type === 'Kart Ödemesi') {
         if (!accountId || !targetCardId) throw new Error('Kaynak hesap ve ödenecek kart seçilmelidir.')
-        res = await financialBridge.recordCardPayment({
-          userId: user.id,
-          amount: amountNum,
-          sourceAccountId: accountId,
-          cardId: targetCardId,
-          date: newTx.date,
-          description: newTx.description || newTx.merchant,
-        })
+        txGroup = 'Hariç'
+        txCardId = targetCardId
+        const targetCard = cards.find((c) => c.id === targetCardId)
+        txDescription = txDescription || 'Kart Ödemesi'
+        txMerchant = targetCard ? `${targetCard.bank} • ${targetCard.last_four || 'Kart'}` : 'Kart Ödemesi'
       } else if (newTx.type === 'Transfer') {
         if (!accountId || !targetAccountId) throw new Error('Kaynak ve hedef hesap seçilmelidir.')
-        res = await financialBridge.recordTransfer({
-          userId: user.id,
-          amount: amountNum,
-          sourceAccountId: accountId,
-          targetAccountId,
-          date: newTx.date,
-          description: newTx.description || newTx.merchant,
-        })
-      } else {
-        throw new Error('Geçersiz işlem türü.')
+        txGroup = 'Hariç'
+        const targetAcc = accounts.find((a) => a.id === targetAccountId)
+        txDescription = txDescription || 'Hesaplar Arası Transfer'
+        txMerchant = targetAcc ? targetAcc.name : 'Transfer'
       }
 
-      if (!res.success) {
-        throw new Error(res.error || 'İşlem kaydedilemedi')
+      const { error: insertError } = await supabase.from('transactions').insert({
+        user_id: user.id,
+        date: newTx.date,
+        amount: amountNum,
+        type: newTx.type as any,
+        description: txDescription,
+        merchant: txMerchant,
+        analysis_group: txGroup as any,
+        account_id: txAccountId,
+        card_id: txCardId,
+        account_or_card: txAccountOrCard,
+      })
+
+      if (insertError) {
+        throw insertError
       }
 
       setIsAddModalOpen(false)
@@ -769,9 +519,8 @@ function TransactionsContent() {
         merchant: '',
         amount: '',
         analysis_group: 'Kişisel',
-        project_id: '',
       })
-      loadTransactions()
+      resetAndReload()
       toast.success('Yeni hareket başarıyla eklendi.')
     } catch (err: any) {
       toast.error(err.message || 'Hareket eklenemedi')
@@ -789,14 +538,21 @@ function TransactionsContent() {
       variant: 'destructive',
       onConfirm: async () => {
         setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
-        const res = await financialBridge.deleteTransaction(id)
-        if (res.success) {
+        try {
+          const supabase = createClient()
+          const { error } = await supabase.from('transactions').delete().eq('id', id)
+          if (error) throw error
           setTransactions((prev) => prev.filter((t) => t.id !== id))
+          setStats((prev) => ({
+            ...prev,
+            total_count: Math.max(0, prev.total_count - 1),
+          }))
           toast.success('Hareket silindi.')
-        } else {
-          toast.error(res.error || 'Silinemedi')
+        } catch (err: any) {
+          toast.error(err?.message || 'Silinemedi')
+        } finally {
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
         }
-        setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }))
       },
     })
   }
@@ -1000,21 +756,6 @@ function TransactionsContent() {
             <option value="Hariç">Hariç (Transfer & Ödeme)</option>
             <option value="Gelir">Gelir (Maaş / Destek)</option>
           </Select>
-
-          {/* Project Filter */}
-          <Select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="text-xs"
-            aria-label="Proje Filtresi"
-          >
-            <option value="ALL">Tüm Projeler</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
         </div>
 
         {/* Clear Filters Toolbar Banner */}
@@ -1100,28 +841,6 @@ function TransactionsContent() {
                         'Nakit'}
                     </span>
                   </div>
-
-                  {/* Inline quick links */}
-                  {(tx.type === 'Harcama' || tx.type === 'Transfer') && (
-                    <div className="flex items-center gap-3 pt-0.5 text-[11px]">
-                      {tx.account_id && tx.type === 'Harcama' && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenLinkModal(tx)}
-                          className="text-amber-400 hover:underline font-medium min-h-[32px] inline-flex items-center"
-                        >
-                          Borca Bağla
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenInvestmentLinkModal(tx)}
-                        className="text-primary hover:underline font-medium min-h-[32px] inline-flex items-center"
-                      >
-                        Yatırıma Aktar
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
@@ -1187,7 +906,6 @@ function TransactionsContent() {
                 <th scope="col" className="p-3">Tür</th>
                 <th scope="col" className="p-3">İşyeri / Açıklama</th>
                 <th scope="col" className="p-3">Grup</th>
-                <th scope="col" className="p-3">Proje</th>
                 <th
                   scope="col"
                   className="p-3 text-right"
@@ -1216,7 +934,7 @@ function TransactionsContent() {
             <tbody className="divide-y divide-border/40 font-mono">
               {sortedTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground font-sans">
+                  <td colSpan={7} className="p-8 text-center text-muted-foreground font-sans">
                     Filtrelere uygun hareket bulunamadı.
                   </td>
                 </tr>
@@ -1261,100 +979,18 @@ function TransactionsContent() {
                         </div>
                       )}
 
-                      {/* Debt & Investment Link Status & Quick Actions */}
-                      {(() => {
-                        const debtId = getLinkedDebtId(tx)
-                        const linkedDebt = debts.find((d) => d.id === debtId)
-                        if (linkedDebt) {
-                          return (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                                ✓ {linkedDebt.type === 'Alacak' ? 'Tahsilat' : 'Ödeme'}: {linkedDebt.person_or_entity}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleUnlinkFromDebt(tx)}
-                                className="text-[11px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
-                                title="Eşleştirmeyi kaldır ve tutarı borç/alacak bakiyesine iade et"
-                              >
-                                Çöz
-                              </button>
-                            </div>
-                          )
-                        }
-
-                        const investmentId = getLinkedInvestmentId(tx)
-                        const linkedInv = investments.find((i) => i.id === investmentId)
-                        if (linkedInv || investmentId) {
-                          return (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary border border-primary/25 font-mono">
-                                📈 Portföy: {linkedInv ? linkedInv.name : 'Yatırım'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleUnlinkFromInvestment(tx)}
-                                className="text-[11px] text-muted-foreground hover:text-destructive underline transition-colors cursor-pointer"
-                                title="Yatırım bağlantısını kaldır ve hareketi normal harcamaya geri al"
-                              >
-                                Çöz
-                              </button>
-                            </div>
-                          )
-                        }
-
-                        if (tx.type === 'Gelir') {
-                          return (
-                            <div className="mt-1">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenLinkModal(tx)}
-                                className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline transition-colors"
-                                title="Bu gelen parayı alacak hakedişine bağla"
-                              >
-                                Alacağa Bağla →
-                              </button>
-                            </div>
-                          )
-                        }
-
-                        if (tx.type === 'Harcama' || tx.type === 'Transfer') {
-                          return (
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              {tx.account_id && tx.type === 'Harcama' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenLinkModal(tx)}
-                                  className="inline-flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-semibold hover:underline transition-colors"
-                                  title="Bu harcamayı şahsi borca bağla"
-                                >
-                                  Borca Bağla →
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleOpenInvestmentLinkModal(tx)}
-                                className="inline-flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 font-semibold hover:underline transition-colors"
-                                title="Bu transferi/harcamayı portföydeki bir yatırıma bağla ve tüketim harcamasından muaf tut"
-                              >
-                                Yatırıma Aktar →
-                              </button>
-                              {tx.type === 'Harcama' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenRecurringModal(tx)}
-                                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground font-medium hover:underline transition-colors"
-                                  title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
-                                >
-                                  Abonelik Yap →
-                                </button>
-                              )}
-                            </div>
-                          )
-                        }
-
-                        return null
-                      })()}
+                      {tx.type === 'Harcama' && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRecurringModal(tx)}
+                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground font-medium hover:underline transition-colors"
+                            title="Bu harcamayı aylık düzenli gider / abonelik / fatura yap"
+                          >
+                            Abonelik Yap →
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 font-sans">
                       <Badge
@@ -1371,9 +1007,6 @@ function TransactionsContent() {
                       >
                         {tx.analysis_group}
                       </Badge>
-                    </td>
-                    <td className="p-3 font-sans text-muted-foreground">
-                      {projects.find((p) => p.id === tx.project_id)?.name || '—'}
                     </td>
                     <td className="p-3 text-right font-bold whitespace-nowrap">
                       <span
@@ -1541,37 +1174,19 @@ function TransactionsContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="space-y-1">
-              <label htmlFor="add-tx-group" className="text-xs font-semibold text-foreground">Analiz Grubu</label>
-              <Select
-                id="add-tx-group"
-                value={newTx.analysis_group}
-                onChange={(e) => setNewTx({ ...newTx, analysis_group: e.target.value })}
-              >
-                <option value="Kişisel">Kişisel</option>
-                <option value="İş">İş (SaaS & Gider)</option>
-                <option value="Finansman">Finansman</option>
-                <option value="Hariç">Hariç</option>
-                <option value="Gelir">Gelir</option>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="add-tx-project" className="text-xs font-semibold text-foreground">Bağlı Proje (Opsiyonel)</label>
-              <Select
-                id="add-tx-project"
-                value={newTx.project_id}
-                onChange={(e) => setNewTx({ ...newTx, project_id: e.target.value })}
-              >
-                <option value="">(Proje Yok)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <label htmlFor="add-tx-group" className="text-xs font-semibold text-foreground">Analiz Grubu</label>
+            <Select
+              id="add-tx-group"
+              value={newTx.analysis_group}
+              onChange={(e) => setNewTx({ ...newTx, analysis_group: e.target.value })}
+            >
+              <option value="Kişisel">Kişisel</option>
+              <option value="İş">İş (SaaS & Gider)</option>
+              <option value="Finansman">Finansman</option>
+              <option value="Hariç">Hariç</option>
+              <option value="Gelir">Gelir</option>
+            </Select>
           </div>
 
           <div className="flex justify-end gap-2 pt-2.5 border-t border-border">
@@ -1583,119 +1198,6 @@ function TransactionsContent() {
             </Button>
           </div>
         </form>
-      </Modal>
-
-      {/* Link Transaction to Debt Modal */}
-      <Modal
-        isOpen={isLinkModalOpen}
-        onClose={() => setIsLinkModalOpen(false)}
-        title={
-          selectedTxForLink?.type === 'Gelir' || selectedTxForLink?.type === 'Tahsilat'
-            ? '🎯 Hareketi Alacağa Tahsilat Olarak Eşle'
-            : '🎯 Hareketi Borca Ödeme Olarak Eşle'
-        }
-        description="Seçilen banka hareketi doğrudan ilgili borç/alacaktan düşülecek ve kalan bakiye otomatik güncellenecektir."
-        size="lg"
-      >
-        {selectedTxForLink && (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tarih:</span>
-                <span className="text-foreground font-semibold">{formatDate(selectedTxForLink.date)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Hesap / Kart:</span>
-                <span className="text-foreground">{selectedTxForLink.account_or_card || 'Banka Hesabı'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Açıklama / İşyeri:</span>
-                <span className="text-foreground truncate max-w-[240px]">
-                  {selectedTxForLink.merchant || selectedTxForLink.description}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm pt-2 border-t border-border/60">
-                <span className="font-semibold text-muted-foreground">İşlem Tutarı:</span>
-                <span className="font-bold text-success text-base font-mono">
-                  +{formatCurrency(selectedTxForLink.amount)}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="link-debt-target" className="text-xs font-semibold text-foreground">
-                {selectedTxForLink.type === 'Gelir' || selectedTxForLink.type === 'Tahsilat'
-                  ? 'Eşleştirilecek Açık Alacak'
-                  : 'Eşleştirilecek Açık Borç'}
-              </label>
-              <Select
-                id="link-debt-target"
-                value={targetDebtId}
-                onChange={(e) => setTargetDebtId(e.target.value)}
-                className="text-xs"
-              >
-                {debts
-                  .filter(
-                    (d) =>
-                      (selectedTxForLink.type === 'Gelir' || selectedTxForLink.type === 'Tahsilat'
-                        ? d.type === 'Alacak'
-                        : d.type === 'Borç') && d.status === 'Açık'
-                  )
-                  .map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.person_or_entity} ({d.category}) — Kalan: {formatCurrency(d.remaining)}
-                    </option>
-                  ))}
-              </Select>
-            </div>
-
-            {targetDebtId &&
-              (() => {
-                const target = debts.find((d) => d.id === targetDebtId)
-                if (!target) return null
-                const postRemaining = Math.max(
-                  0,
-                  Number(target.remaining) - Number(selectedTxForLink.amount)
-                )
-                return (
-                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs space-y-1">
-                    <div className="text-muted-foreground font-sans">İşlem Sonrası Alacak Bakiyesi:</div>
-                    <div className="flex items-center gap-2 font-mono text-sm">
-                      <span className="line-through text-muted-foreground">
-                        {formatCurrency(target.remaining)}
-                      </span>
-                      <span>➔</span>
-                      <strong className="text-emerald-400 font-bold">
-                        {formatCurrency(postRemaining)}
-                      </strong>
-                      {postRemaining === 0 && (
-                        <Badge variant="success" className="text-[11px]">
-                          Tamamen Kapanacak
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-border">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsLinkModalOpen(false)}
-              >
-                İptal
-              </Button>
-              <Button
-                type="button"
-                disabled={linking || !targetDebtId}
-                onClick={handleConfirmLink}
-              >
-                {linking ? 'Eşleniyor...' : 'Eşle ve Bakiyeden Düş'}
-              </Button>
-            </div>
-          </div>
-        )}
       </Modal>
 
       {/* Convert to Recurring Modal */}
@@ -1842,162 +1344,6 @@ function TransactionsContent() {
             </Button>
           </div>
         </form>
-      </Modal>
-
-      {/* Link Transaction to Investment Modal (Financial Bridge) */}
-      <Modal
-        isOpen={isInvLinkModalOpen}
-        onClose={() => setIsInvLinkModalOpen(false)}
-        title="📈 Hareketi Yatırıma Aktar & Portföye Eşle"
-        description="Bu işlem hareketi tüketim harcamaları havuzundan çıkarıp 'Hariç' grubuna alır; bütçenizi bozmadan portföy sermaye aktarımı olarak bağlar."
-        size="lg"
-      >
-        {selectedTxForInvLink && (
-          <div className="space-y-4">
-            {/* Tx Summary */}
-            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground font-sans">Tarih:</span>
-                <span className="text-foreground font-semibold">{formatDate(selectedTxForInvLink.date)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground font-sans">Hesap:</span>
-                <span className="text-foreground">{selectedTxForInvLink.account_or_card || 'Banka Hesabı'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground font-sans">Açıklama / İşyeri:</span>
-                <span className="text-foreground truncate max-w-[240px]">
-                  {selectedTxForInvLink.merchant || selectedTxForInvLink.description}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm pt-2 border-t border-border/60">
-                <span className="font-semibold text-muted-foreground font-sans">Aktarılan Tutar:</span>
-                <span className="font-bold text-primary text-base font-mono">
-                  {formatCurrency(selectedTxForInvLink.amount)}
-                </span>
-              </div>
-            </div>
-
-            {/* Target Investment */}
-            <div className="space-y-1.5">
-              <label htmlFor="link-inv-target" className="text-xs font-semibold text-foreground">Hedef Yatırım / Varlık</label>
-              {investments.length === 0 ? (
-                <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-md">
-                  Portföyünüzde henüz tanımlı bir yatırım bulunmuyor. Lütfen önce <strong>Yatırımlar & Portföy</strong> sayfasından varlık ekleyin.
-                </p>
-              ) : (
-                <Select
-                  id="link-inv-target"
-                  value={targetInvestmentId}
-                  onChange={(e) => handleTargetInvChange(e.target.value)}
-                  className="text-xs"
-                >
-                  {investments.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.name} ({inv.symbol || inv.category}) • Mevcut: {inv.quantity} adet @ {formatCurrency(inv.unit_cost)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </div>
-
-            {/* DCA Option Checkbox */}
-            {investments.length > 0 && (
-              <div className="space-y-3 pt-1 border-t border-border/50">
-                <label htmlFor="inv-link-dca" className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-                  <input
-                    id="inv-link-dca"
-                    type="checkbox"
-                    checked={invLinkWithDca}
-                    onChange={(e) => setInvLinkWithDca(e.target.checked)}
-                    className="rounded border-border text-primary focus:ring-primary h-4 w-4"
-                  />
-                  <span>Varlığın adet ve maliyetini bu tutarla güncelle (Kademeli Alım)</span>
-                </label>
-
-                {invLinkWithDca && (() => {
-                  const targetInv = investments.find((i) => i.id === targetInvestmentId)
-                  const unitPrice = parseFloat(invLinkUnitPrice.replace(',', '.')) || 0
-                  const addedQty = parseFloat(invLinkAddedQty.replace(',', '.')) || 0
-                  const dcaPreview =
-                    targetInv && unitPrice > 0 && addedQty > 0
-                      ? {
-                          newQty: round2(targetInv.quantity + addedQty),
-                          newCost: round2(
-                            (targetInv.quantity * targetInv.unit_cost + addedQty * unitPrice) /
-                              (targetInv.quantity + addedQty)
-                          ),
-                        }
-                      : null
-
-                  return (
-                    <div className="space-y-3 bg-muted/20 p-3 rounded-lg border border-border/70 text-xs">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label htmlFor="link-inv-unit-price" className="text-[11px] font-semibold text-muted-foreground">
-                            Birim Alış Fiyatı
-                          </label>
-                          <Input
-                            id="link-inv-unit-price"
-                            type="number"
-                            step="any"
-                            prefix="₺"
-                            value={invLinkUnitPrice}
-                            onChange={(e) => {
-                              const p = e.target.value
-                              setInvLinkUnitPrice(p)
-                              const pNum = parseFloat(p.replace(',', '.'))
-                              if (pNum > 0 && selectedTxForInvLink) {
-                                setInvLinkAddedQty(round2(selectedTxForInvLink.amount / pNum).toString())
-                              }
-                            }}
-                            placeholder="0.00"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label htmlFor="link-inv-added-qty" className="text-[11px] font-semibold text-muted-foreground">
-                            Alınan Adet / Miktar
-                          </label>
-                          <Input
-                            id="link-inv-added-qty"
-                            type="number"
-                            step="any"
-                            value={invLinkAddedQty}
-                            onChange={(e) => setInvLinkAddedQty(e.target.value)}
-                            placeholder="Adet miktarı"
-                          />
-                        </div>
-                      </div>
-
-                      {dcaPreview && (
-                        <div className="rounded bg-primary/10 border border-primary/25 p-2 text-[11px] flex justify-between items-center font-mono">
-                          <span className="text-muted-foreground font-sans">Yeni Durum:</span>
-                          <span className="text-primary font-bold">
-                            {dcaPreview.newQty.toLocaleString('tr-TR')} Adet @ {formatCurrency(dcaPreview.newCost)} Ortalama
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-border">
-              <Button type="button" variant="outline" onClick={() => setIsInvLinkModalOpen(false)}>
-                İptal
-              </Button>
-              <Button
-                type="button"
-                disabled={invLinking || !targetInvestmentId || investments.length === 0}
-                onClick={handleConfirmInvestmentLink}
-                className="font-semibold bg-primary hover:bg-primary/90 text-primary-foreground"
-              >
-                {invLinking ? 'Aktarılıyor...' : 'Yatırıma Aktar & Bütçeden Muaf Tut'}
-              </Button>
-            </div>
-          </div>
-        )}
       </Modal>
 
       {/* Confirm Dialog */}
