@@ -15,12 +15,10 @@ import {
   AlertTriangle,
   XCircle,
   Archive,
-  ArrowRight,
   TrendingDown,
   ShieldCheck,
   Search,
   DollarSign,
-  Receipt,
   RotateCcw,
   LayoutGrid,
   TableProperties,
@@ -39,12 +37,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Modal } from '@/components/ui/modal'
 import { Sheet } from '@/components/ui/sheet'
 import { ViewToggle } from '@/components/ui/view-toggle'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
-import type { Subscription, Project, Transaction } from '@/types/database'
+import type { Subscription } from '@/types/database'
 
 export type ExpenseCategory =
   | 'Eğlence & Medya'
@@ -58,8 +55,6 @@ export type StrategicDecision = 'Devam' | 'Kararsız' | 'İptal Et'
 export default function SubscriptionsPage() {
   const { toast } = useToast()
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
 
   // Deletion confirmation
@@ -94,12 +89,7 @@ export default function SubscriptionsPage() {
     amount: '',
     period: 'Aylık',
     payment_method: 'Kredi Kartı',
-    project_id: '',
   })
-
-  // Quick Picker from Transactions Modal State
-  const [isPickerOpen, setIsPickerOpen] = useState(false)
-  const [pickerSearch, setPickerSearch] = useState('')
 
   useEffect(() => {
     loadData()
@@ -109,14 +99,13 @@ export default function SubscriptionsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: sData }, { data: pData }, { data: tData }] = await Promise.all([
-        supabase.from('subscriptions').select('*').order('amount', { ascending: false }),
-        supabase.from('projects').select('*').order('name', { ascending: true }),
-        supabase.from('transactions').select('*').order('date', { ascending: false }).limit(500),
-      ])
+      const { data: sData, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .order('amount', { ascending: false })
+
+      if (error) throw error
       if (sData) setSubscriptions(sData)
-      if (pData) setProjects(pData)
-      if (tData) setTransactions(tData)
     } catch (err) {
       console.error('Error loading subscriptions data:', err)
     } finally {
@@ -135,7 +124,6 @@ export default function SubscriptionsPage() {
       amount: prefill?.amount || '',
       period: normalizeSubscriptionPeriod(prefill?.period || 'Aylık'),
       payment_method: prefill?.payment_method || 'Kredi Kartı',
-      project_id: prefill?.project_id || '',
     })
     setIsModalOpen(true)
   }
@@ -161,7 +149,6 @@ export default function SubscriptionsPage() {
       amount: sub.amount != null ? sub.amount.toString() : '',
       period: normalizeSubscriptionPeriod(sub.period),
       payment_method: sub.payment_method || 'Kredi Kartı',
-      project_id: sub.project_id || '',
     })
     setIsModalOpen(true)
   }
@@ -189,7 +176,7 @@ export default function SubscriptionsPage() {
         period: normalizeSubscriptionPeriod(form.period),
         decision: form.decision,
         payment_method: form.payment_method || null,
-        project_id: form.project_id || null,
+        project_id: null,
         status: status as any,
       }
 
@@ -410,64 +397,7 @@ export default function SubscriptionsPage() {
     return list
   }, [activeTab, activeSubs, cancelledSubs, searchQuery])
 
-  // Distinct merchants from recent transactions for Quick Picker
-  const candidateTransactions = useMemo(() => {
-    const map = new Map<string, Transaction>()
-    for (const t of transactions) {
-      if (t.type !== 'Harcama' || !t.merchant) continue
-      const key = t.merchant.trim().toLowerCase()
-      if (!map.has(key)) {
-        map.set(key, t)
-      }
-    }
-    const list = Array.from(map.values())
-    if (!pickerSearch.trim()) return list.slice(0, 30)
-    const q = pickerSearch.toLowerCase()
-    return list.filter(
-      (t) => (t.merchant || '').toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q)
-    )
-  }, [transactions, pickerSearch])
 
-  // Select transaction to prefill
-  const handleSelectTransactionForSub = (tx: Transaction) => {
-    setIsPickerOpen(false)
-    const m = (tx.merchant || tx.description || '').toLowerCase()
-    let guessedCategory: ExpenseCategory = 'Eğlence & Medya'
-    let guessedDecision: StrategicDecision = 'Kararsız' // default to review for savings
-
-    if (m.includes('spor') || m.includes('gym') || m.includes('fit') || m.includes('macfit')) {
-      guessedCategory = 'Spor & Yaşam'
-    } else if (
-      m.includes('turkcell') ||
-      m.includes('telekom') ||
-      m.includes('vodafone') ||
-      m.includes('fatura') ||
-      m.includes('internet')
-    ) {
-      guessedCategory = 'İletişim & Fatura'
-      guessedDecision = 'Devam' // Phone is essential
-    } else if (
-      m.includes('cursor') ||
-      m.includes('github') ||
-      m.includes('openai') ||
-      m.includes('chatgpt') ||
-      m.includes('google') ||
-      m.includes('aws') ||
-      m.includes('canva')
-    ) {
-      guessedCategory = 'Yazılım & SaaS'
-    }
-
-    handleOpenCreateModal({
-      service: tx.merchant || tx.description || '',
-      amount: tx.amount.toString(),
-      category: guessedCategory,
-      decision: guessedDecision,
-      group_type: tx.analysis_group === 'İş' ? 'İş' : 'Kişisel',
-      payment_method: tx.account_or_card || 'Kredi Kartı',
-      project_id: tx.project_id || '',
-    })
-  }
 
   // Category Icon & Meta Helper
   const getCategoryMeta = (cat: string) => {
@@ -507,25 +437,14 @@ export default function SubscriptionsPage() {
         description="Aylık ve yıllık düzenli abonelik ve sabit gider takibi"
         badge={<Badge variant="outline" className="text-xs font-medium">{activeSubs.length} Aktif Gider</Badge>}
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsPickerOpen(true)}
-              className="gap-1.5 shadow-sm"
-            >
-              <Receipt className="h-4 w-4" />
-              <span>Hareketlerden Seç</span>
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => handleOpenCreateModal()}
-              className="gap-1.5 shadow-sm"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Yeni Gider</span>
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            onClick={() => handleOpenCreateModal()}
+            className="gap-1.5 shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Yeni Gider</span>
+          </Button>
         }
       />
 
@@ -724,10 +643,6 @@ export default function SubscriptionsPage() {
           </p>
           {activeTab !== 'ARCHIVED' && (
             <div className="mt-4 flex items-center justify-center gap-2">
-              <Button size="sm" onClick={() => setIsPickerOpen(true)} variant="outline" className="gap-1.5">
-                <Receipt className="h-4 w-4" />
-                <span>Hareketlerden Seç</span>
-              </Button>
               <Button size="sm" onClick={() => handleOpenCreateModal()} className="gap-1.5">
                 <Plus className="h-4 w-4" />
                 <span>Yeni Gider Ekle</span>
@@ -748,7 +663,6 @@ export default function SubscriptionsPage() {
                   <th className="p-3">Aylık Eşdeğer</th>
                   <th className="p-3">Yıllık Yük</th>
                   <th className="p-3">Ödeme Kaynağı</th>
-                  <th className="p-3">Proje</th>
                   <th className="p-3">Stratejik Karar</th>
                   <th className="p-3 pr-4 text-right">İşlemler</th>
                 </tr>
@@ -761,7 +675,6 @@ export default function SubscriptionsPage() {
                   const normPeriod = normalizeSubscriptionPeriod(sub.period)
                   const isOneTime = normPeriod === 'Tek Seferlik'
                   const eq = calculateSubscriptionEquivalent(sub.amount, normPeriod)
-                  const projectName = projects.find((p) => p.id === sub.project_id)?.name
 
                   return (
                     <tr
@@ -822,17 +735,6 @@ export default function SubscriptionsPage() {
                       {/* Ödeme Kaynağı */}
                       <td className="p-3 whitespace-nowrap text-muted-foreground text-[11px]">
                         {sub.payment_method || 'Kredi Kartı'}
-                      </td>
-
-                      {/* Proje */}
-                      <td className="p-3 whitespace-nowrap">
-                        {projectName ? (
-                          <span className="font-medium text-foreground text-[11px]">
-                            {projectName}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/60 text-[11px]">Genel</span>
-                        )}
                       </td>
 
                       {/* Stratejik Karar (Hücre İçi Tıklanabilir Seçim) */}
@@ -1090,13 +992,7 @@ export default function SubscriptionsPage() {
                 {/* Alt Aksiyon Çubuğu */}
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between border-t border-border pt-2 text-[11px] text-muted-foreground">
-                    <span>
-                      {projects.find((p) => p.id === sub.project_id)?.name ? (
-                        <span>Proje: <strong className="text-foreground">{projects.find((p) => p.id === sub.project_id)?.name}</strong></span>
-                      ) : (
-                        <span>Kişisel Yaşam Gideri</span>
-                      )}
-                    </span>
+                    <span>{sub.group_type || 'Kişisel Yaşam Gideri'}</span>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
@@ -1261,24 +1157,6 @@ export default function SubscriptionsPage() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="sub-project-id" className="text-xs font-semibold text-muted-foreground">
-              İlişkili Proje (Opsiyonel)
-            </label>
-            <Select
-              id="sub-project-id"
-              value={form.project_id}
-              onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-            >
-              <option value="">Projesiz / Genel Kişisel</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-
           <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
               İptal
@@ -1289,75 +1167,6 @@ export default function SubscriptionsPage() {
           </div>
         </form>
       </Sheet>
-
-      {/* MODAL 2: Hareketlerden Hızlı Yakala */}
-      <Modal
-        isOpen={isPickerOpen}
-        onClose={() => setIsPickerOpen(false)}
-        title="Hareketlerden Abonelik / Düzenli Gider Yakala"
-        size="md"
-      >
-        <div className="space-y-2.5">
-          <p className="text-xs text-muted-foreground">
-            Geçmiş işlemlerinizdeki tekrarlayan harcamaları (Netflix, Turkcell vb.) tek tıkla radara ekleyin.
-          </p>
-
-          <Input
-            id="sub-picker-search"
-            aria-label="İşyeri veya açıklama ara"
-            placeholder="İşyeri ara... (Örn: Turkcell, Netflix, Macfit, Prime)"
-            value={pickerSearch}
-            onChange={(e) => setPickerSearch(e.target.value)}
-            className="text-xs"
-          />
-
-          <div className="max-h-60 overflow-y-auto divide-y divide-border/50 rounded-lg border border-border">
-            {candidateTransactions.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
-                Uygun işlem hareketi bulunamadı.
-              </div>
-            ) : (
-              candidateTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between p-2 hover:bg-muted/40 transition-colors"
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="font-semibold text-xs text-foreground truncate">
-                      {tx.merchant || tx.description}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground flex items-center gap-2">
-                      <span>Son İşlem: {formatDate(tx.date)}</span>
-                      <span>•</span>
-                      <span>{tx.account_or_card || 'Kart'}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="font-mono text-xs font-bold text-foreground">
-                      {formatCurrency(tx.amount)}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSelectTransactionForSub(tx)}
-                      className="h-6 text-[11px] px-2 gap-1 text-primary hover:text-primary"
-                    >
-                      <span>Radara Al</span>
-                      <ArrowRight className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="flex justify-end pt-1">
-            <Button variant="ghost" size="sm" onClick={() => setIsPickerOpen(false)}>
-              Kapat
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       <ConfirmDialog
         isOpen={Boolean(deleteTargetSub)}

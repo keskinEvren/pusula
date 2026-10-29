@@ -18,7 +18,6 @@ import {
   Archive,
   Search,
   Calendar,
-  FolderKanban,
   RotateCcw,
   ShieldCheck,
   Wallet,
@@ -43,7 +42,7 @@ import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
-import type { Income, Project, Subscription } from '@/types/database'
+import type { Income } from '@/types/database'
 
 export type IncomeCategory =
   | 'Maaş & Ücret'
@@ -68,8 +67,6 @@ function IncomesContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const [incomes, setIncomes] = useState<Income[]>([])
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [isDbFallback, setIsDbFallback] = useState(false)
 
@@ -92,7 +89,6 @@ function IncomesContent() {
     amount: '',
     period: 'Aylık',
     payday: '',
-    project_id: '',
     note: '',
     status: 'Aktif' as 'Aktif' | 'Pasif',
   })
@@ -116,14 +112,10 @@ function IncomesContent() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [incRes, subRes, prjRes] = await Promise.all([
-        supabase.from('incomes').select('*').order('amount', { ascending: false }),
-        supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
-        supabase.from('projects').select('*').order('name', { ascending: true }),
-      ])
-
-      if (subRes.data) setSubscriptions(subRes.data)
-      if (prjRes.data) setProjects(prjRes.data)
+      const incRes = await supabase
+        .from('incomes')
+        .select('*')
+        .order('amount', { ascending: false })
 
       if (incRes.error && isMissingRelationError(incRes.error)) {
         setIsDbFallback(true)
@@ -170,7 +162,6 @@ function IncomesContent() {
       amount: prefill?.amount || '',
       period: normalizeSubscriptionPeriod(prefill?.period || 'Aylık'),
       payday: prefill?.payday || '',
-      project_id: prefill?.project_id || '',
       note: prefill?.note || '',
       status: prefill?.status || 'Aktif',
     })
@@ -190,7 +181,6 @@ function IncomesContent() {
       amount: inc.amount != null ? inc.amount.toString() : '',
       period: normalizeSubscriptionPeriod(inc.period),
       payday: inc.payday != null ? inc.payday.toString() : '',
-      project_id: inc.project_id || '',
       note: inc.note || '',
       status: inc.status === 'Pasif' ? 'Pasif' : 'Aktif',
     })
@@ -222,7 +212,7 @@ function IncomesContent() {
         period: normalizeSubscriptionPeriod(form.period),
         payday: validPayday,
         status: form.status,
-        project_id: form.project_id || null,
+        project_id: null,
         note: form.note.trim() || null,
       }
 
@@ -360,25 +350,7 @@ function IncomesContent() {
     [incomes]
   )
 
-  const totalFixedMonthlyExpenses = useMemo(() => {
-    const activeSubs = subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et')
-    return round2(
-      activeSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
-        return sum + eq.monthly
-      }, 0)
-    )
-  }, [subscriptions])
 
-  const disposableMonthlyIncome = useMemo(
-    () => round2(metrics.totalMonthlyIncome - totalFixedMonthlyExpenses),
-    [metrics.totalMonthlyIncome, totalFixedMonthlyExpenses]
-  )
-
-  const fixedExpenseRatioPct = useMemo(() => {
-    if (metrics.totalMonthlyIncome <= 0) return 0
-    return round2((totalFixedMonthlyExpenses / metrics.totalMonthlyIncome) * 100)
-  }, [metrics.totalMonthlyIncome, totalFixedMonthlyExpenses])
 
   // Kategori sayaçları
   const categoryCounts = useMemo(() => {
@@ -548,23 +520,17 @@ function IncomesContent() {
           </p>
         </div>
 
-        {/* 4. Serbest Bütçe (Aylık Gelir − Sabit Giderler) */}
+        {/* 4. Yıllık Toplam Projeksiyon */}
         <div className="p-4 space-y-1">
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Serbest Bütçe (Gelir − Sabit Yük)
+            Yıllık Toplam Projeksiyon
           </p>
-          <div
-            className={cn(
-              'text-2xl font-semibold tracking-tight tabular-nums',
-              disposableMonthlyIncome >= 0 ? 'text-foreground' : 'text-destructive'
-            )}
-          >
-            {formatCurrency(disposableMonthlyIncome)}
-            <span className="text-xs text-muted-foreground font-normal ml-1">/ ay</span>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(metrics.totalYearlyIncome)}
+            <span className="text-xs text-muted-foreground font-normal ml-1">/ yıl</span>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Sabit gider yükü: <strong className="text-foreground">{formatCurrency(totalFixedMonthlyExpenses)}</strong>{' '}
-            {metrics.totalMonthlyIncome > 0 && `(%${fixedExpenseRatioPct})`}
+            {metrics.activeCount} aktif gelir kalemi üzerinden
           </p>
         </div>
       </div>
@@ -667,7 +633,6 @@ function IncomesContent() {
             const normPeriod = normalizeSubscriptionPeriod(inc.period)
             const isOneTime = normPeriod === 'Tek Seferlik'
             const eq = calculateSubscriptionEquivalent(inc.amount, normPeriod)
-            const linkedProject = projects.find((p) => p.id === inc.project_id)
 
             return (
               <Card
@@ -755,23 +720,12 @@ function IncomesContent() {
                       </div>
                     </div>
 
-                    {/* Proje veya Not Bilgisi */}
-                    {(linkedProject || inc.note) && (
+                    {/* Not Bilgisi */}
+                    {inc.note && (
                       <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                        {linkedProject && (
-                          <Badge
-                            variant="outline"
-                            className="text-[11px] gap-1 border-primary/25 text-primary bg-primary/10"
-                          >
-                            <FolderKanban className="h-3 w-3" />
-                            {linkedProject.name}
-                          </Badge>
-                        )}
-                        {inc.note && (
-                          <span className="text-[11px] text-muted-foreground line-clamp-1">
-                            {inc.note}
-                          </span>
-                        )}
+                        <span className="text-[11px] text-muted-foreground line-clamp-1">
+                          {inc.note}
+                        </span>
                       </div>
                     )}
 
@@ -990,42 +944,22 @@ function IncomesContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground block">
-                Ödeme Günü (Opsiyonel)
-              </label>
-              <Select
-                value={form.payday}
-                onChange={(e) => setForm({ ...form, payday: e.target.value })}
-                className="text-xs"
-              >
-                <option value="">Belirtilmedi</option>
-                {Array.from({ length: 31 }, (_, idx) => idx + 1).map((day) => (
-                  <option key={day} value={day.toString()}>
-                    Ayın {day}&apos;i
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground block">
-                İlişkili Proje (Opsiyonel)
-              </label>
-              <Select
-                value={form.project_id}
-                onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-                className="text-xs"
-              >
-                <option value="">Yok (Genel)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground block">
+              Ödeme Günü (Opsiyonel)
+            </label>
+            <Select
+              value={form.payday}
+              onChange={(e) => setForm({ ...form, payday: e.target.value })}
+              className="text-xs"
+            >
+              <option value="">Belirtilmedi</option>
+              {Array.from({ length: 31 }, (_, idx) => idx + 1).map((day) => (
+                <option key={day} value={day.toString()}>
+                  Ayın {day}&apos;i
+                </option>
+              ))}
+            </Select>
           </div>
 
           <div className="space-y-1">
