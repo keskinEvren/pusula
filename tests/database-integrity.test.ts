@@ -74,6 +74,61 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     expect((await db.query('select balance from accounts where id=$1',[source])).rows).toEqual(before)
     expect((await db.query('select current_debt from credit_cards where id=$1', ['77777777-7777-4777-8777-777777777777'])).rows).toEqual([{ current_debt:'500.00' }])
   })
+  it('decoupled manual card payment reduces current_debt and increments statement payments without account or transaction', async () => {
+    await asUser(userA)
+    const card = '77777777-7777-4777-8777-777777777777'
+    const stmt = '66666666-6666-4666-8666-666666666666'
+    await db.query(
+      'insert into card_statements(id,card_id,statement_date,period_debt,minimum,payments) values($1,$2,$3,$4,$5,$6)',
+      [stmt, card, '2026-09-10', 500, 100, 0]
+    )
+    const accountBefore = await db.query('select balance from accounts where id=$1', [source])
+    const txCountBefore = await db.query<{ count: string }>('select count(*)::text as count from transactions')
+
+    const payment = await db.query<{ result: { success: boolean; transaction_id: string | null } }>(
+      'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
+      [userA, '2026-09-17', 150, 'Manuel Ara Ödeme', 'Kart Ödemesi', null, card]
+    )
+    expect(payment.rows[0].result.success).toBe(true)
+    expect(payment.rows[0].result.transaction_id).toBeNull()
+
+    expect((await db.query('select current_debt from credit_cards where id=$1', [card])).rows)
+      .toEqual([{ current_debt: '350.00' }])
+
+    expect((await db.query('select payments from card_statements where id=$1', [stmt])).rows)
+      .toEqual([{ payments: '150.00' }])
+
+    expect((await db.query('select balance from accounts where id=$1', [source])).rows).toEqual(accountBefore.rows)
+    expect((await db.query<{ count: string }>('select count(*)::text as count from transactions')).rows[0].count)
+      .toBe(txCountBefore.rows[0].count)
+
+    const overpay = await db.query<{ result: { success: boolean; error: string } }>(
+      'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
+      [userA, '2026-09-17', 400, 'Fazla Ödeme', 'Kart Ödemesi', null, card]
+    )
+    expect(overpay.rows[0].result.success).toBe(false)
+    expect(overpay.rows[0].result.error).toMatch(/Tutar kalan borcu aşamaz/)
+
+    // Sub-cent validation: 0.004 rounds to 0.00, so must be rejected
+    const subPenny = await db.query<{ result: { success: boolean; error: string } }>(
+      'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
+      [userA, '2026-09-17', 0.004, 'Kuruş altı', 'Kart Ödemesi', null, card]
+    )
+    expect(subPenny.rows[0].result.success).toBe(false)
+    expect(subPenny.rows[0].result.error).toMatch(/Tutar sıfırdan büyük olmalıdır/)
+
+    // Payment without statement: delete statement first, then pay 50.126 which rounds to 50.13
+    await db.query('delete from card_statements where id=$1', [stmt])
+    const noStmtPayment = await db.query<{ result: { success: boolean; transaction_id: string | null } }>(
+      'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
+      [userA, '2026-09-17', 50.126, 'Ekstresiz Ödeme', 'Kart Ödemesi', null, card]
+    )
+    expect(noStmtPayment.rows[0].result.success).toBe(true)
+    expect((await db.query('select current_debt from credit_cards where id=$1', [card])).rows)
+      .toEqual([{ current_debt: '299.87' }]) // 350.00 - 50.13 = 299.87
+
+    await db.query('update credit_cards set current_debt=500 where id=$1', [card])
+  })
   it('debt adjustments and existing transaction links are atomic and idempotent', async () => {
     await asUser(userA)
     const debt = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'

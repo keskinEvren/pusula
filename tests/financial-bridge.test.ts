@@ -148,6 +148,37 @@ describe('Financial Bridge Testleri', () => {
       }))
       expect(mockFrom).not.toHaveBeenCalled()
     })
+
+    it('Hesap seçilmeden (decoupled) kart ödemesi yapıldığında p_account_id null gönderilmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: null }, error: null })
+
+      const res = await bridge.recordCardPayment({ userId: 'u1', amount: 250, cardId: 'c1', date: '2026-01-01' })
+      expect(res.success).toBe(true)
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({
+        p_type: 'Kart Ödemesi',
+        p_amount: 250,
+        p_account_id: null,
+        p_target_id: 'c1'
+      }))
+      expect(mockFrom).not.toHaveBeenCalled()
+    })
+
+    it('Tutar 0.004 gibi kuruş altı olduğunda validAmount reddetmelidir', async () => {
+      const res = await bridge.recordCardPayment({ userId: 'u1', amount: 0.004, cardId: 'c1', date: '2026-01-01' })
+      expect(res.success).toBe(false)
+      expect(res.error).toBe('Tutar sıfırdan büyük olmalıdır.')
+      expect(mockRpc).not.toHaveBeenCalled()
+    })
+
+    it('Kuruşlu tutar girildiğinde round2 uygulanarak RPCye iletilmelidir', async () => {
+      mockRpc.mockResolvedValueOnce({ data: { success: true, transaction_id: null }, error: null })
+
+      const res = await bridge.recordCardPayment({ userId: 'u1', amount: 100.556, cardId: 'c1', date: '2026-01-01' })
+      expect(res.success).toBe(true)
+      expect(mockRpc).toHaveBeenCalledWith('fn_record_payment_atomic', expect.objectContaining({
+        p_amount: 100.56,
+      }))
+    })
   })
 
   describe('Alacak Tahsil Etme (recordReceivableCollection)', () => {

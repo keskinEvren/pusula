@@ -14,10 +14,12 @@ import {
   Trash2,
   Edit2,
   UploadCloud,
+  Banknote,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, formatLocalDateInput, cn } from '@/lib/utils'
-import { calculateStatementChange } from '@/lib/finance-engine'
+import { calculateStatementChange, calculateCardStatementRemaining, round2 } from '@/lib/finance-engine'
+import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,10 +41,19 @@ export default function CardsPage() {
   const [isCardModalOpen, setIsCardModalOpen] = useState(false)
   const [isEditCardModalOpen, setIsEditCardModalOpen] = useState(false)
   const [isStmtModalOpen, setIsStmtModalOpen] = useState(false)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [paymentTargetCard, setPaymentTargetCard] = useState<CardType | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [editingCard, setEditingCard] = useState<CardType | null>(null)
   const [deleteTargetCard, setDeleteTargetCard] = useState<CardType | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Payment form state
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    date: formatLocalDateInput(),
+    description: 'Kart Ödemesi',
+  })
 
   // Form states
   const [editCardForm, setEditCardForm] = useState({
@@ -94,7 +105,7 @@ export default function CardsPage() {
       const supabase = createClient()
       const [{ data: cData }, { data: sData }] = await Promise.all([
         supabase.from('credit_cards').select('*').order('created_at', { ascending: false }),
-        supabase.from('card_statements').select('*').order('statement_date', { ascending: false }).limit(500),
+        supabase.from('card_statements').select('*').order('statement_date', { ascending: false }).order('created_at', { ascending: false }).limit(500),
       ])
       if (cData) setCards(cData)
       if (sData) setStatements(sData)
@@ -256,6 +267,72 @@ export default function CardsPage() {
     }
   }
 
+  const handleOpenPaymentModal = (card: CardType) => {
+    setPaymentTargetCard(card)
+    const latest = statements.find((s) => s.card_id === card.id)
+    const stmtDebt = latest ? Number(latest.period_debt || 0) : Number(card.statement_debt || 0)
+    const paid = latest ? Number(latest.payments || 0) : 0
+    const min = latest ? Number(latest.minimum || 0) : Number(card.minimum_payment || 0)
+    const { remainingStatementDebt } = calculateCardStatementRemaining(stmtDebt, paid, min, card.current_debt)
+
+    const defaultAmount = remainingStatementDebt > 0
+      ? remainingStatementDebt
+      : (card.current_debt && card.current_debt > 0 ? card.current_debt : 0)
+
+    setPaymentForm({
+      amount: defaultAmount > 0 ? defaultAmount.toString() : '',
+      date: formatLocalDateInput(),
+      description: 'Kart Ödemesi',
+    })
+    setIsPaymentModalOpen(true)
+  }
+
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!paymentTargetCard) return
+    const amountNum = round2(parseFloat(paymentForm.amount || '0'))
+    if (!amountNum || amountNum <= 0) {
+      toast.error('Tutar sıfırdan büyük olmalıdır.')
+      return
+    }
+    const currentDebtNum = round2(Number(paymentTargetCard.current_debt || 0))
+    if (amountNum > currentDebtNum) {
+      toast.error(`Ödeme tutarı güncel borcu (${formatCurrency(currentDebtNum)}) aşamaz.`)
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Oturum açılmamış')
+
+      const res = await financialBridge.recordCardPayment({
+        userId: user.id,
+        amount: amountNum,
+        cardId: paymentTargetCard.id,
+        date: paymentForm.date || formatLocalDateInput(),
+        description: paymentForm.description || 'Kart Ödemesi',
+        sourceAccountId: undefined,
+      })
+
+      if (!res.success) {
+        throw new Error(res.error || 'Ödeme kaydedilemedi.')
+      }
+
+      toast.success('Kart ödemesi başarıyla kaydedildi!')
+      setIsPaymentModalOpen(false)
+      setPaymentTargetCard(null)
+      await loadCardsAndStatements()
+    } catch (err: any) {
+      toast.error(err.message || 'Ödeme kaydedilemedi')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const confirmDeleteCard = async () => {
     if (!deleteTargetCard) return
     setIsDeleting(true)
@@ -326,83 +403,142 @@ export default function CardsPage() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {cards.map((card) => (
-              <Card key={card.id} className="border-border bg-card shadow-sm flex flex-col justify-between hover:border-primary/40 transition-colors">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-base font-bold">{card.bank}</CardTitle>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenEditModal(card)}
-                        className="h-9 w-9 text-muted-foreground hover:text-primary rounded-full"
-                        title="Kartı ve Güncel Borcu Düzenle"
-                        aria-label={`${card.bank} kartını düzenle`}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteTargetCard(card)}
-                        className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-full"
-                        title="Kartı Sil"
-                        aria-label={`${card.bank} kartını sil`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardDescription className="text-xs font-mono">
-                    {card.card_name} {card.last_four && `(•• ${card.last_four})`}
-                  </CardDescription>
-                </CardHeader>
+            {cards.map((card) => {
+              const latestStmt = statements.find((s) => s.card_id === card.id)
+              const stmtDebt = latestStmt ? Number(latestStmt.period_debt || 0) : Number(card.statement_debt || 0)
+              const paidAmount = latestStmt ? Number(latestStmt.payments || 0) : 0
+              const minPayment = latestStmt ? Number(latestStmt.minimum || 0) : Number(card.minimum_payment || 0)
+              const { remainingStatementDebt, remainingMinimumPayment, isFullyPaid } = calculateCardStatementRemaining(
+                stmtDebt,
+                paidAmount,
+                minPayment,
+                card.current_debt
+              )
+              const hasDebt = card.current_debt !== null && card.current_debt !== undefined && card.current_debt > 0
 
-                <CardContent className="space-y-4">
-                  <div className="flex items-baseline justify-between">
-                    <div>
-                      <div className="text-[11px] text-muted-foreground uppercase font-semibold">Güncel Borç</div>
-                      <div className="text-2xl font-bold font-mono text-foreground mt-0.5">
-                        {formatCurrency(card.current_debt)}
+              return (
+                <Card key={card.id} className="border-border bg-card shadow-sm flex flex-col justify-between hover:border-primary/40 transition-colors">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-5 w-5 text-primary" />
+                        <CardTitle className="text-base font-bold">{card.bank}</CardTitle>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenEditModal(card)}
+                          className="h-9 w-9 text-muted-foreground hover:text-primary rounded-full"
+                          title="Kartı ve Güncel Borcu Düzenle"
+                          aria-label={`${card.bank} kartını düzenle`}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteTargetCard(card)}
+                          className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-full"
+                          title="Kartı Sil"
+                          aria-label={`${card.bank} kartını sil`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    {card.statement_debt && (
-                      <div className="text-right">
-                        <div className="text-[11px] text-muted-foreground">Son Ekstre</div>
-                        <div className="text-xs font-mono font-medium text-foreground/80 mt-0.5">
-                          {formatCurrency(card.statement_debt)}
+                    <CardDescription className="text-xs font-mono">
+                      {card.card_name} {card.last_four && `(•• ${card.last_four})`}
+                    </CardDescription>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <div className="text-[11px] text-muted-foreground uppercase font-semibold">Güncel Borç</div>
+                        <div className="text-2xl font-bold font-mono text-foreground mt-0.5">
+                          {formatCurrency(card.current_debt)}
                         </div>
                       </div>
-                    )}
-                  </div>
+                      {stmtDebt > 0 && (
+                        <div className="text-right">
+                          <div className="text-[11px] text-muted-foreground">Son Ekstre</div>
+                          <div className="text-xs font-mono font-medium text-foreground/80 mt-0.5">
+                            {formatCurrency(stmtDebt)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="space-y-1.5 border-t border-border/50 pt-3 text-xs">
-                    {card.minimum_payment && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Asgari Tutar:</span>
-                        <span className="font-mono text-foreground">{formatCurrency(card.minimum_payment)}</span>
+                    {/* Ekstre Ödeme Durumu / Ara Ödeme Bilgisi */}
+                    {(paidAmount > 0 || stmtDebt > 0) && (
+                      <div className="space-y-1 rounded-lg bg-muted/40 p-2 text-xs">
+                        {paidAmount > 0 && (
+                          <div className="flex justify-between items-center text-success font-medium">
+                            <span className="text-[11px]">Dönem İçi Ödenen:</span>
+                            <span className="font-mono">+{formatCurrency(paidAmount)}</span>
+                          </div>
+                        )}
+                        {stmtDebt > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] text-muted-foreground">Ekstreden Kalan:</span>
+                            {isFullyPaid ? (
+                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] py-0 px-1.5 h-5 font-semibold">
+                                Ekstre Ödendi
+                              </Badge>
+                            ) : (
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatCurrency(remainingStatementDebt)}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {card.statement_date && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Ekstre Kesim:</span>
-                        <span className="font-mono text-foreground">{formatDate(card.statement_date)}</span>
-                      </div>
-                    )}
-                    {card.due_date && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Son Ödeme:</span>
-                        <span className="font-mono text-foreground font-semibold">{formatDate(card.due_date)}</span>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+
+                    <div className="space-y-1.5 border-t border-border/50 pt-3 text-xs">
+                      {minPayment > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>{paidAmount > 0 ? 'Kalan Asgari:' : 'Asgari Tutar:'}</span>
+                          <span className="font-mono text-foreground">
+                            {remainingMinimumPayment <= 0 && paidAmount > 0
+                              ? 'Ödendi'
+                              : formatCurrency(remainingMinimumPayment > 0 ? remainingMinimumPayment : minPayment)}
+                          </span>
+                        </div>
+                      )}
+                      {(latestStmt?.statement_date || card.statement_date) && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Ekstre Kesim:</span>
+                          <span className="font-mono text-foreground">
+                            {formatDate(latestStmt?.statement_date || card.statement_date)}
+                          </span>
+                        </div>
+                      )}
+                      {(latestStmt?.due_date || card.due_date) && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Son Ödeme:</span>
+                          <span className="font-mono text-foreground font-semibold">
+                            {formatDate(latestStmt?.due_date || card.due_date)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Ödeme Yap Butonu */}
+                    <Button
+                      size="sm"
+                      onClick={() => handleOpenPaymentModal(card)}
+                      disabled={!hasDebt}
+                      className="w-full gap-2 mt-2 shadow-sm font-semibold"
+                    >
+                      <Banknote className="h-4 w-4" />
+                      <span>Ödeme Yap</span>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
@@ -900,6 +1036,182 @@ export default function CardsPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Payment Modal */}
+      <Modal
+        isOpen={isPaymentModalOpen}
+        onClose={() => {
+          setIsPaymentModalOpen(false)
+          setPaymentTargetCard(null)
+        }}
+        title="Kart Ödemesi / Ara Ödeme Yap"
+        description={
+          paymentTargetCard
+            ? `${paymentTargetCard.bank} - ${paymentTargetCard.card_name}${paymentTargetCard.last_four ? ` (•• ${paymentTargetCard.last_four})` : ''} için ödeme girin.`
+            : 'Kredi kartı ödemesi yapın.'
+        }
+        size="md"
+      >
+        {paymentTargetCard && (() => {
+          const latest = statements.find((s) => s.card_id === paymentTargetCard.id)
+          const stmtDebt = latest ? Number(latest.period_debt || 0) : Number(paymentTargetCard.statement_debt || 0)
+          const paid = latest ? Number(latest.payments || 0) : 0
+          const min = latest ? Number(latest.minimum || 0) : Number(paymentTargetCard.minimum_payment || 0)
+          const { remainingStatementDebt, remainingMinimumPayment, isFullyPaid } = calculateCardStatementRemaining(
+            stmtDebt,
+            paid,
+            min,
+            paymentTargetCard.current_debt
+          )
+          const currentDebt = Number(paymentTargetCard.current_debt || 0)
+
+          return (
+            <form onSubmit={handleRecordPayment} className="space-y-4">
+              {/* Borç Özeti Bilgi Kartı */}
+              <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-muted/40 border border-border/60 text-center">
+                <div className="space-y-0.5">
+                  <div className="text-[10px] uppercase font-semibold text-muted-foreground">Güncel Borç</div>
+                  <div className="text-sm font-bold font-mono text-foreground">{formatCurrency(currentDebt)}</div>
+                </div>
+                <div className="space-y-0.5 border-x border-border/40 px-1">
+                  <div className="text-[10px] uppercase font-semibold text-muted-foreground">Ekstreden Kalan</div>
+                  <div className="text-sm font-bold font-mono text-foreground">
+                    {isFullyPaid ? (
+                      <span className="text-success text-xs font-semibold">Ödendi</span>
+                    ) : (
+                      formatCurrency(remainingStatementDebt)
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-[10px] uppercase font-semibold text-muted-foreground">Kalan Asgari</div>
+                  <div className="text-sm font-bold font-mono text-foreground">
+                    {remainingMinimumPayment <= 0 ? (
+                      <span className="text-success text-xs font-semibold">Ödendi</span>
+                    ) : (
+                      formatCurrency(remainingMinimumPayment)
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Hızlı Seçim Butonları */}
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-semibold text-muted-foreground">Hızlı Tutar Seçimi</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {remainingMinimumPayment > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 px-2.5 font-mono"
+                      onClick={() => setPaymentForm({ ...paymentForm, amount: remainingMinimumPayment.toString() })}
+                    >
+                      Kalan Asgari ({formatCurrency(remainingMinimumPayment)})
+                    </Button>
+                  )}
+                  {remainingStatementDebt > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 px-2.5 font-mono"
+                      onClick={() => setPaymentForm({ ...paymentForm, amount: remainingStatementDebt.toString() })}
+                    >
+                      Ekstreden Kalan ({formatCurrency(remainingStatementDebt)})
+                    </Button>
+                  )}
+                  {currentDebt > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 px-2.5 font-mono"
+                      onClick={() => setPaymentForm({ ...paymentForm, amount: currentDebt.toString() })}
+                    >
+                      Güncel Borcu Kapat ({formatCurrency(currentDebt)})
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Form Alanları */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label htmlFor="payment-amount" className="text-xs font-semibold text-primary">
+                    Ödeme Tutarı (₺)
+                  </label>
+                  <Input
+                    id="payment-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={currentDebt > 0 ? currentDebt : undefined}
+                    required
+                    prefix="₺"
+                    placeholder="0.00"
+                    value={paymentForm.amount}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                    className="text-xs font-mono font-bold border-primary/50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="payment-date" className="text-xs font-semibold text-muted-foreground">
+                    Ödeme Tarihi
+                  </label>
+                  <Input
+                    id="payment-date"
+                    type="date"
+                    required
+                    value={paymentForm.date}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="payment-description" className="text-xs font-semibold text-muted-foreground">
+                  Açıklama (Opsiyonel)
+                </label>
+                <Input
+                  id="payment-description"
+                  placeholder="Örn: Ara Ödeme, Maaş Sonrası vb."
+                  value={paymentForm.description}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-muted/30 border border-border/40 text-[11px] text-muted-foreground space-y-1">
+                <div className="flex items-center gap-1.5 text-foreground font-medium">
+                  <AlertCircle className="h-3.5 w-3.5 text-primary" />
+                  <span>Bağımsız (Decoupled) Kart Ödemesi</span>
+                </div>
+                <p>
+                  Bu ödeme banka hesap hareketlerinizden düşmez. Kartınızın güncel borcunu ve dönem ekstresindeki ödenen tutarı atomik olarak günceller.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsPaymentModalOpen(false)
+                    setPaymentTargetCard(null)
+                  }}
+                >
+                  İptal
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Kaydediliyor...' : 'Ödemeyi Kaydet'}
+                </Button>
+              </div>
+            </form>
+          )
+        })()}
       </Modal>
 
       {/* Delete Card Confirmation */}

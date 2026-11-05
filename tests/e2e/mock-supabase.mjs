@@ -78,12 +78,45 @@ createServer(async (req, res) => {
     return send({success:true,transaction_id:row.id})
   }
   if (url.pathname === '/rest/v1/rpc/fn_record_payment_atomic') {
-    const acc=tables.accounts?.find(a=>a.id===body.p_account_id)
-    const card=tables.credit_cards?.find(c=>c.id===body.p_target_id)
-    if (!acc || !card) return send({success:false,error:'Ödeme hedefi bulunamadı.'})
-    const row={id:randomUUID(),user_id:body.p_user_id,type:body.p_type,amount:body.p_amount,date:body.p_date,description:body.p_description,merchant:body.p_description,account_id:acc.id,card_id:card.id}
-    acc.balance-=row.amount; card.current_debt-=row.amount; tables.transactions||=[]; tables.transactions.push(row)
-    return send({success:true,transaction_id:row.id})
+    if (body.p_type === 'Kart Ödemesi') {
+      const card = tables.credit_cards?.find(c => c.id === body.p_target_id)
+      if (!card) return send({ success: false, error: 'Ödeme hedefi bulunamadı.' })
+      if (body.p_amount > Number(card.current_debt || 0)) return send({ success: false, error: 'Tutar kalan borcu aşamaz.' })
+      let txId = null
+      if (body.p_account_id) {
+        const acc = tables.accounts?.find(a => a.id === body.p_account_id)
+        if (!acc) return send({ success: false, error: 'Hesap bulunamadı.' })
+        acc.balance -= body.p_amount
+        const row = { id: randomUUID(), user_id: body.p_user_id, type: body.p_type, amount: body.p_amount, date: body.p_date, description: body.p_description, merchant: body.p_description, account_id: acc.id, card_id: card.id }
+        tables.transactions ||= []; tables.transactions.push(row)
+        txId = row.id
+      }
+      card.current_debt = Math.max(0, (card.current_debt || 0) - body.p_amount)
+
+      const cardStmts = (tables.card_statements || [])
+        .filter(s => s.card_id === card.id)
+        .sort((a, b) => (b.statement_date || '').localeCompare(a.statement_date || '') || (b.created_at || '').localeCompare(a.created_at || '') || (b.id || '').localeCompare(a.id || ''))
+      if (cardStmts.length > 0) {
+        cardStmts[0].payments = (Number(cardStmts[0].payments) || 0) + body.p_amount
+      }
+      return send({ success: true, transaction_id: txId })
+    } else {
+      const debt = tables.debts?.find(d => d.id === body.p_target_id)
+      if (!debt) return send({ success: false, error: 'Ödeme hedefi bulunamadı.' })
+      if (body.p_amount > Number(debt.remaining || 0)) return send({ success: false, error: 'Tutar kalan borcu aşamaz.' })
+      let txId = null
+      if (body.p_account_id) {
+        const acc = tables.accounts?.find(a => a.id === body.p_account_id)
+        if (!acc) return send({ success: false, error: 'Hesap bulunamadı.' })
+        acc.balance -= body.p_amount
+        const row = { id: randomUUID(), user_id: body.p_user_id, type: body.p_type, amount: body.p_amount, date: body.p_date, description: body.p_description, merchant: body.p_description, account_id: acc.id, related_debt_id: debt.id }
+        tables.transactions ||= []; tables.transactions.push(row)
+        txId = row.id
+      }
+      debt.remaining = Math.max(0, (debt.remaining || 0) - body.p_amount)
+      debt.past_payments = (debt.past_payments || 0) + body.p_amount
+      return send({ success: true, transaction_id: txId })
+    }
   }
   if (url.pathname === '/rest/v1/rpc/fn_transactions_stats') {
     const txs = tables.transactions || []

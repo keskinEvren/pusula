@@ -99,5 +99,16 @@ describe('Security Migrations Tests', () => {
         expect(content.toLowerCase()).toContain(searchString.toLowerCase());
       }
     });
+
+    it('Migration 030 fn_record_payment_atomic SECURITY DEFINER ve kısıtlamalarını içerir', () => {
+      const filePath = join(supabaseMigrationsDir, '030_card_manual_payment_atomic.sql');
+      expect(existsSync(filePath)).toBe(true);
+      const content = readFileSync(filePath, 'utf-8').toLowerCase();
+      expect(content).toContain('create or replace function public.fn_record_payment_atomic');
+      expect(content).toContain('security definer');
+      expect(content).toContain('search_path = public, pg_temp');
+      expect(content).toContain('revoke all on function public.fn_record_payment_atomic');
+      expect(content).toContain('grant execute on function public.fn_record_payment_atomic');
+    });
   });
 });

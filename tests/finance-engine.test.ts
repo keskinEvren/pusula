@@ -3,6 +3,7 @@ import {
   round2,
   calculateNetWorth,
   calculateStatementChange,
+  calculateCardStatementRemaining,
   calculateSpendingBreakdown,
   calculateProjectTotalCost,
   evaluateProjectBudget,
@@ -108,6 +109,83 @@ describe('finance-engine', () => {
       expect(result.trend).toBe('NONE')
       expect(result.changeAmount).toBeNull()
       expect(result.changePct).toBeNull()
+    })
+  })
+
+  describe('calculateCardStatementRemaining', () => {
+    it('kısmi ara ödeme yapıldığında kalan ekstre ve kalan asgari tutarı doğru hesaplar', () => {
+      const res = calculateCardStatementRemaining(1000, 400, 200)
+      expect(res.remainingStatementDebt).toBe(600)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(false)
+    })
+
+    it('asgari ödeme tutarının altında ara ödeme yapıldığında kalan asgari tutarı azaltır', () => {
+      const res = calculateCardStatementRemaining(1000, 100, 300)
+      expect(res.remainingStatementDebt).toBe(900)
+      expect(res.remainingMinimumPayment).toBe(200)
+      expect(res.isFullyPaid).toBe(false)
+    })
+
+    it('tam ekstre kapandığında isFullyPaid true döner ve kalan borçlar 0 olur', () => {
+      const res = calculateCardStatementRemaining(1500.50, 1500.50, 300)
+      expect(res.remainingStatementDebt).toBe(0)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(true)
+    })
+
+    it('ekstre tutarından fazla ödeme yapıldığında kalan tutarlar negatife düşmez', () => {
+      const res = calculateCardStatementRemaining(1000, 1500, 200)
+      expect(res.remainingStatementDebt).toBe(0)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(true)
+    })
+
+    it('kuruş hassasiyeti (floating point rounding) ile tam hesaplar', () => {
+      const res = calculateCardStatementRemaining(100.1, 100.09, 20.05)
+      expect(res.remainingStatementDebt).toBe(0.01)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(false)
+    })
+
+    it('sıfır veya tanımsız ekstre borcunda isFullyPaid false ve kalanlar 0 döner', () => {
+      const res = calculateCardStatementRemaining(0, 0, 0)
+      expect(res.remainingStatementDebt).toBe(0)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(false)
+
+      const resNull = calculateCardStatementRemaining(null, null, null)
+      expect(resNull.remainingStatementDebt).toBe(0)
+      expect(resNull.remainingMinimumPayment).toBe(0)
+      expect(resNull.isFullyPaid).toBe(false)
+    })
+
+    it('currentDebt verildiğinde ve ekstre borcundan küçük olduğunda kalan borçları güncel borç ile sınırlar', () => {
+      // Örnek: Ekstre 1000 TL, hiç ödenmedi, ancak iade/düzeltme ile kartın güncel borcu 300 TL'ye düştü
+      const res = calculateCardStatementRemaining(1000, 0, 200, 300)
+      expect(res.remainingStatementDebt).toBe(300)
+      expect(res.remainingMinimumPayment).toBe(200)
+      expect(res.isFullyPaid).toBe(false)
+
+      // Kalan asgari borç da güncel borcu aşamaz
+      const resMinCapped = calculateCardStatementRemaining(1000, 0, 500, 150)
+      expect(resMinCapped.remainingStatementDebt).toBe(150)
+      expect(resMinCapped.remainingMinimumPayment).toBe(150)
+      expect(resMinCapped.isFullyPaid).toBe(false)
+    })
+
+    it('currentDebt 0 olduğunda kart borcu sıfırlandığı için isFullyPaid true döner', () => {
+      const res = calculateCardStatementRemaining(1000, 400, 200, 0)
+      expect(res.remainingStatementDebt).toBe(0)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(true)
+    })
+
+    it('currentDebt ekstre borcundan büyük olduğunda (dönem içi harcamalar) ekstre borcunu bozmaz', () => {
+      const res = calculateCardStatementRemaining(1000, 400, 200, 2500)
+      expect(res.remainingStatementDebt).toBe(600)
+      expect(res.remainingMinimumPayment).toBe(0)
+      expect(res.isFullyPaid).toBe(false)
     })
   })
 
