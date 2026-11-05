@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useRef } from 'react'
+import { useState, useEffect, useMemo, useDeferredValue, Suspense, useRef } from 'react'
 import Link from 'next/link'
 import {
   ShieldCheck,
@@ -23,12 +23,17 @@ import {
   X,
   FileCode,
   Layers,
+  Bot,
+  Copy,
+  Eye,
+  Settings2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
@@ -47,6 +52,8 @@ import {
   executeMerge,
   triggerDownload,
 } from '@/lib/vault-engine'
+import { generateLifeMarkdown, type LifeMdSectionOptions } from '@/lib/life-md-engine'
+import { exportMarkdownFile, copyMarkdownToClipboard } from '@/lib/markdown-utils'
 
 // Helper to fetch all rows using pagination to avoid the 1000-row PostgREST ceiling
 async function fetchAllRows(supabase: any, tableName: string): Promise<any[]> {
@@ -83,7 +90,20 @@ function VaultPageContent() {
   const [vaultData, setVaultData] = useState<PusulaVaultData>(EMPTY_VAULT_DATA)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'export' | 'restore' | 'diagnostics'>('export')
+  const [activeTab, setActiveTab] = useState<'export' | 'restore' | 'diagnostics' | 'ai_context'>('export')
+
+  // AI Bağlamı (life.md) Durumu
+  const [customPreamble, setCustomPreamble] = useState<string>('')
+  const [includeSections, setIncludeSections] = useState<LifeMdSectionOptions>({
+    executiveSummary: true,
+    dreamsAndGoals: true,
+    projectsAndIdeas: true,
+    routinesAndAgenda: true,
+    journal: true,
+    financialOverview: true,
+    transactions: true,
+  })
+  const [isCopied, setIsCopied] = useState(false)
 
   // Dışa Aktarma Formu
   const [isEncrypted, setIsEncrypted] = useState(false)
@@ -173,7 +193,24 @@ function VaultPageContent() {
         if (agenda) data.agenda_items = agenda
         if (imports) data.statement_imports = imports
 
-        // LocalStorage fallback'leri birleştir
+        if (agenda && agenda.length > 0) data.agenda_items = agenda
+        else {
+          const lA = localStorage.getItem('pusula_local_agenda_items')
+          if (lA) try { data.agenda_items = JSON.parse(lA) } catch {}
+        }
+
+        if (invs && invs.length > 0) data.investments = invs
+        else {
+          const lI = localStorage.getItem('pusula_local_investments')
+          if (lI) try { data.investments = JSON.parse(lI) } catch {}
+        }
+
+        if (incomes && incomes.length > 0) data.incomes = incomes
+        else {
+          const lInc = localStorage.getItem('pusula_local_incomes')
+          if (lInc) try { data.incomes = JSON.parse(lInc) } catch {}
+        }
+
         if (credentials && credentials.length > 0) data.credentials = credentials
         else {
           const lC = localStorage.getItem('pusula_local_credentials')
@@ -384,6 +421,9 @@ function VaultPageContent() {
       localStorage.setItem('pusula_local_routine_logs', JSON.stringify(finalData.routine_logs || []))
       localStorage.setItem('pusula_local_journal_entries', JSON.stringify(finalData.journal_entries || []))
       localStorage.setItem('pusula_local_credentials', JSON.stringify(finalData.credentials || []))
+      localStorage.setItem('pusula_local_agenda_items', JSON.stringify(finalData.agenda_items || []))
+      localStorage.setItem('pusula_local_investments', JSON.stringify(finalData.investments || []))
+      localStorage.setItem('pusula_local_incomes', JSON.stringify(finalData.incomes || []))
 
       setVaultData(finalData)
       const successText = `Başarılı! ${validationResult.payload.manifest.total_records} kayıt başarıyla geri yüklendi ve kasanız güncellendi.`
@@ -406,6 +446,70 @@ function VaultPageContent() {
   const mergeDiff = validationResult?.payload?.data
     ? calculateMergeDiff(vaultData, validationResult.payload.data)
     : []
+
+  // LocalStorage'dan kayıtlı Kişisel Önsözü Yükle
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pusula_life_md_preamble')
+      if (saved !== null) {
+        setCustomPreamble(saved)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // Yazma sırasında localStorage yükünü ve donmayı engellemek için debounced sync
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('pusula_life_md_preamble', customPreamble)
+      } catch {
+        // ignore
+      }
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [customPreamble])
+
+  const handlePreambleChange = (val: string) => {
+    setCustomPreamble(val)
+  }
+
+  const toggleSection = (key: keyof LifeMdSectionOptions) => {
+    setIncludeSections((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  // Defer preamble updates so typing into the textarea is 100% fluid and non-blocking
+  const deferredPreamble = useDeferredValue(customPreamble)
+
+  // life.md Markdown Metni ve İstatistikleri
+  const lifeMdResult = useMemo(() => {
+    return generateLifeMarkdown(vaultData, {
+      customPreamble: deferredPreamble,
+      includeSections,
+    })
+  }, [vaultData, deferredPreamble, includeSections])
+
+  const handleDownloadLifeMd = () => {
+    const today = formatLocalDateInput(new Date())
+    const filename = `life-${today}.md`
+    exportMarkdownFile(filename, lifeMdResult.markdown)
+    toast.success(`${filename} başarıyla indirildi.`)
+  }
+
+  const handleCopyLifeMd = async () => {
+    const success = await copyMarkdownToClipboard(lifeMdResult.markdown)
+    if (success) {
+      setIsCopied(true)
+      toast.success('life.md panoya kopyalandı!')
+      setTimeout(() => setIsCopied(false), 2000)
+    } else {
+      toast.error('Panoya kopyalama başarısız oldu.')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -509,6 +613,21 @@ function VaultPageContent() {
         >
           <Upload className="h-3.5 w-3.5" />
           <span>Yedekten Geri Yükle</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'ai_context'}
+          onClick={() => setActiveTab('ai_context')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            activeTab === 'ai_context'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          <Bot className="h-3.5 w-3.5" />
+          <span>AI Bağlamı (life.md)</span>
         </button>
 
         <button
@@ -632,6 +751,49 @@ function VaultPageContent() {
                         ? 'Şifreli Kasa Yedeğini İndir (.vault)'
                         : 'Tam Sistem Yedeğini İndir (.json)'}
                     </span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Hızlı life.md Banner */}
+            <Card className="border-primary/30 bg-primary/5 shadow-sm">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-primary" />
+                      <span className="text-xs font-semibold text-foreground">
+                        AI İçin Kişisel Bağlam: life.md
+                      </span>
+                      <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                        Şifreler Hariç
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Tüm finans, hedef, rutin ve proje verilerinizi yapay zeka asistanlarına doğrudan beslemek için tek bir Markdown belgesinde derleyin.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    onClick={handleDownloadLifeMd}
+                    className="gap-1.5 text-xs font-semibold h-8"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>life.md İndir (~{lifeMdResult.stats.estimatedTokens.toLocaleString()} token)</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActiveTab('ai_context')}
+                    className="gap-1.5 text-xs font-medium h-8"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                    <span>Özelleştir & Canlı Önizle</span>
+                    <ArrowRight className="h-3 w-3" />
                   </Button>
                 </div>
               </CardContent>
@@ -882,6 +1044,199 @@ function VaultPageContent() {
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* SEKME 4: AI BAĞLAMI (life.md) */}
+      {activeTab === 'ai_context' && (
+        <div className="space-y-6">
+          <Card className="border-border/60 bg-card/80">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-primary" />
+                    <span>Kişisel AI Yaşam ve Finans Bağlamı (life.md)</span>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Pusula ekosistemindeki tüm hedefleri, projeleri, alışkanlıkları ve finansal hareketleri LLM&apos;lerin (Claude, ChatGPT, Cursor vb.) doğrudan anlayabileceği tek bir Markdown dosyasında birleştirir.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs gap-1.5 py-1 px-2.5 font-normal">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Kimlikler &amp; Şifreler Hariç Tutuldu</span>
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Metrik Şeridi */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl border border-border/70 bg-muted/20">
+                <div className="space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
+                    Tahmini Token
+                  </span>
+                  <div className="text-xl font-semibold text-foreground tabular-nums">
+                    ~{lifeMdResult.stats.estimatedTokens.toLocaleString()}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    {lifeMdResult.stats.charCount.toLocaleString()} karakter (~4 krk/tk)
+                  </span>
+                </div>
+
+                <div className="space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
+                    Kelime Hacmi
+                  </span>
+                  <div className="text-xl font-semibold text-foreground tabular-nums">
+                    {lifeMdResult.stats.wordCount.toLocaleString()}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    Yapılandırılmış Markdown
+                  </span>
+                </div>
+
+                <div className="space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
+                    Dahil Edilen Kayıt
+                  </span>
+                  <div className="text-xl font-semibold text-foreground tabular-nums">
+                    {lifeMdResult.stats.includedRecords.toLocaleString()}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    İlişkisel isim çözümlenmiş
+                  </span>
+                </div>
+
+                <div className="space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
+                    Aktif Bölümler
+                  </span>
+                  <div className="text-xl font-semibold text-foreground tabular-nums">
+                    {Object.values(includeSections).filter(Boolean).length} / 7
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    Modül seçiciler aktif
+                  </span>
+                </div>
+              </div>
+
+              {/* Ayarlar Grid: Kişisel Önsöz ve Bölüm Seçiciler */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Sol: Kişisel AI Yönergesi */}
+                <div className="lg:col-span-7 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="life-md-preamble"
+                      className="text-xs font-semibold text-foreground flex items-center gap-1.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Kişisel AI Yönergesi &amp; Sistem İstemi (Opsiyonel)</span>
+                    </label>
+                    <span className="text-[11px] text-muted-foreground">Tarayıcıda saklanır</span>
+                  </div>
+                  <Textarea
+                    id="life-md-preamble"
+                    value={customPreamble}
+                    onChange={(e) => handlePreambleChange(e.target.value)}
+                    placeholder="Örnek: Ben bağımsız bir yazılım geliştiricisiyim. Harcama alışkanlıklarımı analiz ederken SaaS aboneliklerime ve haftalık rutinlerime özellikle odaklan. Bana tasarruf ve odaklanma önerilerinde bulun..."
+                    className="h-36 text-xs leading-relaxed resize-none"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Bu not `life.md` dosyasının en başına eklenir; AI asistanınıza kim olduğunuzu ve size nasıl yardım etmesi gerektiğini açıklar.
+                  </p>
+                </div>
+
+                {/* Sağ: Bölüm Filtreleri */}
+                <div className="lg:col-span-5 space-y-2">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5 text-primary" />
+                    <span>Dahil Edilecek Bölümler</span>
+                  </label>
+                  <div className="p-3 rounded-xl border border-border/70 bg-muted/20 space-y-2 text-xs">
+                    {[
+                      { key: 'executiveSummary', label: '1. Yönetici Özeti (Genel Durum)', desc: 'Net varlık, portföy ve modül sayıları' },
+                      { key: 'dreamsAndGoals', label: '2. Vizyon, Hedefler & Hayaller', desc: 'Dreams tablosu ve başarı notları' },
+                      { key: 'projectsAndIdeas', label: '3. Çalışma: Projeler & Fikirler', desc: 'Projeler, bütçeler ve fikir havuzu' },
+                      { key: 'routinesAndAgenda', label: '4. Günlük Yaşam: Rutinler & Ajanda', desc: 'Alışkanlıklar, loglar ve görevler' },
+                      { key: 'journal', label: '5. Seyir Defteri / Günlük', desc: 'Tüm kişisel günlük kayıtları ve ruh hali' },
+                      { key: 'financialOverview', label: '6. Finansal Varlıklar & Borçlar', desc: 'Hesaplar, kartlar, yatırımlar, abonelikler' },
+                      { key: 'transactions', label: '7. Hesap ve Kart Hareketleri', desc: 'Aylık gruplanmış tüm gelir-gider geçmişi' },
+                    ].map(({ key, label, desc }) => {
+                      const isChecked = !!includeSections[key as keyof LifeMdSectionOptions]
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-start gap-2.5 cursor-pointer select-none p-1.5 rounded-lg hover:bg-muted/40 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSection(key as keyof LifeMdSectionOptions)}
+                            className="mt-0.5 rounded border-border"
+                          />
+                          <div className="space-y-0.5">
+                            <div className={`font-medium text-xs ${isChecked ? 'text-foreground' : 'text-muted-foreground'}`}>
+                              {label}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">{desc}</div>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Aksiyon Butonları */}
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border/50">
+                <Button
+                  onClick={handleDownloadLifeMd}
+                  className="gap-2 font-semibold"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>life.md Dosyasını İndir</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleCopyLifeMd}
+                  className="gap-2 font-semibold"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check className="h-4 w-4 text-emerald-400" />
+                      <span>Kopyalandı!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      <span>Panoya Kopyala</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Canlı Önizleme */}
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Eye className="h-3.5 w-3.5 text-primary" />
+                    <span>Canlı Markdown Önizlemesi</span>
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {lifeMdResult.stats.charCount.toLocaleString()} karakter
+                  </span>
+                </div>
+                <div className="relative">
+                  <pre className="max-h-[460px] overflow-y-auto p-4 rounded-xl border border-border bg-muted/40 font-mono text-[11px] leading-relaxed text-foreground/90 whitespace-pre-wrap break-words select-all">
+                    {lifeMdResult.markdown}
+                  </pre>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
