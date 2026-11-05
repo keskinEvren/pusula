@@ -36,6 +36,48 @@ export function parseFlexibleAmount(str?: string): number | undefined {
 }
 
 /**
+ * Normalizes and parses account balances with sign sensitivity.
+ * Handles negative signs (-399,46), debt flags (399,46 (B), Borç), parenthesized numbers,
+ * and positive indicators (+399,46, (A), Alacak).
+ */
+export function parseFlexibleBalance(str?: string): number | undefined {
+  if (!str) return undefined
+  const trimmed = str.trim()
+  if (!trimmed) return undefined
+
+  const compact = trimmed.replace(/\s+/g, ' ')
+
+  // Check for negative indicators:
+  // 1. Explicit minus before number (e.g. "-399,46", "- 399,46", "-399.46 TL")
+  // 2. Trailing minus (e.g. "399,46-")
+  // 3. Accounting parentheses e.g. "(399,46)"
+  // 4. Turkish bank debit/borç indicators: "(B)", "[B]", "Borç", " B" at end
+  const isNegative =
+    /^-\s*\d/.test(compact) ||
+    /\d\s*-(?:\s*[A-Za-z]+)?$/.test(compact) ||
+    /^\s*\(\s*\d.*?\)\s*(?:TL|TRY)?$/i.test(compact) ||
+    /\((?:B|Borç|Borc)\)/i.test(compact) ||
+    /\[(?:B|Borç|Borc)\]/i.test(compact) ||
+    /(?:^|\s)(?:Borç|Borc)(?:\s|$)/i.test(compact) ||
+    /\bB\b/i.test(compact.replace(/\b(?:TL|TRY)\b/gi, '').trim())
+
+  // Note: if explicitly marked with (A) or Alacak or starts with +, it is positive
+  const isExplicitPositive =
+    /^\+\s*\d/.test(compact) ||
+    /\((?:A|Alacak)\)/i.test(compact) ||
+    /(?:^|\s)Alacak(?:\s|$)/i.test(compact)
+
+  const absVal = parseFlexibleAmount(compact)
+  if (absVal === undefined) return undefined
+
+  if (isExplicitPositive) {
+    return absVal
+  }
+
+  return isNegative && absVal > 0 ? -absVal : absVal
+}
+
+/**
  * Decodes Windows-1254 (CP1254) Turkish character artifacts from CSV / Text.
  * Commonly seen when banking statements are exported with Turkish Windows encoding.
  */

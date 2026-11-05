@@ -40,6 +40,12 @@ export interface StatementChangeResult {
   trend: 'UP' | 'DOWN' | 'STABLE' | 'NONE'
 }
 
+export interface CardStatementRemainingResult {
+  remainingStatementDebt: number
+  remainingMinimumPayment: number
+  isFullyPaid: boolean
+}
+
 export interface BudgetEvaluationResult {
   ratio: number | null
   status: 'GREEN' | 'YELLOW' | 'RED' | 'NO_BUDGET'
@@ -196,6 +202,40 @@ export function calculateStatementChange(
     changeAmount,
     changePct,
     trend,
+  }
+}
+
+/**
+ * Kredi Kartı Ekstresinden Kalan Borç ve Asgari Tutar Analizi
+ * Kuruş hassasiyeti (round2) ve negatif değer korumalı saf hesaplama.
+ */
+export function calculateCardStatementRemaining(
+  statementDebt: number | null | undefined,
+  payments: number | null | undefined,
+  minimumPayment?: number | null | undefined,
+  currentDebt?: number | null | undefined
+): CardStatementRemainingResult {
+  const stmtDebt = Math.max(0, Number(statementDebt || 0))
+  const paid = Math.max(0, Number(payments || 0))
+  const minPay = Math.max(0, Number(minimumPayment || 0))
+
+  let remainingStatementDebt = Math.max(0, round2(stmtDebt - paid))
+  let remainingMinimumPayment = Math.max(0, round2(minPay - paid))
+
+  if (currentDebt !== undefined && currentDebt !== null) {
+    const curDebt = Math.max(0, Number(currentDebt))
+    remainingStatementDebt = Math.min(curDebt, remainingStatementDebt)
+    remainingMinimumPayment = Math.min(remainingStatementDebt, remainingMinimumPayment)
+  }
+
+  const isFullyPaid = stmtDebt > 0
+    ? (remainingStatementDebt === 0 || (currentDebt !== undefined && currentDebt !== null && Number(currentDebt) <= 0))
+    : false
+
+  return {
+    remainingStatementDebt,
+    remainingMinimumPayment,
+    isFullyPaid,
   }
 }
 

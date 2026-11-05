@@ -272,8 +272,8 @@ export default function AccountsPage() {
                         <CardDescription className="text-xs capitalize">{acc.type} hesabı</CardDescription>
                       </div>
                     </div>
-                    <Badge variant={acc.balance > 0 ? 'success' : 'outline'} className="text-xs">
-                      {acc.balance > 0 ? 'Aktif Bakiye' : '0,00 TL'}
+                    <Badge variant={acc.balance > 0 ? 'success' : acc.balance < 0 ? 'destructive' : 'outline'} className="text-xs">
+                      {acc.balance > 0 ? 'Aktif Bakiye' : acc.balance < 0 ? 'Eksi Bakiye (KMH)' : '0,00 TL'}
                     </Badge>
                   </div>
                 </CardHeader>

@@ -216,4 +216,32 @@ IBAN: TR880001004031838013405003
     expect(fixWindows1254Text('Þube açýklama deðer')).toBe('Şube açıklama değer')
     expect(fixWindows1254Text('ÝÞLEM TUTARI')).toBe('İŞLEM TUTARI')
   })
-})
+  it('9. Akbank Artı Para (KMH) Negatif Kapanış Bakiyesi: -399,46 TL eksi bakiyeyi korur', () => {
+    const mockAkbankKmhCsv = [
+      ['Şube', '0069'],
+      ['HesapNo', '0332145'],
+      ['IBAN', 'TR900004600069888000332145'],
+      ['Kullanılabilir Bakiye', '9.600,54'],
+      ['Tarih Aralığı', '10.10.2026-05.11.2026'],
+      [],
+      ['Tarih', 'Tutar', 'Bakiye', 'Açıklama'],
+      ['2026-10-31-02.50.42.444520', '-11,48 TL', '-399,46 TL', 'Artı Para Fon Payı'],
+      ['2026-10-31-02.50.42.444366', '-11,48 TL', '-387,98 TL', 'Artı Para Vergi'],
+      ['2026-10-31-02.50.42.443503', '-76,50 TL', '-376,50 TL', 'Artı Para Faizi'],
+      ['2026-10-19-08.50.19.154181', '-300,00 TL', '-300,00 TL', 'Para Çekme / ATM'],
+    ]
+
+    const result = parseBankAccountTable(mockAkbankKmhCsv)
+    expect(result.detected_bank).toBe('Akbank Vadesiz')
+    expect(result.closing_balance).toBe(-399.46)
+    expect(result.transactions.length).toBe(4)
+
+    expect(result.transactions[0].amount).toBe(11.48)
+    expect(result.transactions[0].direction).toBe('outflow')
+    expect(result.transactions[0].balance_after).toBe(-399.46)
+
+    expect(result.transactions[3].amount).toBe(300.0)
+    expect(result.transactions[3].direction).toBe('outflow')
+    expect(result.transactions[3].balance_after).toBe(-300.0)
+  })
+});

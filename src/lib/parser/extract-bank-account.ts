@@ -1,7 +1,7 @@
 import { extractTextFromPDF } from './extract-pdf'
 import { repairTurkishPdfText } from './turkish-cleaner'
 import { reconcileBankMovement } from './reconciler'
-import { parseFlexibleAmount, fixWindows1254Text, detectBankFromTextOrIban } from './utils'
+import { parseFlexibleAmount, parseFlexibleBalance, fixWindows1254Text, detectBankFromTextOrIban } from './utils'
 import type { ParseResult, ExtractedTransaction } from './types'
 import type { Debt, CreditCard, MerchantMapping } from '@/types/database'
 import { formatLocalDateInput } from '../utils'
@@ -51,10 +51,9 @@ export function parseBankAccountLines(
     if (!trimmed || trimmed === '--- PAGE BREAK ---') continue
 
     // Detect official closing balance
-    const closingMatch = trimmed.match(/(?:Dönem sonu bakiyesi|Kapanış bakiyesi|Toplam Bakiye)\s*[:]?\s*([0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2})/i)
+    const closingMatch = trimmed.match(/(?:Dönem sonu bakiyesi|Kapanış bakiyesi|Toplam Bakiye)\s*[:]?\s*([+-]?\s*[0-9]{1,3}(?:[.,][0-9]{3})*[.,][0-9]{2}(?:\s*(?:TL|TRY))?(?:\s*\((?:A|B)\))?)/i)
     if (closingMatch && closing_balance === undefined) {
-      const cleanClosing = closingMatch[1].replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.')
-      closing_balance = parseFloat(cleanClosing)
+      closing_balance = parseFlexibleBalance(closingMatch[1])
     }
 
     // Line starts with date (DD.MM.YYYY or DD/MM/YYYY or DD/MM/YY)
@@ -130,7 +129,7 @@ export function parseBankAccountLines(
     const isFirstNewer = movements[0].date >= movements[movements.length - 1].date
     const targetMovement = isFirstNewer ? movements[0] : movements[movements.length - 1]
     if (targetMovement.balanceStr) {
-      closing_balance = parseFlexibleAmount(targetMovement.balanceStr)
+      closing_balance = parseFlexibleBalance(targetMovement.balanceStr)
     }
   }
 
@@ -305,12 +304,7 @@ export function extractFromHtmlBankAccount(
     const isFirstNewer = rawRows[0].date >= rawRows[rawRows.length - 1].date
     const targetRow = isFirstNewer ? rawRows[0] : rawRows[rawRows.length - 1]
     if (targetRow.balanceStr) {
-      const cleanB = targetRow.balanceStr
-        .replace(/[^\d.,]/g, '')
-        .replace(/\.(?=\d{3})/g, '')
-        .replace(',', '.')
-      const numB = parseFloat(cleanB)
-      if (!isNaN(numB)) closing_balance = numB
+      closing_balance = parseFlexibleBalance(targetRow.balanceStr)
     }
   }
 
@@ -370,7 +364,7 @@ export function extractFromHtmlBankAccount(
       classification_status: suggestion.classification_status,
       classification_reasons: suggestion.reasons,
       external_reference: row.externalReference,
-      balance_after: row.balanceStr ? parseFlexibleAmount(row.balanceStr) : undefined,
+      balance_after: row.balanceStr ? parseFlexibleBalance(row.balanceStr) : undefined,
       selected: suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }
@@ -528,7 +522,7 @@ export function parseBankAccountTable(
     const isFirstNewer = rawMovements[0].date >= rawMovements[rawMovements.length - 1].date
     const targetMov = isFirstNewer ? rawMovements[0] : rawMovements[rawMovements.length - 1]
     if (targetMov.balanceStr !== undefined) {
-      closing_balance = parseFlexibleAmount(targetMov.balanceStr)
+      closing_balance = parseFlexibleBalance(targetMov.balanceStr)
     }
   }
 
@@ -563,7 +557,7 @@ export function parseBankAccountTable(
       classification_status: suggestion.classification_status,
       classification_reasons: suggestion.reasons,
       external_reference: mov.externalReference,
-      balance_after: mov.balanceStr ? parseFlexibleAmount(mov.balanceStr) : undefined,
+      balance_after: mov.balanceStr ? parseFlexibleBalance(mov.balanceStr) : undefined,
       selected: suggestion.classification_status !== 'CONFLICTING_RULES',
     })
   }

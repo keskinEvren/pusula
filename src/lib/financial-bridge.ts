@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { round2 } from '@/lib/finance-engine'
 
 // --- Result Type ---
 export interface FinancialEventResult {
@@ -33,7 +34,7 @@ export interface RecordIncomeParams {
 export interface RecordCardPaymentParams {
   userId: string
   amount: number
-  sourceAccountId: string
+  sourceAccountId?: string
   cardId: string
   date: string
   description?: string
@@ -86,7 +87,7 @@ export class FinancialBridge {
     }
   }
 
-  private validAmount(amount: number): boolean { return Number.isFinite(amount) && amount > 0 }
+  private validAmount(amount: number): boolean { return Number.isFinite(amount) && round2(amount) > 0 }
 
   async recordExpense(params: RecordExpenseParams): Promise<FinancialEventResult> {
     if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
@@ -110,8 +111,8 @@ export class FinancialBridge {
   async recordCardPayment(params: RecordCardPaymentParams): Promise<FinancialEventResult> {
     if (!this.validAmount(params.amount)) return { success: false, error: 'Tutar sıfırdan büyük olmalıdır.' }
     return this.atomic('fn_record_payment_atomic', {
-      p_user_id: params.userId, p_date: params.date, p_amount: params.amount, p_description: params.description || 'Kart Ödemesi',
-      p_type: 'Kart Ödemesi', p_account_id: params.sourceAccountId, p_target_id: params.cardId,
+      p_user_id: params.userId, p_date: params.date, p_amount: round2(params.amount), p_description: params.description || 'Kart Ödemesi',
+      p_type: 'Kart Ödemesi', p_account_id: params.sourceAccountId || null, p_target_id: params.cardId,
     })
   }
 
