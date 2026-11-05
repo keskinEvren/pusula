@@ -17,6 +17,7 @@ import type {
   AgendaItem,
   Credential,
   DebtInstallment,
+  Income,
 } from '@/types/database'
 import { z } from 'zod'
 
@@ -27,6 +28,7 @@ export interface PusulaVaultData {
   transactions: Transaction[]
   debts: Debt[]
   subscriptions: Subscription[]
+  incomes: Income[]
   merchant_mappings: MerchantMapping[]
   investments: Investment[]
   projects: Project[]
@@ -62,6 +64,7 @@ export const EMPTY_VAULT_DATA: PusulaVaultData = {
   transactions: [],
   debts: [],
   subscriptions: [],
+  incomes: [],
   merchant_mappings: [],
   investments: [],
   projects: [],
@@ -83,6 +86,7 @@ export const VAULT_TABLE_LABELS: Record<keyof PusulaVaultData, { label: string; 
   transactions: { label: 'Hesap Hareketleri', icon: '', category: 'Finans' },
   debts: { label: 'Borç & Alacaklar', icon: '', category: 'Finans' },
   subscriptions: { label: 'Abonelikler & Sabit Giderler', icon: '', category: 'Finans' },
+  incomes: { label: 'Gelirler & Kaynaklar', icon: '', category: 'Finans' },
   investments: { label: 'Yatırımlar & Portföy', icon: '', category: 'Finans' },
   merchant_mappings: { label: 'Eşleştirme Kuralları', icon: '', category: 'Finans' },
   projects: { label: 'Projeler', icon: '', category: 'Çalışma' },
@@ -109,6 +113,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     transactions: data.transactions || [],
     debts: data.debts || [],
     subscriptions: data.subscriptions || [],
+    incomes: data.incomes || [],
     merchant_mappings: data.merchant_mappings || [],
     investments: data.investments || [],
     projects: data.projects || [],
@@ -130,6 +135,7 @@ export function createVaultPayload(data: Partial<PusulaVaultData>): VaultPayload
     transactions: completeData.transactions.length,
     debts: completeData.debts.length,
     subscriptions: completeData.subscriptions.length,
+    incomes: completeData.incomes.length,
     merchant_mappings: completeData.merchant_mappings.length,
     investments: completeData.investments.length,
     projects: completeData.projects.length,
@@ -211,6 +217,7 @@ export function validateVaultPayload(rawJsonOrObject: unknown): ValidationResult
       transactions: Array.isArray(payload.data.transactions) ? payload.data.transactions : [],
       debts: Array.isArray(payload.data.debts) ? payload.data.debts : [],
       subscriptions: Array.isArray(payload.data.subscriptions) ? payload.data.subscriptions : [],
+      incomes: Array.isArray(payload.data.incomes) ? payload.data.incomes : [],
       merchant_mappings: Array.isArray(payload.data.merchant_mappings) ? payload.data.merchant_mappings : [],
       investments: Array.isArray(payload.data.investments) ? payload.data.investments : [],
       projects: Array.isArray(payload.data.projects) ? payload.data.projects : [],

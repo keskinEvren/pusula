@@ -486,9 +486,48 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
   it('vault replace rolls cleanup back when any restored row is invalid', async () => {
     await asUser(userA)
     const before=await db.query('select name,balance from accounts where id=$1',[source])
-    const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], debt_installments:[], subscriptions:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], project_tasks:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
+    const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], debt_installments:[], subscriptions:[], incomes:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
     await expect(db.query('select fn_restore_vault_replace_atomic($1::jsonb)',[JSON.stringify(invalid)])).rejects.toThrow()
     expect((await db.query('select name,balance from accounts where id=$1',[source])).rows).toEqual(before.rows)
+  })
+
+  it('vault replace successfully restores incomes and debt_installments atomically', async () => {
+    await asUser(userA)
+    const testIncomeId = '31313131-3131-4131-8131-313131313131'
+    const testDebtId = '32323232-3232-4232-8232-323232323232'
+    const testInstId = '33333333-3333-4333-8333-333333333333'
+
+    const validData = {
+      accounts: [{ id: source, user_id: userA, name: 'Main Account', balance: 1000, created_at: '2026-10-29T00:00:00Z', updated_at: '2026-10-29T00:00:00Z' }],
+      credit_cards: [],
+      transactions: [],
+      debts: [{ id: testDebtId, user_id: userA, person_or_entity: 'Bank', type: 'Borç', principal: 1000, remaining: 1000, past_payments: 0, status: 'Açık', created_at: '2026-10-29T00:00:00Z', updated_at: '2026-10-29T00:00:00Z' }],
+      debt_installments: [{ id: testInstId, debt_id: testDebtId, user_id: userA, installment_no: 1, due_date: '2026-12-01', amount: 500, status: 'Bekliyor', created_at: '2026-10-29T00:00:00Z', updated_at: '2026-10-29T00:00:00Z' }],
+      subscriptions: [],
+      incomes: [{ id: testIncomeId, user_id: userA, title: 'Freelance Design', category: 'Freelance & Danışmanlık', amount: 25000, status: 'Aktif', income_type: 'Sabit', period: 'Aylık', currency: 'TRY', created_at: '2026-10-29T00:00:00Z', updated_at: '2026-10-29T00:00:00Z' }],
+      statement_imports: [],
+      merchant_mappings: [],
+      investments: [],
+      projects: [],
+      ideas: [],
+      agenda_items: [],
+      dreams: [],
+      routines: [],
+      routine_logs: [],
+      journal_entries: [],
+      credentials: [],
+      card_statements: []
+    }
+
+    const restoreRes = await db.query<{ result: { success: boolean } }>('select fn_restore_vault_replace_atomic($1::jsonb) as result', [JSON.stringify(validData)])
+    expect(restoreRes.rows[0].result.success).toBe(true)
+
+    // Verify restored rows
+    const restoredIncome = await db.query('select title, amount from incomes where id=$1 and user_id=$2', [testIncomeId, userA])
+    expect(restoredIncome.rows).toEqual([{ title: 'Freelance Design', amount: '25000.00' }])
+
+    const restoredInst = await db.query('select installment_no, amount from debt_installments where id=$1 and user_id=$2', [testInstId, userA])
+    expect(restoredInst.rows).toEqual([{ installment_no: 1, amount: '500.00' }])
   })
 
   it('notification triggers schema: isolates push_subscriptions and preferences across users', async () => {
