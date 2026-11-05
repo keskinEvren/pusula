@@ -35,7 +35,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClose={() => setIsMobileMenuOpen(false)}
           />
           <div className="flex flex-1 flex-col lg:pl-64 w-full min-w-0 transition-all">
-            <Header onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
+            <Header
+              onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+              onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
+            />
             <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 max-w-7xl w-full mx-auto">
               {children}
             </main>

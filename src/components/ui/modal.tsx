@@ -54,8 +54,25 @@ export function Modal({
       if (initialFocusRef?.current) {
         initialFocusRef.current.focus()
       } else if (dialogRef.current) {
+        // If an element inside the dialog is already focused (e.g. via React autoFocus), don't steal it!
+        if (
+          dialogRef.current.contains(document.activeElement) &&
+          document.activeElement !== dialogRef.current
+        ) {
+          return
+        }
+
+        // Prioritize actual interactive form inputs before buttons/close icon
+        const formInputs = dialogRef.current.querySelectorAll<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'
+        )
+        if (formInputs.length > 0) {
+          formInputs[0].focus()
+          return
+        }
+
         const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          'button:not([disabled]):not([aria-label="Kapat"]), [href], [tabindex]:not([tabindex="-1"])'
         )
         if (focusable.length > 0) {
           focusable[0].focus()
@@ -134,7 +151,7 @@ export function Modal({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          'relative flex flex-col w-full rounded-t-2xl sm:rounded-2xl border border-white/[0.12] bg-[#16161b] p-4 sm:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_24px_64px_-12px_rgba(0,0,0,0.85),0_8px_24px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] overflow-hidden outline-none',
+          'relative flex flex-col w-full rounded-t-2xl sm:rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_24px_64px_-12px_rgba(0,0,0,0.85),0_8px_24px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] overflow-hidden outline-none',
           sizeClasses[size],
           className
         )}

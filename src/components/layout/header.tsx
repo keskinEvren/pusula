@@ -33,6 +33,7 @@ import { useTimer } from '@/lib/timer-context'
 
 interface HeaderProps {
   onOpenMobileMenu?: () => void
+  onOpenQuickCapture?: () => void
 }
 
 const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
@@ -52,11 +53,12 @@ const ROUTE_LABELS: Record<string, { category: string; title: string }> = {
   investments: { category: 'Finans', title: 'Yatırımlar' },
   projects: { category: 'Çalışma', title: 'Projeler' },
   ideas: { category: 'Çalışma', title: 'Fikirler' },
+  credentials: { category: 'Kişisel', title: 'Kimlikler & Şifreler' },
   settings: { category: 'Sistem', title: 'Ayarlar' },
   vault: { category: 'Sistem', title: 'Veri & Yedekleme' },
 }
 
-export function Header({ onOpenMobileMenu }: HeaderProps) {
+export function Header({ onOpenMobileMenu, onOpenQuickCapture }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
   const {
@@ -72,7 +74,24 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
   } = useTimer()
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false)
+  const [headerSearch, setHeaderSearch] = useState('')
   const quickAddRef = useRef<HTMLDivElement>(null)
+
+  // Global ⌘K / Ctrl+K shortcut to open Quick Capture or focus Search
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        if (onOpenQuickCapture) {
+          onOpenQuickCapture()
+        } else {
+          router.push('/transactions')
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onOpenQuickCapture, router])
 
   useEffect(() => {
     async function getUser() {
@@ -161,21 +180,33 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         </nav>
       </div>
 
-      {/* Orta: Hareketlerde Ara Bağlantısı */}
-      <div className="hidden md:flex items-center">
-        <Link
-          href="/transactions"
-          className="flex h-9 w-64 lg:w-72 items-center justify-between rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-all hover:bg-muted/70 hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <div className="flex items-center gap-2">
-            <Search className="h-3.5 w-3.5 text-muted-foreground/80" />
-            <span>Hareketlerde ara...</span>
-          </div>
-          <span className="text-[11px] text-muted-foreground/60 font-medium">
-            Filtrele
-          </span>
-        </Link>
-      </div>
+      {/* Orta: Global Arama Formu */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (headerSearch.trim()) {
+            router.push(`/transactions?search=${encodeURIComponent(headerSearch.trim())}`)
+          } else {
+            router.push('/transactions')
+          }
+        }}
+        className="hidden md:flex items-center"
+      >
+        <div className="relative flex h-9 w-64 lg:w-80 items-center rounded-lg border border-border/80 bg-muted/40 px-3 text-xs text-muted-foreground transition-all focus-within:border-primary/50 focus-within:bg-muted/70 focus-within:ring-1 focus-within:ring-primary/30">
+          <Search className="h-3.5 w-3.5 text-muted-foreground/80 shrink-0 mr-2" />
+          <input
+            type="search"
+            value={headerSearch}
+            onChange={(e) => setHeaderSearch(e.target.value)}
+            placeholder="İşyeri veya hareket ara..."
+            className="w-full bg-transparent text-foreground placeholder:text-muted-foreground/60 outline-none text-xs"
+            aria-label="Hareketlerde ara"
+          />
+          <kbd className="hidden lg:inline-flex items-center gap-0.5 rounded border border-border/60 bg-background/80 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground select-none shrink-0 ml-1">
+            <span className="text-xs">⌘</span>K
+          </kbd>
+        </div>
+      </form>
 
       {/* Sağ: Canlı Sayaç + Hızlı Ekle + Durum + Kullanıcı */}
       <div className="flex items-center gap-2 sm:gap-3">
@@ -255,13 +286,26 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
                 <div className="px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                   Finans
                 </div>
+                {onOpenQuickCapture && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQuickAddOpen(false)
+                      onOpenQuickCapture()
+                    }}
+                    className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-primary/10 text-primary transition-colors group text-left"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-primary group-hover:scale-110 transition-transform" />
+                    <span>Hızlı Harcama (Çekmece)</span>
+                  </button>
+                )}
                 <Link
                   href="/transactions?new=true"
                   onClick={() => setIsQuickAddOpen(false)}
                   className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted text-foreground/90 transition-colors group"
                 >
                   <ReceiptText className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
-                  <span>Yeni Harcama / Gelir</span>
+                  <span>Manuel Hareket Formu</span>
                 </Link>
                 <Link
                   href="/import"

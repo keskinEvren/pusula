@@ -78,6 +78,12 @@ export function HeroCurrencyInput({
             step="any"
             value={strValue}
             onChange={(e) => onChange(e.target.value)}
+            onWheel={(e) => e.currentTarget.blur()}
+            onKeyDown={(e) => {
+              if (['e', 'E', '+', '-'].includes(e.key)) {
+                e.preventDefault()
+              }
+            }}
             placeholder={placeholder}
             autoFocus={autoFocus}
             className="w-full bg-transparent font-mono text-xl sm:text-2xl font-extrabold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/20 tabular-nums"
@@ -93,7 +99,7 @@ export function HeroCurrencyInput({
 
       {/* Ergonomik Hızlı Tutar Çipleri */}
       {presets.length > 0 && (
-        <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
           {presets.map((preset) => (
             <button
               key={preset}
@@ -102,7 +108,7 @@ export function HeroCurrencyInput({
                 const current = parseFloat(strValue) || 0
                 onChange((current + preset).toString())
               }}
-              className="rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted/70 hover:text-foreground active:scale-95 transition-all"
+              className="rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1 min-h-[30px] text-xs font-mono text-muted-foreground hover:bg-muted/70 hover:text-foreground active:scale-95 transition-all inline-flex items-center"
             >
               +{preset.toLocaleString('tr-TR')} ₺
             </button>
@@ -111,7 +117,7 @@ export function HeroCurrencyInput({
             <button
               type="button"
               onClick={() => onChange('')}
-              className="ml-auto text-[11px] text-muted-foreground/70 hover:text-rose-400 px-1.5 transition-colors"
+              className="ml-auto text-xs font-medium text-muted-foreground/70 hover:text-rose-400 px-2 py-1 min-h-[30px] inline-flex items-center transition-colors"
             >
               Temizle
             </button>

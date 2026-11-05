@@ -78,6 +78,8 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         const supabase = createClient()
+        const now = new Date()
+        const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
         const [
           { data: accs },
           { data: crds },
@@ -92,7 +94,7 @@ export default function DashboardPage() {
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
           supabase.from('debts').select('*').eq('status', 'Açık'),
-          supabase.from('transactions').select('*').order('date', { ascending: false }).limit(1000),
+          supabase.from('transactions').select('*').gte('date', startOfMonth).order('date', { ascending: false }),
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
           supabase.from('investments').select('*'),
@@ -107,31 +109,8 @@ export default function DashboardPage() {
         if (subs) setSubscriptions(subs)
         if (prjs) setProjects(prjs)
         if (instsRes?.data) setDebtInstallments(instsRes.data)
-
-        let finalInvs: Investment[] = []
-        if (invsRes?.data) {
-          finalInvs = invsRes.data
-        } else {
-          try {
-            const cached = localStorage.getItem('pusula_local_investments')
-            if (cached) finalInvs = JSON.parse(cached)
-          } catch {}
-        }
-        setInvestments(finalInvs)
-
-        let finalIncomes: Income[] = []
-        if (incsRes?.data) {
-          finalIncomes = incsRes.data
-          try {
-            localStorage.setItem('pusula_local_incomes', JSON.stringify(incsRes.data))
-          } catch {}
-        } else {
-          try {
-            const cachedIncomes = localStorage.getItem('pusula_local_incomes')
-            if (cachedIncomes) finalIncomes = JSON.parse(cachedIncomes)
-          } catch {}
-        }
-        setIncomes(finalIncomes)
+        if (invsRes?.data) setInvestments(invsRes.data)
+        if (incsRes?.data) setIncomes(incsRes.data)
       } catch (err) {
         console.error('Error loading dashboard:', err)
       } finally {
@@ -682,24 +661,48 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-0 sm:divide-x divide-border/50 py-1">
-              {cashForecast.map((val, idx) => {
-                const monthNames = ['1. Ay', '2. Ay', '3. Ay', '4. Ay', '5. Ay', '6. Ay']
-                return (
-                  <div
-                    key={idx}
-                    className="flex flex-col items-center justify-center p-2 sm:px-1 text-center bg-muted/20 sm:bg-transparent rounded-lg sm:rounded-none"
-                  >
-                    <span className="text-[11px] font-medium text-muted-foreground mb-1">
-                      {monthNames[idx]}
-                    </span>
-                    <span className="text-xs font-semibold tabular-nums text-foreground truncate w-full">
-                      {val > 0 ? formatCurrency(val).replace('₺', '').trim() : '0'} ₺
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
+            {(() => {
+              const maxVal = Math.max(...cashForecast, 1)
+              const now = new Date()
+              return (
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-0 sm:divide-x divide-border/50 py-1">
+                  {cashForecast.map((val, idx) => {
+                    const targetDate = new Date(now.getFullYear(), now.getMonth() + idx, 1)
+                    const monthLabel = targetDate.toLocaleDateString('tr-TR', { month: 'short' })
+                    const pct = Math.round((val / maxVal) * 100)
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col items-center justify-between p-2 sm:px-2 text-center bg-muted/15 sm:bg-transparent rounded-xl sm:rounded-none gap-1.5"
+                      >
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs font-semibold capitalize text-foreground">
+                            {monthLabel}
+                          </span>
+                          {idx === 0 && (
+                            <span className="text-[10px] font-medium px-1 rounded bg-primary/15 text-primary">
+                              Bu Ay
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-bold tabular-nums text-foreground truncate w-full font-mono">
+                          {formatCurrency(val)}
+                        </span>
+                        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                          <div
+                            className={cn(
+                              'h-full transition-all rounded-full',
+                              val > 0 ? (pct > 75 ? 'bg-destructive' : 'bg-primary') : 'bg-muted'
+                            )}
+                            style={{ width: `${Math.max(val > 0 ? 8 : 0, pct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </CardContent>
         </Card>
 

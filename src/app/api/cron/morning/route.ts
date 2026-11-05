@@ -54,9 +54,9 @@ export async function GET(request: Request) {
           adminClient.from('routines').select('*').eq('user_id', userId),
           adminClient.from('routine_logs').select('*').eq('user_id', userId),
           adminClient.from('credit_cards').select('*').eq('user_id', userId),
-          adminClient.from('subscriptions').select('*').eq('user_id', userId),
+          adminClient.from('subscriptions').select('*').eq('user_id', userId).eq('status', 'Aktif'),
           adminClient.from('accounts').select('*').eq('user_id', userId),
-          adminClient.from('debts').select('*').eq('user_id', userId),
+          adminClient.from('debts').select('*').eq('user_id', userId).eq('status', 'Açık'),
           adminClient.from('investments').select('*').eq('user_id', userId),
         ])
 

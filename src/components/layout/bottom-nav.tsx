@@ -20,7 +20,7 @@ export function BottomNav({ onOpenQuickCapture, onOpenMenu }: BottomNavProps) {
   }
 
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0b0f19]/92 backdrop-blur-xl border-t border-white/[0.08] pb-safe shadow-[0_-8px_32px_rgba(0,0,0,0.6)]">
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border pb-safe shadow-[0_-8px_32px_rgba(0,0,0,0.6)]">
       <div className="flex items-center justify-around h-16 px-2 max-w-md mx-auto">
         {/* 1. Genel Bakış */}
         <Link
