@@ -128,21 +128,32 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
         ? `${selectedCard.bank} • ${selectedCard.last_four || 'Kart'}`
         : null
 
-      const { error } = await supabase.from('transactions').insert({
-        user_id: user.id,
-        amount: numAmount,
-        description: description.trim() || 'Hızlı Harcama',
-        date: today,
-        merchant: description.trim() || null,
-        type: 'Harcama',
-        analysis_group: analysisGroup,
-        account_id: sourceType === 'account' ? selectedSourceId : null,
-        card_id: sourceType === 'card' ? selectedSourceId : null,
-        account_or_card: accountOrCardName,
+      const { data, error } = await supabase.rpc('fn_record_expense_atomic', {
+        p_user_id: user.id,
+        p_date: today,
+        p_amount: numAmount,
+        p_description: description.trim() || 'Hızlı Harcama',
+        p_analysis_group: analysisGroup,
+        p_merchant: description.trim() || null,
+        p_account_id: sourceType === 'account' ? selectedSourceId : null,
+        p_card_id: sourceType === 'card' ? selectedSourceId : null,
+        p_project_id: null,
       })
 
       if (error) {
         throw error
+      }
+
+      if (data && !(data as any).success) {
+        throw new Error((data as any).error || 'Harcama kaydedilemedi')
+      }
+
+      // If name was resolved and we have a tx id, optionally persist human-readable account_or_card label
+      if (accountOrCardName && (data as any)?.transaction_id) {
+        await supabase
+          .from('transactions')
+          .update({ account_or_card: accountOrCardName })
+          .eq('id', (data as any).transaction_id)
       }
 
       toast.success(`${numAmount.toLocaleString('tr-TR')} ₺ harcama kaydedildi.`)
@@ -155,6 +166,7 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
       // Notify other views
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('pusula:transaction-created'))
+        window.dispatchEvent(new Event('pusula:transaction-mutated'))
       }
     } catch (err: any) {
       toast.error(err.message || 'Kayıt sırasında hata oluştu.')

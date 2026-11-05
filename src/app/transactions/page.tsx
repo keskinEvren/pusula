@@ -195,7 +195,7 @@ function TransactionsContent() {
   const [targetCardId, setTargetCardId] = useState('')
   const [newTx, setNewTx] = useState({
     date: formatLocalDateInput(),
-    account_or_card: 'Enpara Vadesiz',
+    account_or_card: '',
     type: 'Harcama',
     description: '',
     merchant: '',
@@ -291,13 +291,46 @@ function TransactionsContent() {
         ])
 
         if (crds) setCards(crds)
-        if (accs) setAccounts(accs)
+        if (accs) {
+          setAccounts(accs)
+          setNewTx((prev) => {
+            if (!prev.account_or_card) {
+              const defaultName = accs[0]?.name || (crds && crds[0] ? `${crds[0].bank} • ${crds[0].last_four || 'Kart'}` : '')
+              return { ...prev, account_or_card: defaultName }
+            }
+            return prev
+          })
+        }
       } catch (err) {
         console.error('Error loading metadata:', err)
       }
     }
     loadMetadata()
   }, [])
+
+  const resolveTransactionEntityLabel = useCallback(
+    (tx: Transaction) => {
+      if (tx.card_id) {
+        const card = cards.find((c) => c.id === tx.card_id)
+        if (card) return `${card.bank} • ${card.last_four || card.card_name || 'Kart'}`
+      }
+      if (tx.account_id) {
+        const acc = accounts.find((a) => a.id === tx.account_id)
+        if (acc) return acc.name
+      }
+      if (tx.source_account_id) {
+        const srcAcc = accounts.find((a) => a.id === tx.source_account_id)
+        const tgtAcc = accounts.find((a) => a.id === tx.target_account_id)
+        if (srcAcc && tgtAcc) return `${srcAcc.name} → ${tgtAcc.name}`
+        if (srcAcc) return srcAcc.name
+      }
+      if (tx.account_or_card) {
+        return tx.account_or_card
+      }
+      return tx.type === 'Harcama' ? 'Kredi Kartı' : 'Banka / Nakit'
+    },
+    [cards, accounts]
+  )
 
   const fetchTransactionsBatch = useCallback(
     async (opts: { isInitial: boolean; activeCursor: KeysetCursor | null }) => {
@@ -458,8 +491,13 @@ function TransactionsContent() {
         throw new Error('Tutar sıfırdan büyük olmalıdır.')
       }
 
-      const account = accounts.find((a) => a.name === newTx.account_or_card)
-      const card = cards.find((c) => `${c.bank} • ${c.last_four || 'Kart'}` === newTx.account_or_card)
+      const activeAccountOrCard =
+        newTx.account_or_card ||
+        accounts[0]?.name ||
+        (cards[0] ? `${cards[0].bank} • ${cards[0].last_four || 'Kart'}` : '')
+
+      const account = accounts.find((a) => a.name === activeAccountOrCard)
+      const card = cards.find((c) => `${c.bank} • ${c.last_four || 'Kart'}` === activeAccountOrCard)
 
       const accountId = account?.id || null
       const cardId = card?.id || null
@@ -469,13 +507,29 @@ function TransactionsContent() {
       let txGroup = newTx.analysis_group
       let txAccountId = accountId
       let txCardId = cardId
-      let txAccountOrCard = newTx.account_or_card
+      let txAccountOrCard = activeAccountOrCard
+      let createdTxId: string | null = null
 
       if (newTx.type === 'Gelir') {
         if (!accountId) {
           throw new Error('Gelir için bir banka hesabı seçilmelidir.')
         }
         txGroup = 'Gelir'
+        const { data, error } = await supabase.rpc('fn_record_income_atomic', {
+          p_user_id: user.id,
+          p_date: newTx.date,
+          p_amount: amountNum,
+          p_description: txDescription,
+          p_analysis_group: txGroup,
+          p_merchant: txMerchant,
+          p_account_id: accountId,
+          p_project_id: null,
+        })
+        if (error) throw error
+        if (data && !(data as any).success) {
+          throw new Error((data as any).error || 'Gelir kaydedilemedi.')
+        }
+        createdTxId = (data as any)?.transaction_id || null
       } else if (newTx.type === 'Kart Ödemesi') {
         if (!accountId || !targetCardId) throw new Error('Kaynak hesap ve ödenecek kart seçilmelidir.')
         txGroup = 'Hariç'
@@ -483,29 +537,69 @@ function TransactionsContent() {
         const targetCard = cards.find((c) => c.id === targetCardId)
         txDescription = txDescription || 'Kart Ödemesi'
         txMerchant = targetCard ? `${targetCard.bank} • ${targetCard.last_four || 'Kart'}` : 'Kart Ödemesi'
+
+        const { data, error } = await supabase.rpc('fn_record_payment_atomic', {
+          p_user_id: user.id,
+          p_date: newTx.date,
+          p_amount: amountNum,
+          p_description: txDescription,
+          p_type: 'Kart Ödemesi',
+          p_account_id: accountId,
+          p_target_id: targetCardId,
+        })
+        if (error) throw error
+        if (data && !(data as any).success) {
+          throw new Error((data as any).error || 'Kart ödemesi kaydedilemedi.')
+        }
+        createdTxId = (data as any)?.transaction_id || null
       } else if (newTx.type === 'Transfer') {
         if (!accountId || !targetAccountId) throw new Error('Kaynak ve hedef hesap seçilmelidir.')
         txGroup = 'Hariç'
         const targetAcc = accounts.find((a) => a.id === targetAccountId)
         txDescription = txDescription || 'Hesaplar Arası Transfer'
         txMerchant = targetAcc ? targetAcc.name : 'Transfer'
+
+        const { data, error } = await supabase.rpc('fn_record_transfer_atomic', {
+          p_user_id: user.id,
+          p_date: newTx.date,
+          p_amount: amountNum,
+          p_description: txDescription,
+          p_source_account_id: accountId,
+          p_target_account_id: targetAccountId,
+        })
+        if (error) throw error
+        if (data && !(data as any).success) {
+          throw new Error((data as any).error || 'Transfer gerçekleştirilemedi.')
+        }
+        createdTxId = (data as any)?.transaction_id || null
+      } else {
+        // Harcama
+        if (!accountId && !cardId) {
+          throw new Error('Harcama için bir banka hesabı veya kredi kartı seçilmelidir.')
+        }
+        const { data, error } = await supabase.rpc('fn_record_expense_atomic', {
+          p_user_id: user.id,
+          p_date: newTx.date,
+          p_amount: amountNum,
+          p_description: txDescription,
+          p_analysis_group: txGroup,
+          p_merchant: txMerchant,
+          p_account_id: accountId,
+          p_card_id: cardId,
+          p_project_id: null,
+        })
+        if (error) throw error
+        if (data && !(data as any).success) {
+          throw new Error((data as any).error || 'Harcama kaydedilemedi.')
+        }
+        createdTxId = (data as any)?.transaction_id || null
       }
 
-      const { error: insertError } = await supabase.from('transactions').insert({
-        user_id: user.id,
-        date: newTx.date,
-        amount: amountNum,
-        type: newTx.type as any,
-        description: txDescription,
-        merchant: txMerchant,
-        analysis_group: txGroup as any,
-        account_id: txAccountId,
-        card_id: txCardId,
-        account_or_card: txAccountOrCard,
-      })
-
-      if (insertError) {
-        throw insertError
+      if (createdTxId && txAccountOrCard) {
+        await supabase
+          .from('transactions')
+          .update({ account_or_card: txAccountOrCard })
+          .eq('id', createdTxId)
       }
 
       setIsAddModalOpen(false)
@@ -513,7 +607,7 @@ function TransactionsContent() {
       setTargetCardId('')
       setNewTx({
         date: formatLocalDateInput(),
-        account_or_card: 'Enpara Vadesiz',
+        account_or_card: accounts[0]?.name || (cards[0] ? `${cards[0].bank} • ${cards[0].last_four || 'Kart'}` : ''),
         type: 'Harcama',
         description: '',
         merchant: '',
@@ -521,7 +615,11 @@ function TransactionsContent() {
         analysis_group: 'Kişisel',
       })
       resetAndReload()
-      toast.success('Yeni hareket başarıyla eklendi.')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('pusula:transaction-created'))
+        window.dispatchEvent(new Event('pusula:transaction-mutated'))
+      }
+      toast.success('Yeni hareket başarıyla eklendi ve bakiyeler güncellendi.')
     } catch (err: any) {
       toast.error(err.message || 'Hareket eklenemedi')
     } finally {
@@ -533,21 +631,36 @@ function TransactionsContent() {
     setConfirmDialog({
       isOpen: true,
       title: 'Hareketi Sil',
-      description: 'Bu hareketi işlem defterinden silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      description: 'Bu hareketi işlem defterinden silmek istediğinize emin misiniz? İlgili banka bakiyesi veya kart borcu otomatik olarak geri alınacaktır.',
       confirmLabel: 'Hareketi Sil',
       variant: 'destructive',
       onConfirm: async () => {
         setConfirmDialog((prev) => ({ ...prev, isLoading: true }))
         try {
           const supabase = createClient()
-          const { error } = await supabase.from('transactions').delete().eq('id', id)
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+          if (!user) throw new Error('Oturum açılmamış')
+
+          const { data, error } = await supabase.rpc('fn_delete_transaction_atomic', {
+            p_tx_id: id,
+            p_user_id: user.id,
+          })
           if (error) throw error
+          if (data && !(data as any).success) {
+            throw new Error((data as any).error || 'Hareket silinemedi.')
+          }
+
           setTransactions((prev) => prev.filter((t) => t.id !== id))
           setStats((prev) => ({
             ...prev,
             total_count: Math.max(0, prev.total_count - 1),
           }))
-          toast.success('Hareket silindi.')
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('pusula:transaction-mutated'))
+          }
+          toast.success('Hareket silindi ve bakiye geri alındı.')
         } catch (err: any) {
           toast.error(err?.message || 'Silinemedi')
         } finally {
@@ -832,14 +945,24 @@ function TransactionsContent() {
                     </Badge>
                   </div>
 
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     <span>{formatDate(tx.date)}</span>
                     <span>•</span>
-                    <span className="truncate">
-                      {cards.find((c) => c.id === tx.card_id)?.card_name ||
-                        accounts.find((a) => a.id === tx.account_id)?.name ||
-                        'Nakit'}
+                    <span className="truncate max-w-[120px]">
+                      {resolveTransactionEntityLabel(tx)}
                     </span>
+                    {tx.type === 'Harcama' && (
+                      <>
+                        <span>•</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRecurringModal(tx)}
+                          className="text-primary hover:underline font-medium text-xs"
+                        >
+                          Abonelik Yap
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -945,7 +1068,7 @@ function TransactionsContent() {
                       {formatDate(tx.date)}
                     </td>
                     <td className="p-3 font-semibold text-foreground font-sans whitespace-nowrap">
-                      {tx.account_or_card || 'Kredi Kartı'}
+                      {resolveTransactionEntityLabel(tx)}
                     </td>
                     <td className="p-3 font-sans">
                       <Badge
