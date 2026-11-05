@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { HeroCurrencyInput } from '@/components/ui/hero-currency-input'
 import { createClient } from '@/lib/supabase/client'
-import { financialBridge } from '@/lib/financial-bridge'
 import { useToast } from '@/lib/toast-context'
 import { cn, formatLocalDateInput } from '@/lib/utils'
 import type { Account, CreditCard } from '@/types/database'
@@ -116,22 +115,45 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      const userId = user?.id || 'local'
+      if (!user) {
+        throw new Error('Oturum bilgisi bulunamadı.')
+      }
       const today = formatLocalDateInput()
 
-      const res = await financialBridge.recordExpense({
-        userId,
-        amount: numAmount,
-        description: description.trim() || 'Hızlı Harcama',
-        date: today,
-        merchant: description.trim() || undefined,
-        analysisGroup,
-        accountId: sourceType === 'account' ? selectedSourceId : undefined,
-        cardId: sourceType === 'card' ? selectedSourceId : undefined,
+      const selectedAccount = sourceType === 'account' ? accounts.find((a) => a.id === selectedSourceId) : null
+      const selectedCard = sourceType === 'card' ? cards.find((c) => c.id === selectedSourceId) : null
+      const accountOrCardName = selectedAccount
+        ? selectedAccount.name
+        : selectedCard
+        ? `${selectedCard.bank} • ${selectedCard.last_four || 'Kart'}`
+        : null
+
+      const { data, error } = await supabase.rpc('fn_record_expense_atomic', {
+        p_user_id: user.id,
+        p_date: today,
+        p_amount: numAmount,
+        p_description: description.trim() || 'Hızlı Harcama',
+        p_analysis_group: analysisGroup,
+        p_merchant: description.trim() || null,
+        p_account_id: sourceType === 'account' ? selectedSourceId : null,
+        p_card_id: sourceType === 'card' ? selectedSourceId : null,
+        p_project_id: null,
       })
 
-      if (!res.success) {
-        throw new Error(res.error || 'Harcama kaydedilemedi.')
+      if (error) {
+        throw error
+      }
+
+      if (data && !(data as any).success) {
+        throw new Error((data as any).error || 'Harcama kaydedilemedi')
+      }
+
+      // If name was resolved and we have a tx id, optionally persist human-readable account_or_card label
+      if (accountOrCardName && (data as any)?.transaction_id) {
+        await supabase
+          .from('transactions')
+          .update({ account_or_card: accountOrCardName })
+          .eq('id', (data as any).transaction_id)
       }
 
       toast.success(`${numAmount.toLocaleString('tr-TR')} ₺ harcama kaydedildi.`)
@@ -144,6 +166,7 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
       // Notify other views
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('pusula:transaction-created'))
+        window.dispatchEvent(new Event('pusula:transaction-mutated'))
       }
     } catch (err: any) {
       toast.error(err.message || 'Kayıt sırasında hata oluştu.')

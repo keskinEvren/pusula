@@ -35,8 +35,29 @@ export function formatLocalMonthInput(date = new Date()): string {
   return formatLocalDateInput(date).slice(0, 7)
 }
 
-export function formatCurrency(amount: number | null | undefined): string {
-  if (amount === null || amount === undefined || isNaN(amount)) return '₺0,00'
+const usdCurrencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const eurCurrencyFormatter = new Intl.NumberFormat('de-DE', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+export function formatCurrency(amount: number | null | undefined, currency = 'TRY'): string {
+  const normCur = (currency || 'TRY').toUpperCase()
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    if (normCur === 'USD') return '$0.00'
+    if (normCur === 'EUR') return '0,00 €'
+    return '₺0,00'
+  }
+  if (normCur === 'USD') return usdCurrencyFormatter.format(amount)
+  if (normCur === 'EUR') return eurCurrencyFormatter.format(amount)
   return currencyFormatter.format(amount)
 }
 

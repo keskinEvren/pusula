@@ -55,8 +55,11 @@ export interface FounderRunwayResult {
 }
 
 export interface InstallmentScheduleItem {
-  amountPerMonth: number
-  remainingMonths: number
+  amountPerMonth?: number | string
+  remainingMonths?: number
+  due_date?: string | null
+  amount?: number | string | null
+  status?: string | null
 }
 
 /**
@@ -252,7 +255,9 @@ export function calculateProjectTotalCost(
     amount: number | null | undefined
     status?: string | null
     decision?: string | null
-  }>
+    currency?: string | null
+  }>,
+  rates?: Record<string, number>
 ): number {
   const directCost = (transactions || [])
     .filter((t) => t && t.project_id === projectId)
@@ -260,7 +265,12 @@ export function calculateProjectTotalCost(
 
   const subCost = (subscriptions || [])
     .filter((s) => s && s.project_id === projectId && s.status !== 'İptal' && (s as any).decision !== 'İptal Et')
-    .reduce((sum, s) => sum + safeParseAmount(s.amount), 0)
+    .reduce((sum, s) => {
+      const amt = safeParseAmount(s.amount)
+      const cur = (s.currency || 'TRY').toUpperCase()
+      const rate = (rates && rates[cur]) ? rates[cur] : 1
+      return sum + round2(amt * rate)
+    }, 0)
 
   return round2(directCost + subCost)
 }
@@ -419,12 +429,17 @@ export function safeParseAmount(val: unknown): number {
  */
 export function calculateSubscriptionEquivalent(
   amount: number | null | undefined,
-  period?: string | null
+  period?: string | null,
+  currency?: string | null,
+  rate = 1
 ): SubscriptionEquivalent {
-  const amt = Number(amount || 0)
-  if (!amt || isNaN(amt) || !isFinite(amt) || amt <= 0) {
+  const rawAmt = Number(amount || 0)
+  if (!rawAmt || isNaN(rawAmt) || !isFinite(rawAmt) || rawAmt <= 0) {
     return { monthly: 0, yearly: 0 }
   }
+
+  const effectiveRate = currency && currency.toUpperCase() !== 'TRY' && rate > 0 ? rate : 1
+  const amt = round2(rawAmt * effectiveRate)
 
   const norm = normalizeSubscriptionPeriod(period)
 
@@ -470,11 +485,13 @@ export function projectSixMonthCashLoad(
     status?: string | null
     period?: string | null
     amount: number | null | undefined
+    currency?: string | null
     end_date?: string | null
     decision?: string | null
   }> = [],
   installments: InstallmentScheduleItem[] = [],
-  monthCount = 6
+  monthCount = 6,
+  rates?: Record<string, number>
 ): number[] {
   const now = new Date()
   const currentYear = now.getFullYear()
@@ -498,14 +515,39 @@ export function projectSixMonthCashLoad(
         return true
       })
       .reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const cur = (s.currency || 'TRY').toUpperCase()
+        const rate = rates && rates[cur] ? rates[cur] : 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, cur, rate)
         return sum + eq.monthly
       }, 0)
 
-    // Sum installments that are active in this month (remainingMonths >= month)
+    // Sum installments that are active in this month
     const monthInstallments = (installments || [])
-      .filter((inst) => inst && inst.remainingMonths >= month)
-      .reduce((sum, inst) => sum + safeParseAmount(inst.amountPerMonth), 0)
+      .filter((inst) => {
+        if (!inst) return false
+        if (inst.status === 'Ödendi') return false
+
+        // Raw debt_installment with due_date
+        if (inst.due_date) {
+          const d = new Date(inst.due_date)
+          if (isNaN(d.getTime())) return false
+          return (
+            d.getFullYear() === targetDate.getFullYear() &&
+            d.getMonth() === targetDate.getMonth()
+          )
+        }
+
+        // Legacy format with remainingMonths
+        if (typeof inst.remainingMonths === 'number') {
+          return inst.remainingMonths >= month
+        }
+
+        return false
+      })
+      .reduce((sum, inst) => {
+        const amt = inst.amount !== undefined ? inst.amount : inst.amountPerMonth
+        return sum + safeParseAmount(amt)
+      }, 0)
 
     projection.push(round2(monthSubs + monthInstallments))
   }
@@ -630,13 +672,18 @@ export function calculateMonthlyCashFlow(
     analysis_group?: string | null
     description?: string | null
     merchant?: string | null
-  }>
+  }>,
+  options?: {
+    accountNames?: string[]
+  }
 ): MonthlyCashFlowResult {
   let totalInflow = 0
   let cardPayments = 0
   let financingFees = 0
   let inflowCount = 0
   let cardPaymentCount = 0
+
+  const accountNames = (options?.accountNames || []).map((n) => n.toLowerCase().trim()).filter((n) => n.length > 2)
 
   for (const t of transactions) {
     const amount = Number(t.amount || 0)
@@ -646,11 +693,16 @@ export function calculateMonthlyCashFlow(
     const group = t.analysis_group || ''
 
     // Kendi hesapları ve kartları arasındaki iç transferleri filtrele (mükerrerliği önle)
+    const isInternalAccountMatch = accountNames.some((name) => desc.includes(name) || merch.includes(name))
+
     const isInternalTransfer =
       desc.includes('fast anlık ödeme') ||
       desc.includes('transfer') ||
+      desc.includes('virman') ||
+      desc.includes('hesaplar arası') ||
+      desc.includes('kendi hesabıma') ||
       desc.includes('gönd:') ||
-      merch.includes('vakıf katılım') ||
+      isInternalAccountMatch ||
       type === 'Transfer' ||
       group === 'Transfer'
 
@@ -710,7 +762,9 @@ export function calculateIncomeMetrics(
     period?: string | null
     income_type?: 'Sabit' | 'Değişken' | string | null
     status?: 'Aktif' | 'Pasif' | string | null
-  }> = []
+    currency?: string | null
+  }> = [],
+  rates?: Record<string, number>
 ): IncomeMetricsResult {
   let totalMonthlyIncome = 0
   let totalYearlyIncome = 0
@@ -736,13 +790,15 @@ export function calculateIncomeMetrics(
     if (isVariable) variableCount++
     else fixedCount++
 
+    const cur = (item.currency || 'TRY').toUpperCase()
+    const rate = rates && rates[cur] ? rates[cur] : 1
     const normPeriod = normalizeSubscriptionPeriod(item.period)
     if (normPeriod === 'Tek Seferlik') {
-      oneTimeIncomeTotal = round2(oneTimeIncomeTotal + safeParseAmount(item.amount))
+      oneTimeIncomeTotal = round2(oneTimeIncomeTotal + round2(safeParseAmount(item.amount) * rate))
       continue
     }
 
-    const eq = calculateSubscriptionEquivalent(item.amount, normPeriod)
+    const eq = calculateSubscriptionEquivalent(item.amount, normPeriod, cur, rate)
     totalMonthlyIncome = round2(totalMonthlyIncome + eq.monthly)
     totalYearlyIncome = round2(totalYearlyIncome + eq.yearly)
 

@@ -49,6 +49,7 @@ import type {
   Account,
   CreditCard as CardType,
   Debt,
+  DebtInstallment,
   Transaction,
   Subscription,
   Project,
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cards, setCards] = useState<CardType[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
+  const [debtInstallments, setDebtInstallments] = useState<DebtInstallment[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -76,6 +78,8 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         const supabase = createClient()
+        const now = new Date()
+        const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
         const [
           { data: accs },
           { data: crds },
@@ -85,15 +89,17 @@ export default function DashboardPage() {
           { data: prjs },
           invsRes,
           incsRes,
+          instsRes,
         ] = await Promise.all([
           supabase.from('accounts').select('*'),
           supabase.from('credit_cards').select('*'),
           supabase.from('debts').select('*').eq('status', 'Açık'),
-          supabase.from('transactions').select('*').order('date', { ascending: false }).limit(1000),
+          supabase.from('transactions').select('*').gte('date', startOfMonth).order('date', { ascending: false }),
           supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
           supabase.from('projects').select('*'),
           supabase.from('investments').select('*'),
           supabase.from('incomes').select('*'),
+          supabase.from('debt_installments').select('*').eq('status', 'Bekliyor'),
         ])
 
         if (accs) setAccounts(accs)
@@ -102,31 +108,9 @@ export default function DashboardPage() {
         if (txs) setTransactions(txs)
         if (subs) setSubscriptions(subs)
         if (prjs) setProjects(prjs)
-
-        let finalInvs: Investment[] = []
-        if (invsRes?.data) {
-          finalInvs = invsRes.data
-        } else {
-          try {
-            const cached = localStorage.getItem('pusula_local_investments')
-            if (cached) finalInvs = JSON.parse(cached)
-          } catch {}
-        }
-        setInvestments(finalInvs)
-
-        let finalIncomes: Income[] = []
-        if (incsRes?.data) {
-          finalIncomes = incsRes.data
-          try {
-            localStorage.setItem('pusula_local_incomes', JSON.stringify(incsRes.data))
-          } catch {}
-        } else {
-          try {
-            const cachedIncomes = localStorage.getItem('pusula_local_incomes')
-            if (cachedIncomes) finalIncomes = JSON.parse(cachedIncomes)
-          } catch {}
-        }
-        setIncomes(finalIncomes)
+        if (instsRes?.data) setDebtInstallments(instsRes.data)
+        if (invsRes?.data) setInvestments(invsRes.data)
+        if (incsRes?.data) setIncomes(incsRes.data)
       } catch (err) {
         console.error('Error loading dashboard:', err)
       } finally {
@@ -173,18 +157,29 @@ export default function DashboardPage() {
 
   // 1. Calculations via Pure Financial Engine
   const { totalCash, totalReceivables, totalInvestments, totalCardDebt, totalOtherDebt, totalDebt, netWorth } =
-    calculateNetWorth(accounts, debts, cards, investments)
+    useMemo(() => calculateNetWorth(accounts, debts, cards, investments), [accounts, debts, cards, investments])
 
-  // 2. Active Subscriptions & 6-Month Combined Projection
+  // 2. Active Subscriptions & 6-Month Combined Projection (Read-Only)
   const activeSubs = useMemo(
     () => subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et'),
     [subscriptions]
   )
-  const cashForecast = useMemo(() => projectSixMonthCashLoad(activeSubs, [], 6), [activeSubs])
 
-  // 3. Monthly Income & Budget Balance
+  // Strictly filter installments to debt obligations ('Borç'), excluding receivable inflows ('Alacak')
+  const pendingDebtInstallments = useMemo(() => {
+    const debtMap = new Map(debts.map((d) => [d.id, d.type]))
+    return debtInstallments.filter((inst) => debtMap.get(inst.debt_id) === 'Borç')
+  }, [debtInstallments, debts])
+
+  const cashForecast = useMemo(
+    () => projectSixMonthCashLoad(activeSubs, pendingDebtInstallments, 6),
+    [activeSubs, pendingDebtInstallments]
+  )
+
+  // 3. Monthly Income & Budget Balance (Clean Separation & Double-Counting Guard)
   const incomeMetrics = useMemo(() => calculateIncomeMetrics(incomes), [incomes])
 
+  // Declared recurring subscriptions load
   const fixedMonthlyExpenses = useMemo(() => {
     return round2(
       activeSubs.reduce((sum, s) => {
@@ -194,15 +189,64 @@ export default function DashboardPage() {
     )
   }, [activeSubs])
 
+  // Current month's pending debt installments load
+  const currentMonthDebtLoad = useMemo(() => {
+    const now = new Date()
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    return round2(
+      pendingDebtInstallments
+        .filter((inst) => (inst.due_date || '').startsWith(currentYM))
+        .reduce((sum, inst) => sum + Number(inst.amount || 0), 0)
+    )
+  }, [pendingDebtInstallments])
+
+  // Total fixed monthly commitments (Subscriptions + Scheduled Debt Installments)
+  const totalFixedCommitments = useMemo(
+    () => round2(fixedMonthlyExpenses + currentMonthDebtLoad),
+    [fixedMonthlyExpenses, currentMonthDebtLoad]
+  )
+
+  // Transactions belonging to current month, excluding already declared subscriptions and debt payments to prevent double-counting
   const currentMonthConsumption = useMemo(() => {
     const now = new Date()
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const monthTxs = transactions.filter((t) => (t.date || '').startsWith(ym))
-    return calculateSpendingBreakdown(monthTxs).totalConsumption
-  }, [transactions])
+    const activeSubNames = new Set(activeSubs.map((s) => s.service.trim().toLowerCase()))
 
-  // Güncel harcama / kart yükü: Bu ay harcama kaydı varsa onu, yoksa güncel kart borcunu baz alır
-  const currentVariableLoad = currentMonthConsumption > 0 ? currentMonthConsumption : totalCardDebt
+    const monthTxs = transactions.filter((t) => {
+      if (!(t.date || '').startsWith(ym)) return false
+      // Exclude debt payments (already tracked under debts / debt_installments)
+      if (t.type === 'Borç Ödemesi') return false
+      // Exclude explicit recurring charges
+      if (t.recurrence) return false
+      // Exclude transactions matching active subscription services
+      const merch = (t.merchant || '').trim().toLowerCase()
+      const desc = (t.description || '').trim().toLowerCase()
+      if (activeSubNames.has(merch) || activeSubNames.has(desc)) return false
+      return true
+    })
+
+    return calculateSpendingBreakdown(monthTxs).totalConsumption
+  }, [transactions, activeSubs])
+
+  // If card debt is used as fallback, deduct card-billed subscriptions so they aren't double-counted
+  const cardSubsEquivalent = useMemo(() => {
+    return round2(
+      activeSubs
+        .filter((s) => s.payment_method?.toLowerCase().includes('kart') || s.payment_card_id)
+        .reduce((sum, s) => sum + calculateSubscriptionEquivalent(s.amount, s.period).monthly, 0)
+    )
+  }, [activeSubs])
+
+  const adjustedCardDebt = useMemo(
+    () => round2(Math.max(0, totalCardDebt - cardSubsEquivalent)),
+    [totalCardDebt, cardSubsEquivalent]
+  )
+
+  // Güncel harcama / kart yükü: Bu ay harcama kaydı varsa onu, yoksa net değişken kart borcunu baz alır
+  const currentVariableLoad = useMemo(
+    () => (currentMonthConsumption > 0 ? currentMonthConsumption : adjustedCardDebt),
+    [currentMonthConsumption, adjustedCardDebt]
+  )
   const currentVariableLoadLabel =
     currentMonthConsumption > 0 ? 'Bu Ayki Harcama Yükü' : 'Güncel Kart Dönem Yükü'
 
@@ -210,10 +254,10 @@ export default function DashboardPage() {
     () =>
       calculateMonthlyBudgetBalance(
         incomeMetrics.totalMonthlyIncome,
-        fixedMonthlyExpenses,
+        totalFixedCommitments,
         currentVariableLoad
       ),
-    [incomeMetrics.totalMonthlyIncome, fixedMonthlyExpenses, currentVariableLoad]
+    [incomeMetrics.totalMonthlyIncome, totalFixedCommitments, currentVariableLoad]
   )
 
   // 7. Capacity rule (Active planning + dev >= 2)
@@ -480,16 +524,17 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* 2. Sabit Giderler & Abonelikler */}
+                {/* 2. Sabit Giderler & Borç Taksitleri */}
                 <div className="sm:px-4">
                   <div className="text-[11px] font-medium text-muted-foreground">
-                    2. Sabit Giderler & Abonelikler
+                    2. Sabit Yük & Borç Taksitleri
                   </div>
                   <div className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">
                     − {formatCurrency(budgetBalance.fixedExpenses)}
                   </div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    Gelirin %{budgetBalance.fixedRatioPct}&apos;i ({activeSubs.length} aktif gider)
+                    Abonelik: {formatCurrency(fixedMonthlyExpenses)}
+                    {currentMonthDebtLoad > 0 && ` • Taksit: ${formatCurrency(currentMonthDebtLoad)}`}
                   </div>
                 </div>
 
@@ -605,7 +650,7 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="text-base">6 Aylık Planlı Nakit Yükü Projeksiyonu</CardTitle>
                 <CardDescription className="text-xs">
-                  Aktif abonelikler ve sabit giderlerin gelecek 6 aydaki seyri
+                  Aktif abonelikler ve bekleyen borç taksitlerinin gelecek 6 aydaki seyri
                 </CardDescription>
               </div>
               <Link href="/subscriptions">
@@ -616,24 +661,48 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-0 sm:divide-x divide-border/50 py-1">
-              {cashForecast.map((val, idx) => {
-                const monthNames = ['1. Ay', '2. Ay', '3. Ay', '4. Ay', '5. Ay', '6. Ay']
-                return (
-                  <div
-                    key={idx}
-                    className="flex flex-col items-center justify-center p-2 sm:px-1 text-center bg-muted/20 sm:bg-transparent rounded-lg sm:rounded-none"
-                  >
-                    <span className="text-[11px] font-medium text-muted-foreground mb-1">
-                      {monthNames[idx]}
-                    </span>
-                    <span className="text-xs font-semibold tabular-nums text-foreground truncate w-full">
-                      {val > 0 ? formatCurrency(val).replace('₺', '').trim() : '0'} ₺
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
+            {(() => {
+              const maxVal = Math.max(...cashForecast, 1)
+              const now = new Date()
+              return (
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-0 sm:divide-x divide-border/50 py-1">
+                  {cashForecast.map((val, idx) => {
+                    const targetDate = new Date(now.getFullYear(), now.getMonth() + idx, 1)
+                    const monthLabel = targetDate.toLocaleDateString('tr-TR', { month: 'short' })
+                    const pct = Math.round((val / maxVal) * 100)
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col items-center justify-between p-2 sm:px-2 text-center bg-muted/15 sm:bg-transparent rounded-xl sm:rounded-none gap-1.5"
+                      >
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs font-semibold capitalize text-foreground">
+                            {monthLabel}
+                          </span>
+                          {idx === 0 && (
+                            <span className="text-[10px] font-medium px-1 rounded bg-primary/15 text-primary">
+                              Bu Ay
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-bold tabular-nums text-foreground truncate w-full font-mono">
+                          {formatCurrency(val)}
+                        </span>
+                        <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                          <div
+                            className={cn(
+                              'h-full transition-all rounded-full',
+                              val > 0 ? (pct > 75 ? 'bg-destructive' : 'bg-primary') : 'bg-muted'
+                            )}
+                            style={{ width: `${Math.max(val > 0 ? 8 : 0, pct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </CardContent>
         </Card>
 

@@ -26,7 +26,6 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, slugify } from '@/lib/utils'
-import { calculateProjectTotalCost, evaluateProjectBudget } from '@/lib/finance-engine'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,7 +36,7 @@ import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
-import type { Project, Transaction, Subscription } from '@/types/database'
+import type { Project } from '@/types/database'
 
 type ProjectTypeCategory = 'all' | 'saas' | 'workplace' | 'client' | 'internal'
 
@@ -105,8 +104,6 @@ function ProjectsContent() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
-  const [projectCosts, setProjectCosts] = useState<Record<string, number>>({})
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filters
@@ -131,7 +128,7 @@ function ProjectsContent() {
   })
 
   useEffect(() => {
-    loadProjectsAndCosts()
+    loadProjects()
   }, [])
 
   useEffect(() => {
@@ -140,19 +137,17 @@ function ProjectsContent() {
     }
   }, [searchParams])
 
-  async function loadProjectsAndCosts() {
+  async function loadProjects() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: pData }, { data: costsData }, { data: sData }] = await Promise.all([
-        supabase.from('projects').select('*').order('created_at', { ascending: false }),
-        supabase.rpc('fn_all_projects_direct_costs'),
-        supabase.from('subscriptions').select('*'),
-      ])
+      const { data: pData, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false })
 
+      if (error) throw error
       if (pData) setProjects(pData)
-      if (costsData) setProjectCosts(costsData as Record<string, number>)
-      if (sData) setSubscriptions(sData)
     } catch (err) {
       console.error('Error loading projects:', err)
     } finally {
@@ -225,11 +220,6 @@ function ProjectsContent() {
       }
 
       setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id))
-      setProjectCosts((prev) => {
-        const copy = { ...prev }
-        delete copy[projectToDelete.id]
-        return copy
-      })
       toast.success(`"${projectToDelete.name}" projesi başarıyla silindi.`)
       setProjectToDelete(null)
     } catch (err: any) {
@@ -390,15 +380,6 @@ function ProjectsContent() {
         {workbenchProjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {workbenchProjects.map((project) => {
-              const totalCost = calculateProjectTotalCost(
-                project.id,
-                [{ project_id: project.id, amount: Number(projectCosts[project.id] || 0) }],
-                subscriptions
-              )
-              const budgetEvaluation = evaluateProjectBudget(
-                totalCost,
-                project.budget_limit
-              )
               const typeConfig = TYPE_CONFIG[getProjectType(project)]
               const TypeIcon = typeConfig.icon
               const cleanDesc = cleanProjectDescription(project.description)
@@ -514,45 +495,15 @@ function ProjectsContent() {
                   </CardHeader>
 
                   <CardContent className="p-4 pt-0 space-y-3 border-t border-border/40 mt-auto flex flex-col justify-end">
-                    {/* Budget & Cost Progress */}
-                    {project.budget_limit || totalCost > 0 ? (
-                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs border border-border/40 space-y-1.5">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-muted-foreground">Gerçek Maliyet:</span>
-                          <span className="font-mono font-bold text-foreground">
-                            {formatCurrency(totalCost)}
-                          </span>
-                        </div>
-
-                        {project.budget_limit && (
-                          <>
-                            <div className="flex justify-between text-[11px] text-muted-foreground">
-                              <span>Bütçe Tavanı:</span>
-                              <span className="font-mono">{formatCurrency(project.budget_limit)}</span>
-                            </div>
-                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                              <div
-                                className={`h-full ${
-                                  budgetEvaluation.status === 'RED'
-                                    ? 'bg-destructive'
-                                    : budgetEvaluation.status === 'YELLOW'
-                                    ? 'bg-amber-400'
-                                    : 'bg-primary'
-                                }`}
-                                style={{
-                                  width: `${Math.min(100, (budgetEvaluation.ratio || 0) * 100)}%`,
-                                }}
-                              />
-                            </div>
-                          </>
-                        )}
+                    {/* Declared Budget Target */}
+                    {project.budget_limit && project.budget_limit > 0 ? (
+                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs border border-border/40 flex items-center justify-between">
+                        <span className="text-muted-foreground">Hedef Bütçe:</span>
+                        <span className="font-mono font-semibold text-foreground">
+                          {formatCurrency(project.budget_limit)}
+                        </span>
                       </div>
-                    ) : (
-                      <div className="rounded-lg bg-muted/20 p-2.5 text-xs border border-border/20 flex items-center justify-between text-muted-foreground">
-                        <span>Bütçe & Harcama:</span>
-                        <span className="font-mono text-xs text-muted-foreground/70">Kayıtlı maliyet yok</span>
-                      </div>
-                    )}
+                    ) : null}
 
                     {/* Action Button to Detail */}
                     <div className="flex items-center justify-end pt-1">
@@ -690,11 +641,6 @@ function ProjectsContent() {
             {/* Mobile Card Rows */}
             <div className="md:hidden divide-y divide-border/50">
               {filteredInventory.map((project) => {
-                const totalCost = calculateProjectTotalCost(
-                  project.id,
-                  [{ project_id: project.id, amount: Number(projectCosts[project.id] || 0) }],
-                  subscriptions
-                )
                 const typeConfig = TYPE_CONFIG[getProjectType(project)]
                 const TypeIcon = typeConfig.icon
 
@@ -781,18 +727,13 @@ function ProjectsContent() {
                     <th scope="col" className="p-3">Proje</th>
                     <th scope="col" className="p-3">Tür / Kategori</th>
                     <th scope="col" className="p-3">Durum</th>
-                    <th scope="col" className="p-3">Maliyet / Bütçe</th>
+                    <th scope="col" className="p-3">Hedef Bütçe</th>
                     <th scope="col" className="p-3">Bağlantılar</th>
                     <th scope="col" className="p-3 text-right">Aksiyon</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
                   {filteredInventory.map((project) => {
-                    const totalCost = calculateProjectTotalCost(
-                      project.id,
-                      [{ project_id: project.id, amount: Number(projectCosts[project.id] || 0) }],
-                      subscriptions
-                    )
                     const typeConfig = TYPE_CONFIG[getProjectType(project)]
                     const TypeIcon = typeConfig.icon
                     const isWorkbench = project.status === 'Planlama' || project.status === 'Geliştirmede'
@@ -849,16 +790,8 @@ function ProjectsContent() {
                         </td>
 
                         <td className="p-3 font-mono">
-                          {totalCost > 0 && project.budget_limit ? (
+                          {project.budget_limit && project.budget_limit > 0 ? (
                             <div>
-                              <span className="font-bold text-foreground">{formatCurrency(totalCost)}</span>
-                              <span className="text-muted-foreground text-[11px] block sm:inline"> / {formatCurrency(project.budget_limit)}</span>
-                            </div>
-                          ) : totalCost > 0 ? (
-                            <span className="font-bold text-foreground">{formatCurrency(totalCost)}</span>
-                          ) : project.budget_limit && project.budget_limit > 0 ? (
-                            <div>
-                              <span className="text-muted-foreground text-[11px]">Bütçe: </span>
                               <span className="font-semibold text-foreground">{formatCurrency(project.budget_limit)}</span>
                             </div>
                           ) : (

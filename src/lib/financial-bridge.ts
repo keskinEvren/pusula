@@ -68,6 +68,11 @@ export interface RecordTransferParams {
 
 // --- Bridge Class ---
 
+/**
+ * @deprecated Pusula modülleri bağımsızlaştırma (Decoupling) prensibi gereğince
+ * modüller arası yan etki yaratan (side-effecting) FinancialBridge emekliye ayrılmıştır.
+ * İşlemler doğrudan ilgili tablolara (transactions, debts, investments vb.) yan etkisiz olarak yazılır.
+ */
 export class FinancialBridge {
   // A failed/ambiguous RPC must never be retried as separate table mutations.
   private async atomic(name: string, params: Record<string, unknown>): Promise<FinancialEventResult> {
@@ -222,6 +227,7 @@ export function getLinkedInvestmentId(tx: { description?: string | null }): stri
 }
 
 // Singleton export
+/** @deprecated Pusula decoupled mimarisi gereği FinancialBridge emekliye ayrılmıştır. */
 export const financialBridge = new FinancialBridge()
 
 

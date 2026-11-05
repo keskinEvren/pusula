@@ -34,8 +34,7 @@ export function detectBankAndMetadata(text: string): BankDetectionResult {
     upper.includes('ZIRAAT') ||
     upper.includes('BANKKART') ||
     upper.includes('5349-') ||
-    /5349[\s-]*[#*xX\d]{4}/i.test(text) ||
-    text.includes('9980069675')
+    /5349[\s-]*[#*xX\d]{4}/i.test(text)
   ) {
     bank = 'Ziraat Bankası'
     card_name = 'Bankkart'

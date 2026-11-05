@@ -51,8 +51,25 @@ export function Sheet({
 
     const timer = setTimeout(() => {
       if (sheetRef.current) {
+        // If an element inside the sheet is already focused (e.g. via React autoFocus), don't steal it!
+        if (
+          sheetRef.current.contains(document.activeElement) &&
+          document.activeElement !== sheetRef.current
+        ) {
+          return
+        }
+
+        // Prioritize actual interactive form inputs before buttons/close icon
+        const formInputs = sheetRef.current.querySelectorAll<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'
+        )
+        if (formInputs.length > 0) {
+          formInputs[0].focus()
+          return
+        }
+
         const focusable = sheetRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          'button:not([disabled]):not([aria-label="Kapat"]), [href], [tabindex]:not([tabindex="-1"])'
         )
         if (focusable.length > 0) {
           focusable[0].focus()
@@ -131,7 +148,7 @@ export function Sheet({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          'relative flex flex-col w-full h-full bg-[#16161b] text-foreground border-l border-white/[0.12] shadow-2xl animate-in slide-in-from-right duration-300 overflow-hidden outline-none',
+          'relative flex flex-col w-full h-full bg-card text-foreground border-l border-border shadow-2xl animate-in slide-in-from-right duration-300 overflow-hidden outline-none',
           sheetSizeClasses[size],
           className
         )}

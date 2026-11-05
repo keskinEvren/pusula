@@ -18,7 +18,6 @@ import {
   Archive,
   Search,
   Calendar,
-  FolderKanban,
   RotateCcw,
   ShieldCheck,
   Wallet,
@@ -43,7 +42,7 @@ import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/lib/toast-context'
-import type { Income, Project, Subscription } from '@/types/database'
+import type { Income } from '@/types/database'
 
 export type IncomeCategory =
   | 'Maaş & Ücret'
@@ -68,8 +67,6 @@ function IncomesContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const [incomes, setIncomes] = useState<Income[]>([])
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [isDbFallback, setIsDbFallback] = useState(false)
 
@@ -85,20 +82,35 @@ function IncomesContent() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingIncome, setEditingIncome] = useState<Income | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [marketRates, setMarketRates] = useState<Record<string, number>>({ USD: 35.0, EUR: 38.0 })
   const [form, setForm] = useState({
     title: '',
     category: 'Maaş & Ücret' as IncomeCategory,
     income_type: 'Sabit' as IncomeTypeOption,
     amount: '',
+    currency: 'TRY',
     period: 'Aylık',
     payday: '',
-    project_id: '',
     note: '',
     status: 'Aktif' as 'Aktif' | 'Pasif',
   })
 
   useEffect(() => {
     loadData()
+    fetch('/api/market-prices?symbols=USD,EUR')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.prices && Array.isArray(data.prices)) {
+          const newRates: Record<string, number> = {}
+          data.prices.forEach((p: any) => {
+            if (p.symbol && p.price) newRates[p.symbol] = p.price
+          })
+          if (Object.keys(newRates).length > 0) {
+            setMarketRates((prev) => ({ ...prev, ...newRates }))
+          }
+        }
+      })
+      .catch(() => {})
     if (searchParams.get('new') === 'true') {
       handleOpenCreateModal()
     }
@@ -116,14 +128,10 @@ function IncomesContent() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [incRes, subRes, prjRes] = await Promise.all([
-        supabase.from('incomes').select('*').order('amount', { ascending: false }),
-        supabase.from('subscriptions').select('*').eq('status', 'Aktif'),
-        supabase.from('projects').select('*').order('name', { ascending: true }),
-      ])
-
-      if (subRes.data) setSubscriptions(subRes.data)
-      if (prjRes.data) setProjects(prjRes.data)
+      const incRes = await supabase
+        .from('incomes')
+        .select('*')
+        .order('amount', { ascending: false })
 
       if (incRes.error && isMissingRelationError(incRes.error)) {
         setIsDbFallback(true)
@@ -168,9 +176,9 @@ function IncomesContent() {
       category: prefill?.category || 'Maaş & Ücret',
       income_type: prefill?.income_type || 'Sabit',
       amount: prefill?.amount || '',
+      currency: prefill?.currency || 'TRY',
       period: normalizeSubscriptionPeriod(prefill?.period || 'Aylık'),
       payday: prefill?.payday || '',
-      project_id: prefill?.project_id || '',
       note: prefill?.note || '',
       status: prefill?.status || 'Aktif',
     })
@@ -188,9 +196,9 @@ function IncomesContent() {
       category,
       income_type: inc.income_type === 'Değişken' ? 'Değişken' : 'Sabit',
       amount: inc.amount != null ? inc.amount.toString() : '',
+      currency: inc.currency || 'TRY',
       period: normalizeSubscriptionPeriod(inc.period),
       payday: inc.payday != null ? inc.payday.toString() : '',
-      project_id: inc.project_id || '',
       note: inc.note || '',
       status: inc.status === 'Pasif' ? 'Pasif' : 'Aktif',
     })
@@ -218,11 +226,11 @@ function IncomesContent() {
         category: form.category,
         income_type: form.income_type,
         amount: Math.max(0, safeParseAmount(form.amount)),
-        currency: 'TRY',
+        currency: form.currency || 'TRY',
         period: normalizeSubscriptionPeriod(form.period),
         payday: validPayday,
         status: form.status,
-        project_id: form.project_id || null,
+        project_id: null,
         note: form.note.trim() || null,
       }
 
@@ -349,7 +357,7 @@ function IncomesContent() {
   // =========================================================================
   // GELİR & SERBEST BÜTÇE HESAPLAMALARI
   // =========================================================================
-  const metrics = useMemo(() => calculateIncomeMetrics(incomes), [incomes])
+  const metrics = useMemo(() => calculateIncomeMetrics(incomes, marketRates), [incomes, marketRates])
 
   const activeIncomes = useMemo(
     () => incomes.filter((i) => i.status !== 'Pasif'),
@@ -360,25 +368,7 @@ function IncomesContent() {
     [incomes]
   )
 
-  const totalFixedMonthlyExpenses = useMemo(() => {
-    const activeSubs = subscriptions.filter((s) => s.status === 'Aktif' && s.decision !== 'İptal Et')
-    return round2(
-      activeSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
-        return sum + eq.monthly
-      }, 0)
-    )
-  }, [subscriptions])
 
-  const disposableMonthlyIncome = useMemo(
-    () => round2(metrics.totalMonthlyIncome - totalFixedMonthlyExpenses),
-    [metrics.totalMonthlyIncome, totalFixedMonthlyExpenses]
-  )
-
-  const fixedExpenseRatioPct = useMemo(() => {
-    if (metrics.totalMonthlyIncome <= 0) return 0
-    return round2((totalFixedMonthlyExpenses / metrics.totalMonthlyIncome) * 100)
-  }, [metrics.totalMonthlyIncome, totalFixedMonthlyExpenses])
 
   // Kategori sayaçları
   const categoryCounts = useMemo(() => {
@@ -421,13 +411,20 @@ function IncomesContent() {
   const modalPreviewEq = useMemo(() => {
     const amt = safeParseAmount(form.amount)
     const normPeriod = normalizeSubscriptionPeriod(form.period)
+    const cur = (form.currency || 'TRY').toUpperCase()
+    const rate = marketRates[cur] || 1
+    const convertedTry = cur !== 'TRY' ? round2(amt * rate) : amt
+    const eq = calculateSubscriptionEquivalent(amt, normPeriod, cur, rate)
     return {
       normPeriod,
       isOneTime: normPeriod === 'Tek Seferlik',
-      ...calculateSubscriptionEquivalent(amt, normPeriod),
+      ...eq,
       rawAmount: amt,
+      convertedTry,
+      currency: cur,
+      rate,
     }
-  }, [form.amount, form.period])
+  }, [form.amount, form.period, form.currency, marketRates])
 
   const getCategoryMeta = (cat: string) => {
     switch (cat) {
@@ -548,23 +545,17 @@ function IncomesContent() {
           </p>
         </div>
 
-        {/* 4. Serbest Bütçe (Aylık Gelir − Sabit Giderler) */}
+        {/* 4. Yıllık Toplam Projeksiyon */}
         <div className="p-4 space-y-1">
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Serbest Bütçe (Gelir − Sabit Yük)
+            Yıllık Toplam Projeksiyon
           </p>
-          <div
-            className={cn(
-              'text-2xl font-semibold tracking-tight tabular-nums',
-              disposableMonthlyIncome >= 0 ? 'text-foreground' : 'text-destructive'
-            )}
-          >
-            {formatCurrency(disposableMonthlyIncome)}
-            <span className="text-xs text-muted-foreground font-normal ml-1">/ ay</span>
+          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {formatCurrency(metrics.totalYearlyIncome)}
+            <span className="text-xs text-muted-foreground font-normal ml-1">/ yıl</span>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Sabit gider yükü: <strong className="text-foreground">{formatCurrency(totalFixedMonthlyExpenses)}</strong>{' '}
-            {metrics.totalMonthlyIncome > 0 && `(%${fixedExpenseRatioPct})`}
+            {metrics.activeCount} aktif gelir kalemi üzerinden
           </p>
         </div>
       </div>
@@ -666,8 +657,9 @@ function IncomesContent() {
             const Icon = meta.icon
             const normPeriod = normalizeSubscriptionPeriod(inc.period)
             const isOneTime = normPeriod === 'Tek Seferlik'
-            const eq = calculateSubscriptionEquivalent(inc.amount, normPeriod)
-            const linkedProject = projects.find((p) => p.id === inc.project_id)
+            const cur = (inc.currency || 'TRY').toUpperCase()
+            const rate = marketRates[cur] || 1
+            const eq = calculateSubscriptionEquivalent(inc.amount, normPeriod, cur, rate)
 
             return (
               <Card
@@ -724,7 +716,12 @@ function IncomesContent() {
                         {isOneTime ? (
                           <div>
                             <div className="text-2xl font-semibold tracking-tight text-success tabular-nums">
-                              {formatCurrency(inc.amount)}{' '}
+                              {formatCurrency(inc.amount, cur)}{' '}
+                              {cur !== 'TRY' && (
+                                <span className="text-xs text-muted-foreground font-normal ml-1">
+                                  (~{formatCurrency(inc.amount * rate)})
+                                </span>
+                              )}
                               <span className="text-xs text-muted-foreground font-normal">
                                 tek seferlik
                               </span>
@@ -741,7 +738,8 @@ function IncomesContent() {
                             </div>
                             {normPeriod !== 'Aylık' && (
                               <p className="text-[11px] text-muted-foreground mt-0.5">
-                                Beyan: {formatCurrency(inc.amount)} / {normPeriod}
+                                Beyan: {formatCurrency(inc.amount, cur)} / {normPeriod}
+                                {cur !== 'TRY' && ` (~${formatCurrency(inc.amount * rate)})`}
                               </p>
                             )}
                           </div>
@@ -755,23 +753,12 @@ function IncomesContent() {
                       </div>
                     </div>
 
-                    {/* Proje veya Not Bilgisi */}
-                    {(linkedProject || inc.note) && (
+                    {/* Not Bilgisi */}
+                    {inc.note && (
                       <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                        {linkedProject && (
-                          <Badge
-                            variant="outline"
-                            className="text-[11px] gap-1 border-primary/25 text-primary bg-primary/10"
-                          >
-                            <FolderKanban className="h-3 w-3" />
-                            {linkedProject.name}
-                          </Badge>
-                        )}
-                        {inc.note && (
-                          <span className="text-[11px] text-muted-foreground line-clamp-1">
-                            {inc.note}
-                          </span>
-                        )}
+                        <span className="text-[11px] text-muted-foreground line-clamp-1">
+                          {inc.note}
+                        </span>
                       </div>
                     )}
 
@@ -899,10 +886,24 @@ function IncomesContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground block">
-                Net Tutar (₺)
+                Para Birimi
+              </label>
+              <Select
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className="text-xs"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
+                Net Tutar
               </label>
               <Input
                 type="text"
@@ -935,22 +936,29 @@ function IncomesContent() {
 
           {/* Canlı Aylık & Yıllık Eşdeğer Önizlemesi */}
           {modalPreviewEq.rawAmount > 0 && (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 flex items-center justify-between text-xs">
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Aylık Net:</span>
-                <span className="text-sm font-bold font-mono text-emerald-400">
-                  {modalPreviewEq.isOneTime
-                    ? `${formatCurrency(modalPreviewEq.rawAmount)} (Tek Seferlik)`
-                    : `${formatCurrency(modalPreviewEq.monthly)} / ay`}
-                </span>
-              </div>
-              {!modalPreviewEq.isOneTime && (
-                <div className="text-right">
-                  <span className="text-muted-foreground block text-[11px]">Yıllık Karşılık:</span>
-                  <span className="text-xs font-bold font-mono text-foreground">
-                    {formatCurrency(modalPreviewEq.yearly)} / yıl
+            <div className="space-y-1.5">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Aylık Net:</span>
+                  <span className="text-sm font-bold font-mono text-emerald-400">
+                    {modalPreviewEq.isOneTime
+                      ? `${formatCurrency(modalPreviewEq.rawAmount, modalPreviewEq.currency)} (Tek Seferlik)`
+                      : `${formatCurrency(modalPreviewEq.monthly)} / ay`}
                   </span>
                 </div>
+                {!modalPreviewEq.isOneTime && (
+                  <div className="text-right">
+                    <span className="text-muted-foreground block text-[11px]">Yıllık Karşılık:</span>
+                    <span className="text-xs font-bold font-mono text-foreground">
+                      {formatCurrency(modalPreviewEq.yearly)} / yıl
+                    </span>
+                  </div>
+                )}
+              </div>
+              {modalPreviewEq.currency !== 'TRY' && (
+                <p className="text-[11px] text-emerald-400 font-medium px-1">
+                  Canlı Kur Dönüşümü: ~{formatCurrency(modalPreviewEq.convertedTry)} (1 {modalPreviewEq.currency} = {modalPreviewEq.rate} ₺)
+                </p>
               )}
             </div>
           )}
@@ -990,42 +998,22 @@ function IncomesContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground block">
-                Ödeme Günü (Opsiyonel)
-              </label>
-              <Select
-                value={form.payday}
-                onChange={(e) => setForm({ ...form, payday: e.target.value })}
-                className="text-xs"
-              >
-                <option value="">Belirtilmedi</option>
-                {Array.from({ length: 31 }, (_, idx) => idx + 1).map((day) => (
-                  <option key={day} value={day.toString()}>
-                    Ayın {day}&apos;i
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground block">
-                İlişkili Proje (Opsiyonel)
-              </label>
-              <Select
-                value={form.project_id}
-                onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-                className="text-xs"
-              >
-                <option value="">Yok (Genel)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground block">
+              Ödeme Günü (Opsiyonel)
+            </label>
+            <Select
+              value={form.payday}
+              onChange={(e) => setForm({ ...form, payday: e.target.value })}
+              className="text-xs"
+            >
+              <option value="">Belirtilmedi</option>
+              {Array.from({ length: 31 }, (_, idx) => idx + 1).map((day) => (
+                <option key={day} value={day.toString()}>
+                  Ayın {day}&apos;i
+                </option>
+              ))}
+            </Select>
           </div>
 
           <div className="space-y-1">
