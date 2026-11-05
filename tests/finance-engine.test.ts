@@ -570,6 +570,20 @@ describe('finance-engine', () => {
       expect(result.netCashFlow).toBe(3900)
     })
 
+    it('iç transferleri dinamik hesap adlarına göre filtreler', () => {
+      const transactions = [
+        { type: 'Gelir', amount: 8000, description: 'Maaş Hakediş' },
+        { type: 'Gelir', amount: 2000, description: 'Enpara Vadesiz FAST Transfer' },
+        { type: 'Gelir', amount: 3000, merchant: 'Özel Vadeli Kasa', description: 'Hesaplar Arası Aktarım' },
+      ]
+      const result = calculateMonthlyCashFlow(transactions, {
+        accountNames: ['Enpara Vadesiz', 'Özel Vadeli Kasa']
+      })
+      // Sadece Maaş Hakediş dahil edilmeli (8000 TL), iç transferler filtrelenmeli
+      expect(result.totalInflow).toBe(8000)
+      expect(result.inflowCount).toBe(1)
+    })
+
     it('portfolio metrics standart hesaplama yapar', () => {
       const investments = [
         { category: 'Hisse', quantity: 10, unit_cost: 100, current_price: 150 },
@@ -621,6 +635,49 @@ describe('finance-engine', () => {
       expect(metrics.totalMonthlyIncome).toBe(0)
       expect(metrics.activeCount).toBe(0)
       expect(metrics.passiveCount).toBe(0)
+    })
+
+    it('dövizli gelirleri verilen kurlarla TL bazına dönüştürür', () => {
+      const incomes = [
+        { amount: 1000, currency: 'USD', period: 'Aylık', income_type: 'Sabit', status: 'Aktif' },
+        { amount: 500, currency: 'EUR', period: 'Aylık', income_type: 'Değişken', status: 'Aktif' },
+        { amount: 10000, currency: 'TRY', period: 'Aylık', income_type: 'Sabit', status: 'Aktif' },
+      ]
+      const rates = { USD: 35.0, EUR: 38.0 }
+      const metrics = calculateIncomeMetrics(incomes, rates)
+      // USD: 1000 * 35 = 35000 TL
+      // EUR: 500 * 38 = 19000 TL
+      // TRY: 10000 TL
+      // Total monthly: 35000 + 19000 + 10000 = 64000 TL
+      expect(metrics.totalMonthlyIncome).toBe(64000)
+      expect(metrics.fixedMonthlyIncome).toBe(45000) // 35000 + 10000
+      expect(metrics.variableMonthlyIncome).toBe(19000)
+    })
+  })
+
+  describe('Multi-currency and Exchange Rates', () => {
+    it('calculateSubscriptionEquivalent dövizli aboneliği kur ile dönüştürür', () => {
+      const eq = calculateSubscriptionEquivalent(20, 'Aylık', 'USD', 35)
+      expect(eq.monthly).toBe(700)
+      expect(eq.yearly).toBe(8400)
+    })
+
+    it('calculateProjectTotalCost dövizli abonelikleri kur haritasıyla toplar', () => {
+      const transactions = [{ project_id: 'p1', amount: 500 }]
+      const subscriptions = [
+        { project_id: 'p1', amount: 20, currency: 'USD', status: 'Aktif' }, // 20 * 35 = 700
+        { project_id: 'p1', amount: 100, currency: 'TRY', status: 'Aktif' },
+      ]
+      const totalCost = calculateProjectTotalCost('p1', transactions, subscriptions, { USD: 35 })
+      expect(totalCost).toBe(1300) // 500 + 700 + 100
+    })
+
+    it('projectSixMonthCashLoad dövizli abonelikleri kur haritasıyla projekte eder', () => {
+      const subscriptions = [
+        { amount: 10, currency: 'USD', period: 'Aylık', status: 'Aktif' }, // 10 * 35 = 350/ay
+      ]
+      const projection = projectSixMonthCashLoad(subscriptions, [], 3, { USD: 35 })
+      expect(projection).toEqual([350, 350, 350])
     })
   })
 

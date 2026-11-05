@@ -81,18 +81,34 @@ export default function SubscriptionsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSub, setEditingSub] = useState<Subscription | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [marketRates, setMarketRates] = useState<Record<string, number>>({ USD: 35.0, EUR: 38.0 })
   const [form, setForm] = useState({
     service: '',
     category: 'Eğlence & Medya' as ExpenseCategory,
     decision: 'Devam' as StrategicDecision,
     group_type: 'Kişisel' as 'Kişisel' | 'İş',
     amount: '',
+    currency: 'TRY',
     period: 'Aylık',
     payment_method: 'Kredi Kartı',
   })
 
   useEffect(() => {
     loadData()
+    fetch('/api/market-prices?symbols=USD,EUR')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.prices && Array.isArray(data.prices)) {
+          const newRates: Record<string, number> = {}
+          data.prices.forEach((p: any) => {
+            if (p.symbol && p.price) newRates[p.symbol] = p.price
+          })
+          if (Object.keys(newRates).length > 0) {
+            setMarketRates((prev) => ({ ...prev, ...newRates }))
+          }
+        }
+      })
+      .catch(() => {})
   }, [])
 
   async function loadData() {
@@ -122,6 +138,7 @@ export default function SubscriptionsPage() {
       decision: prefill?.decision || 'Devam',
       group_type: prefill?.group_type || 'Kişisel',
       amount: prefill?.amount || '',
+      currency: prefill?.currency || 'TRY',
       period: normalizeSubscriptionPeriod(prefill?.period || 'Aylık'),
       payment_method: prefill?.payment_method || 'Kredi Kartı',
     })
@@ -147,6 +164,7 @@ export default function SubscriptionsPage() {
       decision: (sub.decision as StrategicDecision) || 'Devam',
       group_type: sub.group_type || 'Kişisel',
       amount: sub.amount != null ? sub.amount.toString() : '',
+      currency: sub.currency || 'TRY',
       period: normalizeSubscriptionPeriod(sub.period),
       payment_method: sub.payment_method || 'Kredi Kartı',
     })
@@ -172,7 +190,7 @@ export default function SubscriptionsPage() {
         group_type: form.group_type,
         model: form.category,
         amount: Math.max(0, safeParseAmount(form.amount)),
-        currency: 'TRY',
+        currency: form.currency || 'TRY',
         period: normalizeSubscriptionPeriod(form.period),
         decision: form.decision,
         payment_method: form.payment_method || null,
@@ -276,20 +294,22 @@ export default function SubscriptionsPage() {
   const totalMonthlyLoad = useMemo(() => {
     return round2(
       activeSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.monthly
       }, 0)
     )
-  }, [activeSubs])
+  }, [activeSubs, marketRates])
 
   const totalYearlyLoad = useMemo(() => {
     return round2(
       activeSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.yearly
       }, 0)
     )
-  }, [activeSubs])
+  }, [activeSubs, marketRates])
 
   // Essential (Vazgeçilmez - decision === 'Devam')
   const essentialSubs = useMemo(() => {
@@ -299,11 +319,12 @@ export default function SubscriptionsPage() {
   const essentialMonthlyTotal = useMemo(() => {
     return round2(
       essentialSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.monthly
       }, 0)
     )
-  }, [essentialSubs])
+  }, [essentialSubs, marketRates])
 
   // Potential Savings (Gözden Geçir / Esnek - decision === 'Kararsız')
   const reviewSubs = useMemo(() => {
@@ -313,55 +334,65 @@ export default function SubscriptionsPage() {
   const potentialMonthlySavings = useMemo(() => {
     return round2(
       reviewSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.monthly
       }, 0)
     )
-  }, [reviewSubs])
+  }, [reviewSubs, marketRates])
 
   const potentialYearlySavings = useMemo(() => {
     return round2(
       reviewSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.yearly
       }, 0)
     )
-  }, [reviewSubs])
+  }, [reviewSubs, marketRates])
 
   const potentialOneTimeSavings = useMemo(() => {
     return round2(
       reviewSubs
         .filter((s) => normalizeSubscriptionPeriod(s.period) === 'Tek Seferlik')
-        .reduce((sum, s) => sum + safeParseAmount(s.amount), 0)
+        .reduce((sum, s) => {
+          const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+          return sum + round2(safeParseAmount(s.amount) * rate)
+        }, 0)
     )
-  }, [reviewSubs])
+  }, [reviewSubs, marketRates])
 
   // Realized Savings (İptal Edilenler - cancelledSubs)
   const realizedMonthlySavings = useMemo(() => {
     return round2(
       cancelledSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.monthly
       }, 0)
     )
-  }, [cancelledSubs])
+  }, [cancelledSubs, marketRates])
 
   const realizedYearlySavings = useMemo(() => {
     return round2(
       cancelledSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency, rate)
         return sum + eq.yearly
       }, 0)
     )
-  }, [cancelledSubs])
+  }, [cancelledSubs, marketRates])
 
   const realizedOneTimeSavings = useMemo(() => {
     return round2(
       cancelledSubs
         .filter((s) => normalizeSubscriptionPeriod(s.period) === 'Tek Seferlik')
-        .reduce((sum, s) => sum + safeParseAmount(s.amount), 0)
+        .reduce((sum, s) => {
+          const rate = marketRates[(s.currency || 'TRY').toUpperCase()] || 1
+          return sum + round2(safeParseAmount(s.amount) * rate)
+        }, 0)
     )
-  }, [cancelledSubs])
+  }, [cancelledSubs, marketRates])
 
   // Category counts
   const categoryCounts = useMemo(() => {
@@ -674,7 +705,9 @@ export default function SubscriptionsPage() {
                   const Icon = meta.icon
                   const normPeriod = normalizeSubscriptionPeriod(sub.period)
                   const isOneTime = normPeriod === 'Tek Seferlik'
-                  const eq = calculateSubscriptionEquivalent(sub.amount, normPeriod)
+                  const cur = (sub.currency || 'TRY').toUpperCase()
+                  const rate = marketRates[cur] || 1
+                  const eq = calculateSubscriptionEquivalent(sub.amount, normPeriod, cur, rate)
 
                   return (
                     <tr
@@ -711,7 +744,12 @@ export default function SubscriptionsPage() {
                       {/* Tutar & Periyot */}
                       <td className="p-3 whitespace-nowrap">
                         <div className="font-mono font-medium text-foreground">
-                          {formatCurrency(sub.amount)}
+                          {formatCurrency(sub.amount, cur)}
+                          {cur !== 'TRY' && (
+                            <span className="text-[10px] text-muted-foreground ml-1 font-sans">
+                              (~{formatCurrency(sub.amount * rate)})
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-muted-foreground">
                           {normPeriod}
@@ -1078,55 +1116,80 @@ export default function SubscriptionsPage() {
           {(() => {
             const normFormPeriod = normalizeSubscriptionPeriod(form.period)
             const parsedAmt = safeParseAmount(form.amount)
+            const cur = (form.currency || 'TRY').toUpperCase()
+            const rate = marketRates[cur] || 1
+            const convertedTry = cur !== 'TRY' ? round2(parsedAmt * rate) : parsedAmt
+            const eq = calculateSubscriptionEquivalent(parsedAmt, normFormPeriod, cur, rate)
             return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label htmlFor="sub-amount" className="text-xs font-semibold text-muted-foreground">
-                    {normFormPeriod === 'Tek Seferlik'
-                      ? 'Tek Seferlik Tutar'
-                      : normFormPeriod === '3 Aylık' || normFormPeriod === '6 Aylık' || normFormPeriod === 'Yıllık'
-                      ? `${normFormPeriod} Toplam Tutar`
-                      : normFormPeriod === 'Haftalık'
-                      ? 'Haftalık Tutar'
-                      : 'Aylık Tutar'}
-                  </label>
-                  <Input
-                    id="sub-amount"
-                    type="number"
-                    step="0.01"
-                    prefix="₺"
-                    required
-                    placeholder="0.00"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  />
-                  {parsedAmt > 0 && normFormPeriod !== 'Aylık' && normFormPeriod !== 'Tek Seferlik' && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Aylık eşdeğer: ~{formatCurrency(calculateSubscriptionEquivalent(parsedAmt, normFormPeriod).monthly)} / ay
-                    </p>
-                  )}
-                  {parsedAmt > 0 && normFormPeriod === 'Tek Seferlik' && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Tek seferlik gider; aylık tekrarlayan yüke katılmaz.
-                    </p>
-                  )}
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="sub-currency" className="text-xs font-semibold text-muted-foreground">Para Birimi</label>
+                    <Select
+                      id="sub-currency"
+                      value={form.currency}
+                      onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                    >
+                      <option value="TRY">TRY (₺)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="sub-amount" className="text-xs font-semibold text-muted-foreground">
+                      {normFormPeriod === 'Tek Seferlik'
+                        ? 'Tek Seferlik Tutar'
+                        : normFormPeriod === '3 Aylık' || normFormPeriod === '6 Aylık' || normFormPeriod === 'Yıllık'
+                        ? `${normFormPeriod} Toplam Tutar`
+                        : normFormPeriod === 'Haftalık'
+                        ? 'Haftalık Tutar'
+                        : 'Aylık Tutar'}
+                    </label>
+                    <Input
+                      id="sub-amount"
+                      type="number"
+                      step="0.01"
+                      prefix={form.currency === 'USD' ? '$' : form.currency === 'EUR' ? '€' : '₺'}
+                      required
+                      placeholder="0.00"
+                      value={form.amount}
+                      onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="sub-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
+                    <Select
+                      id="sub-period"
+                      value={normFormPeriod}
+                      onChange={(e) => setForm({ ...form, period: e.target.value })}
+                    >
+                      <option value="Aylık">Aylık</option>
+                      <option value="Haftalık">Haftalık</option>
+                      <option value="3 Aylık">3 Aylık</option>
+                      <option value="6 Aylık">6 Aylık</option>
+                      <option value="Yıllık">Yıllık</option>
+                      <option value="Tek Seferlik">Tek Seferlik</option>
+                    </Select>
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="sub-period" className="text-xs font-semibold text-muted-foreground">Ödeme Periyodu</label>
-                  <Select
-                    id="sub-period"
-                    value={normFormPeriod}
-                    onChange={(e) => setForm({ ...form, period: e.target.value })}
-                  >
-                    <option value="Aylık">Aylık</option>
-                    <option value="Haftalık">Haftalık</option>
-                    <option value="3 Aylık">3 Aylık</option>
-                    <option value="6 Aylık">6 Aylık</option>
-                    <option value="Yıllık">Yıllık</option>
-                    <option value="Tek Seferlik">Tek Seferlik</option>
-                  </Select>
-                </div>
+                {parsedAmt > 0 && cur !== 'TRY' && (
+                  <p className="text-[11px] text-primary/90 font-medium">
+                    Canlı Kur Dönüşümü: ~{formatCurrency(convertedTry)} (1 {cur} = {rate} ₺)
+                  </p>
+                )}
+                {parsedAmt > 0 && normFormPeriod !== 'Aylık' && normFormPeriod !== 'Tek Seferlik' && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Aylık eşdeğer: ~{formatCurrency(eq.monthly)} / ay
+                  </p>
+                )}
+                {parsedAmt > 0 && normFormPeriod === 'Tek Seferlik' && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Tek seferlik gider; aylık tekrarlayan yüke katılmaz.
+                  </p>
+                )}
               </div>
             )
           })()}

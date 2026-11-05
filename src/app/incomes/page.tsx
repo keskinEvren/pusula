@@ -82,11 +82,13 @@ function IncomesContent() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingIncome, setEditingIncome] = useState<Income | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [marketRates, setMarketRates] = useState<Record<string, number>>({ USD: 35.0, EUR: 38.0 })
   const [form, setForm] = useState({
     title: '',
     category: 'Maaş & Ücret' as IncomeCategory,
     income_type: 'Sabit' as IncomeTypeOption,
     amount: '',
+    currency: 'TRY',
     period: 'Aylık',
     payday: '',
     note: '',
@@ -95,6 +97,20 @@ function IncomesContent() {
 
   useEffect(() => {
     loadData()
+    fetch('/api/market-prices?symbols=USD,EUR')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.prices && Array.isArray(data.prices)) {
+          const newRates: Record<string, number> = {}
+          data.prices.forEach((p: any) => {
+            if (p.symbol && p.price) newRates[p.symbol] = p.price
+          })
+          if (Object.keys(newRates).length > 0) {
+            setMarketRates((prev) => ({ ...prev, ...newRates }))
+          }
+        }
+      })
+      .catch(() => {})
     if (searchParams.get('new') === 'true') {
       handleOpenCreateModal()
     }
@@ -160,6 +176,7 @@ function IncomesContent() {
       category: prefill?.category || 'Maaş & Ücret',
       income_type: prefill?.income_type || 'Sabit',
       amount: prefill?.amount || '',
+      currency: prefill?.currency || 'TRY',
       period: normalizeSubscriptionPeriod(prefill?.period || 'Aylık'),
       payday: prefill?.payday || '',
       note: prefill?.note || '',
@@ -179,6 +196,7 @@ function IncomesContent() {
       category,
       income_type: inc.income_type === 'Değişken' ? 'Değişken' : 'Sabit',
       amount: inc.amount != null ? inc.amount.toString() : '',
+      currency: inc.currency || 'TRY',
       period: normalizeSubscriptionPeriod(inc.period),
       payday: inc.payday != null ? inc.payday.toString() : '',
       note: inc.note || '',
@@ -208,7 +226,7 @@ function IncomesContent() {
         category: form.category,
         income_type: form.income_type,
         amount: Math.max(0, safeParseAmount(form.amount)),
-        currency: 'TRY',
+        currency: form.currency || 'TRY',
         period: normalizeSubscriptionPeriod(form.period),
         payday: validPayday,
         status: form.status,
@@ -339,7 +357,7 @@ function IncomesContent() {
   // =========================================================================
   // GELİR & SERBEST BÜTÇE HESAPLAMALARI
   // =========================================================================
-  const metrics = useMemo(() => calculateIncomeMetrics(incomes), [incomes])
+  const metrics = useMemo(() => calculateIncomeMetrics(incomes, marketRates), [incomes, marketRates])
 
   const activeIncomes = useMemo(
     () => incomes.filter((i) => i.status !== 'Pasif'),
@@ -393,13 +411,20 @@ function IncomesContent() {
   const modalPreviewEq = useMemo(() => {
     const amt = safeParseAmount(form.amount)
     const normPeriod = normalizeSubscriptionPeriod(form.period)
+    const cur = (form.currency || 'TRY').toUpperCase()
+    const rate = marketRates[cur] || 1
+    const convertedTry = cur !== 'TRY' ? round2(amt * rate) : amt
+    const eq = calculateSubscriptionEquivalent(amt, normPeriod, cur, rate)
     return {
       normPeriod,
       isOneTime: normPeriod === 'Tek Seferlik',
-      ...calculateSubscriptionEquivalent(amt, normPeriod),
+      ...eq,
       rawAmount: amt,
+      convertedTry,
+      currency: cur,
+      rate,
     }
-  }, [form.amount, form.period])
+  }, [form.amount, form.period, form.currency, marketRates])
 
   const getCategoryMeta = (cat: string) => {
     switch (cat) {
@@ -632,7 +657,9 @@ function IncomesContent() {
             const Icon = meta.icon
             const normPeriod = normalizeSubscriptionPeriod(inc.period)
             const isOneTime = normPeriod === 'Tek Seferlik'
-            const eq = calculateSubscriptionEquivalent(inc.amount, normPeriod)
+            const cur = (inc.currency || 'TRY').toUpperCase()
+            const rate = marketRates[cur] || 1
+            const eq = calculateSubscriptionEquivalent(inc.amount, normPeriod, cur, rate)
 
             return (
               <Card
@@ -689,7 +716,12 @@ function IncomesContent() {
                         {isOneTime ? (
                           <div>
                             <div className="text-2xl font-semibold tracking-tight text-success tabular-nums">
-                              {formatCurrency(inc.amount)}{' '}
+                              {formatCurrency(inc.amount, cur)}{' '}
+                              {cur !== 'TRY' && (
+                                <span className="text-xs text-muted-foreground font-normal ml-1">
+                                  (~{formatCurrency(inc.amount * rate)})
+                                </span>
+                              )}
                               <span className="text-xs text-muted-foreground font-normal">
                                 tek seferlik
                               </span>
@@ -706,7 +738,8 @@ function IncomesContent() {
                             </div>
                             {normPeriod !== 'Aylık' && (
                               <p className="text-[11px] text-muted-foreground mt-0.5">
-                                Beyan: {formatCurrency(inc.amount)} / {normPeriod}
+                                Beyan: {formatCurrency(inc.amount, cur)} / {normPeriod}
+                                {cur !== 'TRY' && ` (~${formatCurrency(inc.amount * rate)})`}
                               </p>
                             )}
                           </div>
@@ -853,10 +886,24 @@ function IncomesContent() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground block">
-                Net Tutar (₺)
+                Para Birimi
+              </label>
+              <Select
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className="text-xs"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">
+                Net Tutar
               </label>
               <Input
                 type="text"
@@ -889,22 +936,29 @@ function IncomesContent() {
 
           {/* Canlı Aylık & Yıllık Eşdeğer Önizlemesi */}
           {modalPreviewEq.rawAmount > 0 && (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 flex items-center justify-between text-xs">
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Aylık Net:</span>
-                <span className="text-sm font-bold font-mono text-emerald-400">
-                  {modalPreviewEq.isOneTime
-                    ? `${formatCurrency(modalPreviewEq.rawAmount)} (Tek Seferlik)`
-                    : `${formatCurrency(modalPreviewEq.monthly)} / ay`}
-                </span>
-              </div>
-              {!modalPreviewEq.isOneTime && (
-                <div className="text-right">
-                  <span className="text-muted-foreground block text-[11px]">Yıllık Karşılık:</span>
-                  <span className="text-xs font-bold font-mono text-foreground">
-                    {formatCurrency(modalPreviewEq.yearly)} / yıl
+            <div className="space-y-1.5">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Aylık Net:</span>
+                  <span className="text-sm font-bold font-mono text-emerald-400">
+                    {modalPreviewEq.isOneTime
+                      ? `${formatCurrency(modalPreviewEq.rawAmount, modalPreviewEq.currency)} (Tek Seferlik)`
+                      : `${formatCurrency(modalPreviewEq.monthly)} / ay`}
                   </span>
                 </div>
+                {!modalPreviewEq.isOneTime && (
+                  <div className="text-right">
+                    <span className="text-muted-foreground block text-[11px]">Yıllık Karşılık:</span>
+                    <span className="text-xs font-bold font-mono text-foreground">
+                      {formatCurrency(modalPreviewEq.yearly)} / yıl
+                    </span>
+                  </div>
+                )}
+              </div>
+              {modalPreviewEq.currency !== 'TRY' && (
+                <p className="text-[11px] text-emerald-400 font-medium px-1">
+                  Canlı Kur Dönüşümü: ~{formatCurrency(modalPreviewEq.convertedTry)} (1 {modalPreviewEq.currency} = {modalPreviewEq.rate} ₺)
+                </p>
               )}
             </div>
           )}
