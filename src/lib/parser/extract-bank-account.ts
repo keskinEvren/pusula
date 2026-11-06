@@ -185,7 +185,6 @@ export function parseBankAccountLines(
       action: suggestion.action,
       target_card_id: suggestion.target_card_id,
       target_debt_id: suggestion.target_debt_id,
-      project_id: suggestion.project_id,
       confidence: suggestion.confidence,
       classification_status: suggestion.classification_status,
       classification_reasons: suggestion.reasons,
@@ -359,7 +358,6 @@ export function extractFromHtmlBankAccount(
       action: suggestion.action,
       target_card_id: suggestion.target_card_id,
       target_debt_id: suggestion.target_debt_id,
-      project_id: suggestion.project_id,
       confidence: suggestion.confidence,
       classification_status: suggestion.classification_status,
       classification_reasons: suggestion.reasons,
@@ -552,7 +550,6 @@ export function parseBankAccountTable(
       action: suggestion.action,
       target_card_id: suggestion.target_card_id,
       target_debt_id: suggestion.target_debt_id,
-      project_id: suggestion.project_id,
       confidence: suggestion.confidence,
       classification_status: suggestion.classification_status,
       classification_reasons: suggestion.reasons,
@@ -570,10 +567,20 @@ export function parseBankAccountTable(
  */
 export async function parseBankAccountFile(
   file: File,
-  openDebts: Debt[] = [],
-  creditCards: CreditCard[] = [],
-  userMappings: MerchantMapping[] = []
+  creditCardsOrDebts: CreditCard[] | Debt[] = [],
+  maybeCardsOrMappings: CreditCard[] | MerchantMapping[] = [],
+  maybeMappings: MerchantMapping[] = []
 ): Promise<ParseResult> {
+  const is4Args = maybeMappings.length > 0 || (maybeCardsOrMappings.length > 0 && Array.isArray(maybeCardsOrMappings) && 'raw_pattern' in (maybeCardsOrMappings[0] || {}))
+  const is3ArgsDecoupled = !is4Args && (
+    (creditCardsOrDebts.length === 0 && maybeCardsOrMappings.length === 0) ||
+    (creditCardsOrDebts.length > 0 && ('card_name' in (creditCardsOrDebts[0] || {}) || 'bank' in (creditCardsOrDebts[0] || {}))) ||
+    (maybeCardsOrMappings.length > 0 && 'raw_pattern' in (maybeCardsOrMappings[0] || {}))
+  )
+  const creditCards = (is3ArgsDecoupled ? creditCardsOrDebts : maybeCardsOrMappings) as CreditCard[]
+  const userMappings = (is3ArgsDecoupled ? maybeCardsOrMappings : maybeMappings) as MerchantMapping[]
+  const openDebts = (is3ArgsDecoupled ? [] : creditCardsOrDebts) as Debt[]
+
   const ext = file.name.split('.').pop()?.toLowerCase()
 
   if (ext === 'html' || ext === 'htm') {

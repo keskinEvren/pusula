@@ -318,12 +318,7 @@ function TransactionsContent() {
         const acc = accounts.find((a) => a.id === tx.account_id)
         if (acc) return acc.name
       }
-      if (tx.source_account_id) {
-        const srcAcc = accounts.find((a) => a.id === tx.source_account_id)
-        const tgtAcc = accounts.find((a) => a.id === tx.target_account_id)
-        if (srcAcc && tgtAcc) return `${srcAcc.name} → ${tgtAcc.name}`
-        if (srcAcc) return srcAcc.name
-      }
+
       if (tx.account_or_card) {
         return tx.account_or_card
       }
@@ -345,7 +340,6 @@ function TransactionsContent() {
         p_search: debouncedSearchTerm.trim() || null,
         p_group: groupFilter !== 'ALL' ? groupFilter : null,
         p_type: typeFilter !== 'ALL' ? typeFilter : null,
-        p_project_id: null,
         p_month: monthFilter !== 'ALL' ? monthFilter : null,
         p_import_id: importFilter !== 'ALL' ? importFilter : null,
         p_segment_tab: segmentTab,
@@ -386,7 +380,6 @@ function TransactionsContent() {
         p_search: debouncedSearchTerm.trim() || null,
         p_group: groupFilter !== 'ALL' ? groupFilter : null,
         p_type: typeFilter !== 'ALL' ? typeFilter : null,
-        p_project_id: null,
         p_month: monthFilter !== 'ALL' ? monthFilter : null,
         p_import_id: importFilter !== 'ALL' ? importFilter : null,
         p_segment_tab: segmentTab,
@@ -523,7 +516,6 @@ function TransactionsContent() {
           p_analysis_group: txGroup,
           p_merchant: txMerchant,
           p_account_id: accountId,
-          p_project_id: null,
         })
         if (error) throw error
         if (data && !(data as any).success) {
@@ -586,7 +578,6 @@ function TransactionsContent() {
           p_merchant: txMerchant,
           p_account_id: accountId,
           p_card_id: cardId,
-          p_project_id: null,
         })
         if (error) throw error
         if (data && !(data as any).success) {
@@ -824,14 +815,14 @@ function TransactionsContent() {
             aria-label="Hesap veya Kart Filtresi"
           >
             <option value="ALL">Tüm Kartlar & Hesaplar</option>
-            <optgroup label="💳 Kredi Kartları">
+            <optgroup label="Kredi Kartları">
               {cards.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.bank} - {c.card_name}
                 </option>
               ))}
             </optgroup>
-            <optgroup label="🏦 Banka & Kasalar">
+            <optgroup label="Banka & Kasalar">
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -1353,10 +1344,10 @@ function TransactionsContent() {
                 onChange={(e) => setRecurringForm({ ...recurringForm, category: e.target.value as any })}
                 className="text-xs"
               >
-                <option value="Abonelik">💳 SaaS / Abonelik</option>
-                <option value="Fatura">⚡ Fatura (GSM, Elektrik, vb.)</option>
-                <option value="Taksit">📆 Dış Hesap Taksiti / Kredi</option>
-                <option value="Düzenli Gider">🏠 Düzenli Gider (Kira, Aidat)</option>
+                <option value="Abonelik">SaaS / Abonelik</option>
+                <option value="Fatura">Fatura (GSM, Elektrik, vb.)</option>
+                <option value="Taksit">Dış Hesap Taksiti / Kredi</option>
+                <option value="Düzenli Gider">Düzenli Gider (Kira, Aidat)</option>
               </Select>
             </div>
 

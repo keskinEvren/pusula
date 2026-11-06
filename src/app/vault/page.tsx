@@ -27,6 +27,10 @@ import {
   Copy,
   Eye,
   Settings2,
+  Compass,
+  Landmark,
+  Rocket,
+  Zap,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -54,6 +58,37 @@ import {
 } from '@/lib/vault-engine'
 import { generateLifeMarkdown, type LifeMdSectionOptions } from '@/lib/life-md-engine'
 import { exportMarkdownFile, copyMarkdownToClipboard } from '@/lib/markdown-utils'
+
+const AI_PREAMBLE_PRESETS = [
+  {
+    id: 'general',
+    label: 'Genel Durum Analizi',
+    icon: Compass,
+    prompt:
+      'Sen benim stratejik yaşam ve finans danışmanımsın. Bu belgedeki tüm verilerimi (finansal durum, projelerim, vizyon hedeflerim ve günlük rutinlerim) bütüncül bir gözle analiz et. Güçlü yönlerimi, tıkanıklık noktalarımı ve önümüzdeki çeyrek için en yüksek kaldıraçlı 3 odak noktamı belirle.',
+  },
+  {
+    id: 'cfo',
+    label: "Nakit Akışı & Borç CFO'su",
+    icon: Landmark,
+    prompt:
+      "Sen deneyimli bir kişisel finans CFO'susun. Kredi kartı borçlarımı, aktif taksit yükümü, faiz/komisyon sızıntılarımı ve aylık düzenli aboneliklerimi incele. Likit net durumumu pozitife geçirmek ve borç yükünü en hızlı şekilde eritmek için adım adım somut bir nakit akışı optimizasyon planı hazırla.",
+  },
+  {
+    id: 'founder',
+    label: 'Solo Founder Ürün Danışmanı',
+    icon: Rocket,
+    prompt:
+      'Sen solo founder ve mikro-SaaS ürün danışmanımsın. Projelerimi, bütçe/harcama oranlarını, fikir havuzumu ve gelir potansiyellerini değerlendir. Hangi projenin lansmanına öncelik vermem gerektiğini, hangisini dondurmam veya rafa kaldırmam gerektiğini ve ilk gelir akışını hızlandırmak için yapılması gerekenleri analiz et.',
+  },
+  {
+    id: 'coach',
+    label: 'Rutin & Disiplin Koçu',
+    icon: Zap,
+    prompt:
+      "Sen benim yüksek performans ve alışkanlık koçumsun. 'Fit Evren', 'Cash Maker Evren' gibi kimlik personalarımı, bu personalara bağlı hedeflerimi ve günlük rutinlerimi değerlendir. Minimum efektif doz prensibiyle rutinlerimi nasıl optimize edebileceğimi, tutarlılığı nasıl artırabileceğimi ve günlük enerjimi maksimize etme yöntemlerini anlat.",
+  },
+]
 
 // Helper to fetch all rows using pagination to avoid the 1000-row PostgREST ceiling
 async function fetchAllRows(supabase: any, tableName: string): Promise<any[]> {
@@ -98,6 +133,7 @@ function VaultPageContent() {
     executiveSummary: true,
     dreamsAndGoals: true,
     projectsAndIdeas: true,
+    projectAndIdeaDocs: true,
     routinesAndAgenda: true,
     journal: true,
     financialOverview: true,
@@ -1116,7 +1152,7 @@ function VaultPageContent() {
                     Aktif Bölümler
                   </span>
                   <div className="text-xl font-semibold text-foreground tabular-nums">
-                    {Object.values(includeSections).filter(Boolean).length} / 7
+                    {Object.values(includeSections).filter(Boolean).length} / 8
                   </div>
                   <span className="text-[10px] text-muted-foreground">
                     Modül seçiciler aktif
@@ -1138,6 +1174,23 @@ function VaultPageContent() {
                     </label>
                     <span className="text-[11px] text-muted-foreground">Tarayıcıda saklanır</span>
                   </div>
+
+                  {/* Hazır AI Danışman Şablonları */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-[11px] font-medium text-muted-foreground mr-0.5">Hazır Şablonlar:</span>
+                    {AI_PREAMBLE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handlePreambleChange(preset.prompt)}
+                        className="text-[11px] px-2.5 py-1 rounded-full border border-border/80 bg-muted/40 hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all cursor-pointer font-medium inline-flex items-center gap-1.5"
+                      >
+                        <preset.icon className="h-3 w-3" />
+                        <span>{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
                   <Textarea
                     id="life-md-preamble"
                     value={customPreamble}
@@ -1159,22 +1212,30 @@ function VaultPageContent() {
                   <div className="p-3 rounded-xl border border-border/70 bg-muted/20 space-y-2 text-xs">
                     {[
                       { key: 'executiveSummary', label: '1. Yönetici Özeti (Genel Durum)', desc: 'Net varlık, portföy ve modül sayıları' },
-                      { key: 'dreamsAndGoals', label: '2. Vizyon, Hedefler & Hayaller', desc: 'Dreams tablosu ve başarı notları' },
-                      { key: 'projectsAndIdeas', label: '3. Çalışma: Projeler & Fikirler', desc: 'Projeler, bütçeler ve fikir havuzu' },
+                      { key: 'dreamsAndGoals', label: '2. Vizyon, Hedefler & Hayaller', desc: 'Dreams tablosu, persona matrisi ve başarı notları' },
+                      { key: 'projectsAndIdeas', label: '3. Çalışma: Projeler & Fikirler', desc: 'Projeler, bütçeler ve fikir havuzu tablosu' },
+                      { key: 'projectAndIdeaDocs', label: '↳ Proje & Fikir Teknik Dokümanları (README/Spec)', desc: 'Genişletilmiş Markdown spec ve teknik dokümanlar' },
                       { key: 'routinesAndAgenda', label: '4. Günlük Yaşam: Rutinler & Ajanda', desc: 'Alışkanlıklar, loglar ve görevler' },
                       { key: 'journal', label: '5. Seyir Defteri / Günlük', desc: 'Tüm kişisel günlük kayıtları ve ruh hali' },
-                      { key: 'financialOverview', label: '6. Finansal Varlıklar & Borçlar', desc: 'Hesaplar, kartlar, yatırımlar, abonelikler' },
+                      { key: 'financialOverview', label: '6. Finansal Varlıklar & Borçlar', desc: 'Hesaplar, kartlar, yatırımlar, abonelikler, taksitler' },
                       { key: 'transactions', label: '7. Hesap ve Kart Hareketleri', desc: 'Aylık gruplanmış tüm gelir-gider geçmişi' },
                     ].map(({ key, label, desc }) => {
-                      const isChecked = !!includeSections[key as keyof LifeMdSectionOptions]
+                      const isDocsSubItem = key === 'projectAndIdeaDocs'
+                      const isParentDisabled = isDocsSubItem && !includeSections.projectsAndIdeas
+                      const isChecked = isParentDisabled ? false : !!includeSections[key as keyof LifeMdSectionOptions]
                       return (
                         <label
                           key={key}
-                          className="flex items-start gap-2.5 cursor-pointer select-none p-1.5 rounded-lg hover:bg-muted/40 transition-colors"
+                          className={`flex items-start gap-2.5 p-1.5 rounded-lg transition-colors select-none ${
+                            isParentDisabled
+                              ? 'opacity-40 cursor-not-allowed bg-muted/10'
+                              : 'cursor-pointer hover:bg-muted/40'
+                          }`}
                         >
                           <input
                             type="checkbox"
                             checked={isChecked}
+                            disabled={isParentDisabled}
                             onChange={() => toggleSection(key as keyof LifeMdSectionOptions)}
                             className="mt-0.5 rounded border-border"
                           />

@@ -20,8 +20,6 @@ describe('Reconciler Tests', () => {
         status: 'Açık',
         category: 'Maaş',
         description: null,
-        linked_account_id: null,
-        project_id: null,
         created_at: '2023',
         updated_at: '2023',
       }]

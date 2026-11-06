@@ -35,7 +35,6 @@ export interface ExtractedTransaction {
   analysis_group: string
   direction?: 'inflow' | 'outflow' // Gelen (+) / Giden (-)
   recurrence?: string
-  project_id?: string
   confidence: 'high' | 'medium' | 'low'
   selected: boolean
 

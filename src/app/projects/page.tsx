@@ -122,7 +122,6 @@ function ProjectsContent() {
     description: '',
     project_type: 'saas' as NonNullable<Project['project_type']>,
     status: 'Planlama' as Project['status'],
-    budget_limit: '',
     repo_url: '',
     live_url: '',
   })
@@ -177,7 +176,6 @@ function ProjectsContent() {
           description: projectForm.description || null,
           project_type: projectForm.project_type,
           status: projectForm.status,
-          budget_limit: projectForm.budget_limit ? parseFloat(projectForm.budget_limit) : null,
           repo_url: projectForm.repo_url || null,
           live_url: projectForm.live_url || null,
         })
@@ -195,7 +193,6 @@ function ProjectsContent() {
           description: '',
           project_type: 'saas',
           status: 'Planlama',
-          budget_limit: '',
           repo_url: '',
           live_url: '',
         })
@@ -434,10 +431,10 @@ function ProjectsContent() {
                           }
                           className="h-8 text-xs py-0 px-2 bg-muted/60 border border-border/50 rounded w-36"
                         >
-                          <option value="Geliştirmede">🚧 Geliştirmede</option>
-                          <option value="Planlama">📐 Planlama</option>
-                          <option value="Canlı">✅ Canlıya Al</option>
-                          <option value="Arşiv">⏸️ Arşivle</option>
+                          <option value="Geliştirmede">Geliştirmede</option>
+                          <option value="Planlama">Planlama</option>
+                          <option value="Canlı">Canlıya Al</option>
+                          <option value="Arşiv">Arşivle</option>
                         </Select>
 
                         <Button
@@ -495,15 +492,7 @@ function ProjectsContent() {
                   </CardHeader>
 
                   <CardContent className="p-4 pt-0 space-y-3 border-t border-border/40 mt-auto flex flex-col justify-end">
-                    {/* Declared Budget Target */}
-                    {project.budget_limit && project.budget_limit > 0 ? (
-                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs border border-border/40 flex items-center justify-between">
-                        <span className="text-muted-foreground">Hedef Bütçe:</span>
-                        <span className="font-mono font-semibold text-foreground">
-                          {formatCurrency(project.budget_limit)}
-                        </span>
-                      </div>
-                    ) : null}
+
 
                     {/* Action Button to Detail */}
                     <div className="flex items-center justify-end pt-1">
@@ -627,10 +616,10 @@ function ProjectsContent() {
               className="h-8 text-xs w-32"
             >
               <option value="all">Tüm Durumlar</option>
-              <option value="Canlı">✅ Canlı</option>
-              <option value="Geliştirmede">🚧 Geliştirmede</option>
-              <option value="Planlama">📐 Planlama</option>
-              <option value="Arşiv">⏸️ Arşiv</option>
+              <option value="Canlı">Canlı</option>
+              <option value="Geliştirmede">Geliştirmede</option>
+              <option value="Planlama">Planlama</option>
+              <option value="Arşiv">Arşiv</option>
             </Select>
           </div>
         </div>
@@ -727,7 +716,6 @@ function ProjectsContent() {
                     <th scope="col" className="p-3">Proje</th>
                     <th scope="col" className="p-3">Tür / Kategori</th>
                     <th scope="col" className="p-3">Durum</th>
-                    <th scope="col" className="p-3">Hedef Bütçe</th>
                     <th scope="col" className="p-3">Bağlantılar</th>
                     <th scope="col" className="p-3 text-right">Aksiyon</th>
                   </tr>
@@ -772,10 +760,10 @@ function ProjectsContent() {
                               }
                               className="h-7 text-xs py-0 px-2 bg-muted/40 border border-border/50 rounded w-32 shrink-0"
                             >
-                              <option value="Planlama">📐 Planlama</option>
-                              <option value="Geliştirmede">🚧 Geliştirmede</option>
-                              <option value="Canlı">✅ Canlı</option>
-                              <option value="Arşiv">⏸️ Arşiv</option>
+                              <option value="Planlama">Planlama</option>
+                              <option value="Geliştirmede">Geliştirmede</option>
+                              <option value="Canlı">Canlı</option>
+                              <option value="Arşiv">Arşiv</option>
                             </Select>
                             {isWorkbench && (
                               <Badge
@@ -789,15 +777,7 @@ function ProjectsContent() {
                           </div>
                         </td>
 
-                        <td className="p-3 font-mono">
-                          {project.budget_limit && project.budget_limit > 0 ? (
-                            <div>
-                              <span className="font-semibold text-foreground">{formatCurrency(project.budget_limit)}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground/50">-</span>
-                          )}
-                        </td>
+
 
                         <td className="p-3">
                           <div className="flex items-center gap-2 text-xs">
@@ -926,10 +906,10 @@ function ProjectsContent() {
                 }
                 className="text-xs"
               >
-                <option value="saas">🚀 Kendi Girişimim / SaaS</option>
-                <option value="workplace">🏢 Çalıştığım Firma / İşyerim</option>
-                <option value="client">💼 Müşteri / Kurumsal Web</option>
-                <option value="internal">🛠️ Dahili Araç / Altyapı</option>
+                <option value="saas">Kendi Girişimim / SaaS</option>
+                <option value="workplace">Çalıştığım Firma / İşyerim</option>
+                <option value="client">Müşteri / Kurumsal Web</option>
+                <option value="internal">Dahili Araç / Altyapı</option>
               </Select>
             </div>
 
@@ -946,41 +926,23 @@ function ProjectsContent() {
                 }
                 className="text-xs"
               >
-                <option value="Planlama">📐 Planlama (Tezgâhta)</option>
-                <option value="Geliştirmede">🚧 Geliştirmede (Tezgâhta)</option>
-                <option value="Canlı">✅ Canlı / Teslim Edildi</option>
+                <option value="Planlama">Planlama (Tezgâhta)</option>
+                <option value="Geliştirmede">Geliştirmede (Tezgâhta)</option>
+                <option value="Canlı">Canlı / Teslim Edildi</option>
               </Select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="prj-modal-budget" className="text-xs font-semibold text-muted-foreground">
-                Bütçe Tavanı (Opsiyonel)
-              </label>
-              <Input
-                id="prj-modal-budget"
-                type="number"
-                step="0.01"
-                placeholder="20000.00"
-                prefix="₺"
-                value={projectForm.budget_limit}
-                onChange={(e) => setProjectForm({ ...projectForm, budget_limit: e.target.value })}
-                className="text-xs font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="prj-modal-live" className="text-xs font-semibold text-muted-foreground">Canlı Site URL (Opsiyonel)</label>
-              <Input
-                id="prj-modal-live"
-                type="url"
-                placeholder="https://..."
-                value={projectForm.live_url}
-                onChange={(e) => setProjectForm({ ...projectForm, live_url: e.target.value })}
-                className="text-xs"
-              />
-            </div>
+          <div className="space-y-1">
+            <label htmlFor="prj-modal-live" className="text-xs font-semibold text-muted-foreground">Canlı Site URL (Opsiyonel)</label>
+            <Input
+              id="prj-modal-live"
+              type="url"
+              placeholder="https://..."
+              value={projectForm.live_url}
+              onChange={(e) => setProjectForm({ ...projectForm, live_url: e.target.value })}
+              className="text-xs"
+            />
           </div>
 
           <div className="space-y-1">
@@ -1015,7 +977,7 @@ function ProjectsContent() {
           <span>
             <strong>&quot;{projectToDelete?.name}&quot;</strong> projesini kalıcı olarak silmek istediğinizden emin misiniz?
             <br /><br />
-            Projeye ait geçmiş harcamalar, abonelikler ve ajanda kayıtları korunur, yalnızca proje bağlantıları kaldırılır.
+            Projeye ait ajanda odak kayıtları korunur, yalnızca proje bağlantısı kaldırılır.
           </span>
         }
         confirmLabel="Projeyi Sil"

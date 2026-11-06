@@ -15,31 +15,31 @@ export const JOURNAL_MOODS: Record<JournalMood, MoodMeta> = {
   high_energy: {
     key: 'high_energy',
     label: 'Yüksek Enerji / Coşkulu',
-    icon: '⚡',
+    icon: 'zap',
     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
   },
   calm: {
     key: 'calm',
     label: 'Sakin & Dengeli',
-    icon: '🌊',
+    icon: 'waves',
     color: 'text-sky-400 bg-sky-500/10 border-sky-500/30',
   },
   low_energy: {
     key: 'low_energy',
     label: 'Düşük Enerji / Yorgun',
-    icon: '🌧️',
+    icon: 'cloud-rain',
     color: 'text-slate-400 bg-slate-500/10 border-slate-500/30',
   },
   stormy: {
     key: 'stormy',
     label: 'Fırtınalı / Stresli',
-    icon: '🌪️',
+    icon: 'wind',
     color: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
   },
   reflective: {
     key: 'reflective',
     label: 'Derin & Düşünceli',
-    icon: '🌌',
+    icon: 'sparkles',
     color: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
   },
 }
@@ -57,14 +57,14 @@ export const JOURNAL_TEMPLATES: Record<JournalTemplateType, TemplateMeta> = {
     key: 'freeform',
     title: 'Serbest Akış',
     description: 'Zihninden geçen her şeyi filtresiz dök.',
-    icon: '✍️',
+    icon: 'feather',
     content: '',
   },
   stoic: {
     key: 'stoic',
     title: 'Stoik Akşam Muhasebesi',
     description: 'Marcus Aurelius felsefesiyle günü tarafsızca gözden geçir.',
-    icon: '🏛️',
+    icon: 'landmark',
     content: `### 🏛️ 1. Kontrol Çemberi
 Bugün doğrudan kontrolümde olan neyi iyi yönettim?
 
@@ -78,7 +78,7 @@ Yarın güne hangi erdem, niyet ve odakla başlayacağım?`,
     key: 'gratitude_victory',
     title: '3 Şükran & Günün Zaferi',
     description: 'Günün küçük güzelliklerini ve tekil zaferini mühürle.',
-    icon: '🙏',
+    icon: 'award',
     content: `### 🙏 1. Üç Şükran Detayı
 1. 
 2. 
@@ -94,7 +94,7 @@ Bugünden geleceğe bir anı kalsaydı bu ne olurdu?`,
     key: 'weekly_retro',
     title: 'Haftalık Kapanış & Rota Tayini',
     description: 'Haftayı arkana al ve gelecek haftanın Kuzey Yıldızını belirle.',
-    icon: '🧭',
+    icon: 'compass',
     content: `### 📊 1. Haftanın Değerlendirmesi
 Bu hafta projelerim, zihnim ve enerjim genel olarak nasıl aktı?
 

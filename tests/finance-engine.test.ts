@@ -5,12 +5,7 @@ import {
   calculateStatementChange,
   calculateCardStatementRemaining,
   calculateSpendingBreakdown,
-  calculateProjectTotalCost,
-  evaluateProjectBudget,
   projectSixMonthCashLoad,
-  calculateFounderRunway,
-  collectReceivable,
-  payDebt,
   calculateDcaAverageCost,
   calculateMonthlyCashFlow,
   calculatePortfolioMetrics,
@@ -18,7 +13,9 @@ import {
   normalizeSubscriptionPeriod,
   safeParseAmount,
   calculateIncomeMetrics,
-  calculateMonthlyBudgetBalance
+  calculateMonthlyBudgetBalance,
+  calculateAccountYield,
+  calculateAccountsYieldSummary,
 } from '@/lib/finance-engine'
 
 vi.mock('@/lib/supabase/client')
@@ -231,60 +228,6 @@ describe('finance-engine', () => {
       expect(result.financing).toBe(0)
       expect(result.excluded).toBe(0)
       expect(result.totalConsumption).toBe(0)
-    })
-  })
-
-  describe('calculateProjectTotalCost', () => {
-    it('direkt harcamalar ve aktif abonelikleri toplar', () => {
-      const transactions = [
-        { project_id: 'p1', amount: 100 },
-        { project_id: 'p2', amount: 50 }
-      ]
-      const subscriptions = [
-        { project_id: 'p1', amount: 20, status: 'Aktif' }
-      ]
-      const result = calculateProjectTotalCost('p1', transactions, subscriptions)
-      expect(result).toBe(120)
-    })
-
-    it('iptal edilmiş veya kararı İptal Et olan abonelikleri hariç tutar', () => {
-      const subscriptions = [
-        { project_id: 'p1', amount: 20, status: 'İptal' },
-        { project_id: 'p1', amount: 30, status: 'Aktif', decision: 'İptal Et' }
-      ]
-      const result = calculateProjectTotalCost('p1', [], subscriptions)
-      expect(result).toBe(0)
-    })
-
-    it('boş/tanımsız diziler, null ve geçersiz metin girdileri için güvenli çalışır', () => {
-      expect(calculateProjectTotalCost('p1', undefined as any, undefined as any)).toBe(0)
-      expect(calculateProjectTotalCost('p1', [null as any], [null as any])).toBe(0)
-      expect(calculateProjectTotalCost('p1', [{ project_id: 'p1', amount: 'abc' as any }], [{ project_id: 'p1', amount: 'def' as any }])).toBe(0)
-      expect(calculateProjectTotalCost('p1', [{ project_id: 'p1', amount: '150,50' as any }], [{ project_id: 'p1', amount: '50' as any }])).toBe(200.5)
-    })
-  })
-
-  describe('evaluateProjectBudget', () => {
-    it('limite ulaşılmadıysa GREEN döner', () => {
-      const result = evaluateProjectBudget(50, 100)
-      expect(result.status).toBe('GREEN')
-    })
-
-    it('limitin %85 ine ulaşıldıysa YELLOW döner', () => {
-      const result = evaluateProjectBudget(85, 100)
-      expect(result.status).toBe('YELLOW')
-      expect(result.isWarning).toBe(true)
-    })
-
-    it('limit aşıldıysa RED döner', () => {
-      const result = evaluateProjectBudget(101, 100)
-      expect(result.status).toBe('RED')
-      expect(result.isExceeded).toBe(true)
-    })
-
-    it('limit yoksa veya sıfırsa NO_BUDGET döner', () => {
-      const result = evaluateProjectBudget(50, 0)
-      expect(result.status).toBe('NO_BUDGET')
     })
   })
 
@@ -565,53 +508,6 @@ describe('finance-engine', () => {
     })
   })
 
-  describe('calculateFounderRunway', () => {
-    it('standart giderle aylık hesaplama yapar', () => {
-      const result = calculateFounderRunway(10000, 2000, 500)
-      expect(result.runwayMonths).toBe(4)
-    })
-
-    it('gider yoksa infinite döner', () => {
-      const result = calculateFounderRunway(10000, 0, 0)
-      expect(result.runwayMonths).toBe('infinite')
-    })
-
-    it('negatif nakit veya sıfır nakit durumunu işler', () => {
-      const result = calculateFounderRunway(-2500, 2000, 500)
-      expect(result.runwayMonths).toBe(-1)
-    })
-  })
-
-  describe('collectReceivable & payDebt', () => {
-    it('alacak tam tahsil edildiğinde kapatıldı flagi döner', () => {
-      const result = collectReceivable(1000, 500, 500)
-      expect(result.newAccountBalance).toBe(1500)
-      expect(result.newReceivableRemaining).toBe(0)
-      expect(result.isClosed).toBe(true)
-    })
-
-    it('alacak kısmi tahsil edildiğinde kapanmaz', () => {
-      const result = collectReceivable(1000, 500, 200)
-      expect(result.newAccountBalance).toBe(1200)
-      expect(result.newReceivableRemaining).toBe(300)
-      expect(result.isClosed).toBe(false)
-    })
-
-    it('borç tam ödendiğinde kapatıldı flagi döner', () => {
-      const result = payDebt(1000, 500, 500)
-      expect(result.newAccountBalance).toBe(500)
-      expect(result.newDebtRemaining).toBe(0)
-      expect(result.isClosed).toBe(true)
-    })
-
-    it('borç kısmi ödendiğinde kapanmaz', () => {
-      const result = payDebt(1000, 500, 200)
-      expect(result.newAccountBalance).toBe(800)
-      expect(result.newDebtRemaining).toBe(300)
-      expect(result.isClosed).toBe(false)
-    })
-  })
-
   describe('calculateDcaAverageCost', () => {
     it('ağırlıklı ortalama maliyeti doğru hesaplar', () => {
       const result = calculateDcaAverageCost(10, 100, 5, 130)
@@ -740,16 +636,6 @@ describe('finance-engine', () => {
       expect(eq.yearly).toBe(8400)
     })
 
-    it('calculateProjectTotalCost dövizli abonelikleri kur haritasıyla toplar', () => {
-      const transactions = [{ project_id: 'p1', amount: 500 }]
-      const subscriptions = [
-        { project_id: 'p1', amount: 20, currency: 'USD', status: 'Aktif' }, // 20 * 35 = 700
-        { project_id: 'p1', amount: 100, currency: 'TRY', status: 'Aktif' },
-      ]
-      const totalCost = calculateProjectTotalCost('p1', transactions, subscriptions, { USD: 35 })
-      expect(totalCost).toBe(1300) // 500 + 700 + 100
-    })
-
     it('projectSixMonthCashLoad dövizli abonelikleri kur haritasıyla projekte eder', () => {
       const subscriptions = [
         { amount: 10, currency: 'USD', period: 'Aylık', status: 'Aktif' }, // 10 * 35 = 350/ay
@@ -785,6 +671,217 @@ describe('finance-engine', () => {
       expect(balance.netMargin).toBe(-7000)
       expect(balance.fixedRatioPct).toBe(0)
       expect(balance.totalUsedRatioPct).toBe(0)
+    })
+  })
+
+  describe('calculateAccountYield & calculateAccountsYieldSummary (Damla Motoru)', () => {
+    it('VakıfBank ARI hesabı senaryosu: 50.000 TL bakiye, 2.500 TL alt limit, %49 faiz, %10 stopaj', () => {
+      const account = {
+        balance: 50000,
+        reserved_base_amount: 2500,
+        interest_rate: 49,
+        withholding_tax_rate: 10,
+        last_yield_applied_at: '2026-11-05',
+        type: 'gunluk_birikim',
+      }
+      const res = calculateAccountYield(account, '2026-11-06')
+
+      expect(res.activePrincipal).toBe(47500)
+      expect(res.reservedBaseAmount).toBe(2500)
+      expect(res.interestRate).toBe(49)
+      expect(res.withholdingTaxRate).toBe(10)
+      expect(res.dailyGrossYield).toBe(63.77)
+      expect(res.dailyNetYield).toBe(57.39)
+      expect(res.monthlySimpleNetYield).toBe(1721.70)
+      expect(res.monthlyCompoundNetYield).toBe(1752.22)
+      expect(res.pendingDays).toBe(1)
+      expect(res.pendingNetYield).toBe(57.39)
+      expect(res.hasYield).toBe(true)
+    })
+
+    it('bakiye alt limitin altında kaldığında aktif anapara ve getiriler 0 döner', () => {
+      const account = {
+        balance: 2000,
+        reserved_base_amount: 2500,
+        interest_rate: 49,
+        withholding_tax_rate: 10,
+      }
+      const res = calculateAccountYield(account, '2026-11-06')
+      expect(res.activePrincipal).toBe(0)
+      expect(res.hasYield).toBe(false)
+      expect(res.dailyGrossYield).toBe(0)
+      expect(res.dailyNetYield).toBe(0)
+      expect(res.monthlySimpleNetYield).toBe(0)
+      expect(res.monthlyCompoundNetYield).toBe(0)
+      expect(res.pendingNetYield).toBe(0)
+    })
+
+    it('faiz oranı 0 veya tanımsız ise getiri 0 döner', () => {
+      const account = {
+        balance: 100000,
+        interest_rate: 0,
+      }
+      const res = calculateAccountYield(account, '2026-11-06')
+      expect(res.activePrincipal).toBe(100000)
+      expect(res.hasYield).toBe(false)
+      expect(res.dailyNetYield).toBe(0)
+      expect(res.monthlySimpleNetYield).toBe(0)
+    })
+
+    it('son işlemden beri geçen gün sayısına göre biriken net getiri hesaplar', () => {
+      const account = {
+        balance: 100000,
+        reserved_base_amount: 0,
+        interest_rate: 50,
+        withholding_tax_rate: 10,
+        last_yield_applied_at: '2026-11-02',
+      }
+      // 2026-11-02 to 2026-11-06 = 4 days
+      const res = calculateAccountYield(account, '2026-11-06')
+      expect(res.pendingDays).toBe(4)
+      expect(res.dailyNetYield).toBe(123.29)
+      expect(res.pendingNetYield).toBe(493.16)
+    })
+
+    it('bugün zaten getiri işlendiyse pendingDays 0 ve pendingNetYield 0 döner', () => {
+      const account = {
+        balance: 50000,
+        interest_rate: 45,
+        last_yield_applied_at: '2026-11-06',
+      }
+      const res = calculateAccountYield(account, '2026-11-06')
+      expect(res.pendingDays).toBe(0)
+      expect(res.pendingNetYield).toBe(0)
+    })
+
+    it('klasik vadeli mevduat ve vade gün sayacı hesaplar', () => {
+      const futureAcc = {
+        balance: 200000,
+        interest_rate: 40,
+        withholding_tax_rate: 10,
+        maturity_date: '2026-11-24',
+        type: 'vadeli',
+      }
+      const futureRes = calculateAccountYield(futureAcc, '2026-11-06')
+      expect(futureRes.daysToMaturity).toBe(18)
+      expect(futureRes.isMatured).toBe(false)
+
+      const maturedAcc = {
+        balance: 200000,
+        maturity_date: '2026-11-01',
+      }
+      const maturedRes = calculateAccountYield(maturedAcc, '2026-11-06')
+      expect(maturedRes.daysToMaturity).toBe(-5)
+      expect(maturedRes.isMatured).toBe(true)
+    })
+
+    it('calculateAccountsYieldSummary tüm portföy genelinde nakit ve getirileri doğru toplar', () => {
+      const accounts = [
+        { name: 'Vadesiz', balance: 10000, type: 'vadesiz' },
+        { name: 'Kasa', balance: 5000, type: 'kasa' },
+        {
+          name: 'VakıfBank ARI',
+          balance: 50000,
+          reserved_base_amount: 2500,
+          interest_rate: 49,
+          withholding_tax_rate: 10,
+          last_yield_applied_at: '2026-11-05',
+          type: 'gunluk_birikim',
+        },
+        {
+          name: 'Vadeli Mevduat',
+          balance: 100000,
+          interest_rate: 50,
+          withholding_tax_rate: 10,
+          last_yield_applied_at: '2026-11-06',
+          maturity_date: '2026-12-01',
+          type: 'vadeli',
+        },
+      ]
+
+      const summary = calculateAccountsYieldSummary(accounts, '2026-11-06')
+
+      expect(summary.totalCash).toBe(165000)
+      expect(summary.liquidCash).toBe(65000)
+      expect(summary.savingsCash).toBe(150000)
+      expect(summary.totalActivePrincipal).toBe(147500)
+      expect(summary.totalDailyNetYield).toBe(180.68)
+      expect(summary.yieldAccountCount).toBe(2)
+      expect(summary.totalPendingNetYield).toBe(57.39)
+    })
+
+    it('boş veya geçersiz girdi durumlarını güvenle karşılar', () => {
+      const summary = calculateAccountsYieldSummary([])
+      expect(summary.totalCash).toBe(0)
+      expect(summary.totalDailyNetYield).toBe(0)
+      expect(summary.yieldAccountCount).toBe(0)
+
+      const yieldNull = calculateAccountYield(null)
+      expect(yieldNull.hasYield).toBe(false)
+      expect(yieldNull.dailyNetYield).toBe(0)
+    })
+
+    it('bozuk veya geçersiz tarih dizgelerinde güvenli davranır', () => {
+      // Geçersiz formatlı last_yield_applied_at -> 1 gün kabul eder
+      const invalidYieldDateAcc = {
+        balance: 50000,
+        interest_rate: 40,
+        last_yield_applied_at: 'gecersiz-tarih',
+      }
+      const res1 = calculateAccountYield(invalidYieldDateAcc, '2026-11-06')
+      expect(res1.pendingDays).toBe(1)
+      expect(res1.hasYield).toBe(true)
+
+      // Geçersiz formatlı maturity_date -> daysToMaturity null kalır, isMatured false olur
+      const invalidMaturityAcc = {
+        balance: 50000,
+        interest_rate: 40,
+        maturity_date: '2026-99-99',
+      }
+      const res2 = calculateAccountYield(invalidMaturityAcc, '2026-11-06')
+      expect(res2.daysToMaturity).toBeNull()
+      expect(res2.isMatured).toBe(false)
+    })
+
+    it('negatif bakiye veya eksi faiz oranında aktif anapara ve getiri 0 olur', () => {
+      const overdraftAcc = {
+        balance: -5000,
+        interest_rate: 45,
+      }
+      const res = calculateAccountYield(overdraftAcc, '2026-11-06')
+      expect(res.activePrincipal).toBe(0)
+      expect(res.hasYield).toBe(false)
+      expect(res.dailyNetYield).toBe(0)
+
+      const negativeRateAcc = {
+        balance: 50000,
+        interest_rate: -10,
+      }
+      const resNeg = calculateAccountYield(negativeRateAcc, '2026-11-06')
+      expect(resNeg.interestRate).toBe(0)
+      expect(resNeg.hasYield).toBe(false)
+    })
+
+    it('stopaj oranı sınırlarını (0 ve %100) doğru işler', () => {
+      // %0 stopaj (vergisiz getiri)
+      const zeroTaxAcc = {
+        balance: 36500,
+        interest_rate: 10,
+        withholding_tax_rate: 0,
+      }
+      const resZero = calculateAccountYield(zeroTaxAcc, '2026-11-06')
+      expect(resZero.dailyGrossYield).toBe(10)
+      expect(resZero.dailyNetYield).toBe(10)
+
+      // %100 stopaj (net 0)
+      const fullTaxAcc = {
+        balance: 36500,
+        interest_rate: 10,
+        withholding_tax_rate: 100,
+      }
+      const resFull = calculateAccountYield(fullTaxAcc, '2026-11-06')
+      expect(resFull.dailyGrossYield).toBe(10)
+      expect(resFull.dailyNetYield).toBe(0)
     })
   })
 })

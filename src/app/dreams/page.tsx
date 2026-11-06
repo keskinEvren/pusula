@@ -41,6 +41,7 @@ import { Sheet } from '@/components/ui/sheet'
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
+import { DynamicIcon } from '@/components/ui/icon-picker'
 import { useToast } from '@/lib/toast-context'
 import { isUUID } from '@/lib/utils'
 import type { Dream } from '@/types/database'
@@ -325,7 +326,7 @@ function DreamsContent() {
         requireMutationData(await supabase.from('dreams').update(updates).eq('id', celebratingDream.id).select('id').single(), 'Hedef durumu doğrulanamadı.')
       }
       syncLocal(dreams.map((d) => (d.id === celebratingDream.id ? { ...d, ...updates } : d)))
-      toast.success('Tebrikler! Kişisel zafer Zafer Müzesi\'ne kaydedildi 🏆')
+      toast.success('Tebrikler! Kişisel zafer Zafer Müzesi\'ne kaydedildi!')
       setIsCelebrationOpen(false)
       setActiveTab('achieved')
     } catch (err: any) {
@@ -715,6 +716,7 @@ function DreamsContent() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
+                <DynamicIcon name={h.icon} className="h-3 w-3" />
                 <span>{h.shortLabel}</span>
               </button>
             ))}

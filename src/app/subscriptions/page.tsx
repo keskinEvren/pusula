@@ -95,17 +95,11 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     loadData()
-    fetch('/api/market-prices?symbols=USD,EUR')
+    fetch('/api/market-prices')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.prices && Array.isArray(data.prices)) {
-          const newRates: Record<string, number> = {}
-          data.prices.forEach((p: any) => {
-            if (p.symbol && p.price) newRates[p.symbol] = p.price
-          })
-          if (Object.keys(newRates).length > 0) {
-            setMarketRates((prev) => ({ ...prev, ...newRates }))
-          }
+        if (data?.baseRates && typeof data.baseRates === 'object') {
+          setMarketRates((prev) => ({ ...prev, ...data.baseRates }))
         }
       })
       .catch(() => {})
@@ -194,7 +188,6 @@ export default function SubscriptionsPage() {
         period: normalizeSubscriptionPeriod(form.period),
         decision: form.decision,
         payment_method: form.payment_method || null,
-        project_id: null,
         status: status as any,
       }
 
@@ -1091,11 +1084,11 @@ export default function SubscriptionsPage() {
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value as ExpenseCategory })}
               >
-                <option value="Eğlence & Medya">🎬 Eğlence & Medya</option>
-                <option value="Spor & Yaşam">🏋️ Spor & Yaşam</option>
-                <option value="İletişim & Fatura">📱 İletişim & Fatura</option>
-                <option value="Yazılım & SaaS">💻 Yazılım & SaaS</option>
-                <option value="Diğer">🏠 Diğer Düzenli Gider</option>
+                <option value="Eğlence & Medya">Eğlence & Medya</option>
+                <option value="Spor & Yaşam">Spor & Yaşam</option>
+                <option value="İletişim & Fatura">İletişim & Fatura</option>
+                <option value="Yazılım & SaaS">Yazılım & SaaS</option>
+                <option value="Diğer">Diğer Düzenli Gider</option>
               </Select>
             </div>
 
@@ -1106,9 +1099,9 @@ export default function SubscriptionsPage() {
                 value={form.decision}
                 onChange={(e) => setForm({ ...form, decision: e.target.value as StrategicDecision })}
               >
-                <option value="Devam">🟢 Vazgeçilmez (Zorunlu Gider)</option>
-                <option value="Kararsız">🟡 Gözden Geçir (Tasarruf Potansiyeli)</option>
-                <option value="İptal Et">🔴 İptal Et (Kurtarılan Tasarruf)</option>
+                <option value="Devam">Vazgeçilmez (Zorunlu Gider)</option>
+                <option value="Kararsız">Gözden Geçir (Tasarruf Potansiyeli)</option>
+                <option value="İptal Et">İptal Et (Kurtarılan Tasarruf)</option>
               </Select>
             </div>
           </div>

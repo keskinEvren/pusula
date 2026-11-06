@@ -22,6 +22,7 @@ import {
   Receipt,
   HandCoins,
   HelpCircle,
+  Zap,
 } from 'lucide-react'
 import { StatementGuideSheet } from '@/components/import/statement-guide-sheet'
 import { createClient } from '@/lib/supabase/client'
@@ -42,8 +43,8 @@ import { Select } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
-import type { ExtractedTransaction, ParseResult, ReconciliationActionType } from '@/lib/parser/types'
-import type { Project, MerchantMapping, CreditCard, Debt, Account } from '@/types/database'
+import type { ExtractedTransaction, ParseResult } from '@/lib/parser/types'
+import type { MerchantMapping, CreditCard, Account } from '@/types/database'
 
 export interface QueuedStatementFile {
   id: string
@@ -110,9 +111,7 @@ export default function ImportPage() {
   const [importHistoryCount, setImportHistoryCount] = useState<number>(0)
 
   // Metadata
-  const [projects, setProjects] = useState<Project[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
-  const [debts, setDebts] = useState<Debt[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [userMappings, setUserMappings] = useState<MerchantMapping[]>([])
 
@@ -136,24 +135,17 @@ export default function ImportPage() {
   async function loadMetadata() {
     const supabase = createClient()
     const [
-      { data: prjs },
       { data: crds },
-      { data: dbts },
       { data: accs },
       { data: maps },
       { count: impCount },
     ] = await Promise.all([
-      supabase.from('projects').select('*'),
       supabase.from('credit_cards').select('*'),
-      supabase.from('debts').select('*'),
       supabase.from('accounts').select('*'),
       supabase.from('merchant_mappings').select('*'),
       supabase.from('statement_imports').select('*', { count: 'exact', head: true }),
     ])
-
-    if (prjs) setProjects(prjs)
     if (crds) setCards(crds)
-    if (dbts) setDebts(dbts)
     if (impCount !== null) setImportHistoryCount(impCount)
     if (accs) setAccounts(accs)
     if (maps) setUserMappings(maps)
@@ -214,7 +206,7 @@ export default function ImportPage() {
         if (activeMode === 'credit_card') {
           result = await parseStatementFile(item.file, userMappings)
         } else {
-          result = await parseBankAccountFile(item.file, debts, cards, userMappings)
+          result = await parseBankAccountFile(item.file, cards, userMappings)
         }
 
         if (!result.success || result.transactions.length === 0) {
@@ -374,24 +366,18 @@ export default function ImportPage() {
         if (f.id !== fileId) return f
         return {
           ...f,
-          transactions: f.transactions.map((t) => {
-            const requiresCardTarget = t.action === 'CARD_PAYMENT' || t.action === 'CASH_ADVANCE'
-            const requiresDebtTarget = t.action === 'COLLECT_RECEIVABLE' || t.action === 'PAY_DEBT'
-            const missingRequiredTarget =
-              (requiresCardTarget && !t.target_card_id) || (requiresDebtTarget && !t.target_debt_id)
-            return {
-              ...t,
-              selected: t.duplicate_status === 'EXACT_DUPLICATE' ? false : select,
-              duplicate_status:
-                select && t.duplicate_status === 'POSSIBLE_DUPLICATE'
-                  ? 'USER_CONFIRMED_NEW'
-                  : t.duplicate_status,
-              classification_status:
-                select && t.classification_status === 'NEEDS_REVIEW' && !missingRequiredTarget
-                  ? 'CONFIRMED'
-                  : t.classification_status,
-            }
-          }),
+          transactions: f.transactions.map((t) => ({
+            ...t,
+            selected: t.duplicate_status === 'EXACT_DUPLICATE' ? false : select,
+            duplicate_status:
+              select && t.duplicate_status === 'POSSIBLE_DUPLICATE'
+                ? 'USER_CONFIRMED_NEW'
+                : t.duplicate_status,
+            classification_status:
+              select && t.classification_status === 'NEEDS_REVIEW'
+                ? 'CONFIRMED'
+                : t.classification_status,
+          })),
         }
       })
     )
@@ -415,21 +401,7 @@ export default function ImportPage() {
               next.duplicate_status = 'USER_CONFIRMED_NEW'
             }
             if (field === 'selected' && value === true && t.classification_status === 'NEEDS_REVIEW') {
-              const requiresCardTarget = t.action === 'CARD_PAYMENT' || t.action === 'CASH_ADVANCE'
-              const requiresDebtTarget = t.action === 'COLLECT_RECEIVABLE' || t.action === 'PAY_DEBT'
-              const missingTarget =
-                (requiresCardTarget && !t.target_card_id) || (requiresDebtTarget && !t.target_debt_id)
-              if (!missingTarget) {
-                next.classification_status = 'CONFIRMED'
-              }
-            }
-            if ((field === 'target_card_id' || field === 'target_debt_id') && value) {
               next.classification_status = 'CONFIRMED'
-              next.selected = true
-              next.classification_reasons = [
-                ...(t.classification_reasons || []),
-                'Finansal hedef kullanıcı tarafından doğrulandı.',
-              ]
             }
             return next
           }),
@@ -438,71 +410,7 @@ export default function ImportPage() {
     )
   }
 
-  const handleActionChange = (
-    fileId: string,
-    txId: string,
-    newAction: ReconciliationActionType
-  ) => {
-    setQueuedFiles((prev) =>
-      prev.map((f) => {
-        if (f.id !== fileId) return f
-        return {
-          ...f,
-          transactions: f.transactions.map((t) => {
-            if (t.id !== txId) return t
-            let newType = t.type
-            let newGroup = t.analysis_group
-            const requiresTarget = newAction === 'CARD_PAYMENT'
-              || newAction === 'CASH_ADVANCE'
-              || newAction === 'COLLECT_RECEIVABLE'
-              || newAction === 'PAY_DEBT'
 
-            if (newAction === 'CARD_PAYMENT') {
-              newType = 'Kart Ödemesi'
-              newGroup = 'Hariç'
-            } else if (newAction === 'COLLECT_RECEIVABLE') {
-              newType = 'Tahsilat'
-              newGroup = 'Hariç'
-            } else if (newAction === 'PAY_DEBT') {
-              newType = 'Borç Ödemesi'
-              newGroup = 'Hariç'
-            } else if (newAction === 'DIRECT_EXPENSE') {
-              newType = 'Harcama'
-              newGroup = 'Kişisel'
-            } else if (newAction === 'FREE_INCOME') {
-              newType = 'Gelir'
-              newGroup = 'Hariç'
-            } else if (newAction === 'CASH_ADVANCE') {
-              newType = 'Nakit Avans'
-              newGroup = 'Hariç'
-            } else if (newAction === 'INTERNAL_TRANSFER') {
-              newType = 'Transfer'
-              newGroup = 'Hariç'
-            } else if (newAction === 'INVESTMENT_TRANSFER') {
-              newType = 'Transfer'
-              newGroup = 'Hariç'
-            }
-
-            return {
-              ...t,
-              action: newAction,
-              type: newType,
-              analysis_group: newGroup,
-              classification_status: requiresTarget
-                ? ((newAction === 'CARD_PAYMENT' || newAction === 'CASH_ADVANCE') ? t.target_card_id : t.target_debt_id)
-                  ? 'CONFIRMED'
-                  : 'NEEDS_REVIEW'
-                : 'CONFIRMED',
-              classification_reasons: ['İşlem aksiyonu kullanıcı tarafından seçildi.'],
-              selected: requiresTarget
-                ? Boolean((newAction === 'CARD_PAYMENT' || newAction === 'CASH_ADVANCE') ? t.target_card_id : t.target_debt_id)
-                : t.duplicate_status !== 'EXACT_DUPLICATE',
-            }
-          }),
-        }
-      })
-    )
-  }
 
   // =========================================================================
   // BULK COMMIT EXECUTION
@@ -574,7 +482,6 @@ export default function ImportPage() {
         summaryOnly: !importMovements,
         cards,
         accounts,
-        debts,
       })
 
       if (res.success) {
@@ -686,7 +593,7 @@ export default function ImportPage() {
             }`}
           >
             <CardIcon className="h-4 w-4" />
-            <span>💳 Kredi Kartı Ekstresi</span>
+            <span>Kredi Kartı Ekstresi</span>
           </button>
 
           <button
@@ -701,7 +608,7 @@ export default function ImportPage() {
             }`}
           >
             <Building2 className="h-4 w-4" />
-            <span>🏦 Vadesiz Banka Hesap Dökümü</span>
+            <span>Vadesiz Banka Hesap Dökümü</span>
           </button>
         </div>
 
@@ -717,7 +624,7 @@ export default function ImportPage() {
             }`}
             title="Hareket satırlarını işlem defterine kaydetmeden yalnızca kart dönem borcunu veya banka kapanış bakiyesini günceller."
           >
-            ⚡ Sadece Özet / Bakiye Güncelle
+            <span className="inline-flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Sadece Özet / Bakiye Güncelle</span>
           </button>
           <button
             type="button"
@@ -1496,78 +1403,7 @@ export default function ImportPage() {
                               />
                             </div>
 
-                            {activeMode === 'bank_account' && (
-                              <div className="space-y-1.5">
-                                <Select
-                                  value={tx.action || 'DIRECT_EXPENSE'}
-                                  onChange={(e) =>
-                                    handleActionChange(
-                                      item.id,
-                                      tx.id,
-                                      e.target.value as ReconciliationActionType
-                                    )
-                                  }
-                                  className="h-8 text-xs font-semibold"
-                                >
-                                  <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
-                                  <option value="INVESTMENT_TRANSFER">📈 Yatırım Transferi (Hariç)</option>
-                                  <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
-                                  <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
-                                  <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
-                                  <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
-                                  <option value="FREE_INCOME">💵 Serbest Gelir</option>
-                                  <option value="INTERNAL_TRANSFER">🔄 Transfer</option>
-                                </Select>
-
-                                {(tx.action === 'COLLECT_RECEIVABLE' || tx.action === 'PAY_DEBT') && (
-                                  <Select
-                                    value={tx.target_debt_id || ''}
-                                    onChange={(e) =>
-                                      handleRowFieldChange(
-                                        item.id,
-                                        tx.id,
-                                        'target_debt_id',
-                                        e.target.value
-                                      )
-                                    }
-                                    className="h-8 text-xs border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-medium"
-                                  >
-                                    <option value="">🎯 (Borç/Alacak Seçin)</option>
-                                    {debts
-                                      .filter((d) => (tx.action === 'COLLECT_RECEIVABLE' ? d.type === 'Alacak' : d.type === 'Borç'))
-                                      .map((d) => (
-                                        <option key={d.id} value={d.id}>
-                                          {d.person_or_entity} ({formatCurrency(d.remaining)})
-                                        </option>
-                                      ))}
-                                  </Select>
-                                )}
-
-                                {(tx.action === 'CARD_PAYMENT' || tx.action === 'CASH_ADVANCE') && (
-                                  <Select
-                                    value={tx.target_card_id || ''}
-                                    onChange={(e) =>
-                                      handleRowFieldChange(
-                                        item.id,
-                                        tx.id,
-                                        'target_card_id',
-                                        e.target.value
-                                      )
-                                    }
-                                    className="h-8 text-xs border-primary/50 bg-primary/10 text-primary font-medium"
-                                  >
-                                    <option value="">💳 (Kart Seçin)</option>
-                                    {cards.map((c) => (
-                                      <option key={c.id} value={c.id}>
-                                        {c.bank} {c.card_name}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                )}
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-2">
+                            <div>
                               <Select
                                 value={tx.analysis_group}
                                 onChange={(e) =>
@@ -1585,26 +1421,6 @@ export default function ImportPage() {
                                 <option value="Finansman">Finansman</option>
                                 <option value="Hariç">Hariç</option>
                               </Select>
-
-                              <Select
-                                value={tx.project_id || ''}
-                                onChange={(e) =>
-                                  handleRowFieldChange(
-                                    item.id,
-                                    tx.id,
-                                    'project_id',
-                                    e.target.value || undefined
-                                  )
-                                }
-                                className="h-8 text-xs font-sans"
-                              >
-                                <option value="">(Proje Yok)</option>
-                                {projects.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name}
-                                  </option>
-                                ))}
-                              </Select>
                             </div>
                           </div>
                         ))}
@@ -1619,11 +1435,8 @@ export default function ImportPage() {
                               <th scope="col" className="p-2.5">Tarih</th>
                               <th scope="col" className="p-2.5">Açıklama</th>
                               <th scope="col" className="p-2.5">İşlem Adı</th>
-                              {activeMode === 'bank_account' && (
-                                <th scope="col" className="p-2.5">Uzlaştırma Aksiyonu</th>
-                              )}
+
                               <th scope="col" className="p-2.5">Grup</th>
-                              <th scope="col" className="p-2.5">Proje</th>
                               <th scope="col" className="p-2.5 text-right">Tutar</th>
                             </tr>
                           </thead>
@@ -1690,78 +1503,7 @@ export default function ImportPage() {
                                   />
                                 </td>
 
-                                {activeMode === 'bank_account' && (
-                                  <td className="p-2.5">
-                                    <div className="space-y-1.5 min-w-[190px]">
-                                      <Select
-                                        value={tx.action || 'DIRECT_EXPENSE'}
-                                        onChange={(e) =>
-                                          handleActionChange(
-                                            item.id,
-                                            tx.id,
-                                            e.target.value as ReconciliationActionType
-                                          )
-                                        }
-                                        className="h-7 text-xs font-semibold"
-                                      >
-                                        <option value="CARD_PAYMENT">💳 Kart Borcu Kapat (Hariç)</option>
-                                        <option value="INVESTMENT_TRANSFER">📈 Yatırım Transferi (Hariç)</option>
-                                        <option value="CASH_ADVANCE">💸 Karttan Nakit Avans (Borç Artışı)</option>
-                                        <option value="COLLECT_RECEIVABLE">💰 Alacak Tahsil Et (Gelir)</option>
-                                        <option value="PAY_DEBT">🤝 Şahıs Borcu Kapat (Hariç)</option>
-                                        <option value="DIRECT_EXPENSE">🛒 Doğrudan Harcama</option>
-                                        <option value="FREE_INCOME">💵 Serbest Gelir</option>
-                                        <option value="INTERNAL_TRANSFER">🔄 Transfer</option>
-                                      </Select>
 
-                                      {(tx.action === 'COLLECT_RECEIVABLE' || tx.action === 'PAY_DEBT') && (
-                                        <Select
-                                          value={tx.target_debt_id || ''}
-                                          onChange={(e) =>
-                                            handleRowFieldChange(
-                                              item.id,
-                                              tx.id,
-                                              'target_debt_id',
-                                              e.target.value
-                                            )
-                                          }
-                                          className="h-7 text-[11px] border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-medium"
-                                        >
-                                          <option value="">🎯 (Borç/Alacak Seçin)</option>
-                                          {debts
-                                            .filter((d) => (tx.action === 'COLLECT_RECEIVABLE' ? d.type === 'Alacak' : d.type === 'Borç'))
-                                            .map((d) => (
-                                              <option key={d.id} value={d.id}>
-                                                {d.person_or_entity} ({formatCurrency(d.remaining)})
-                                              </option>
-                                            ))}
-                                        </Select>
-                                      )}
-
-                                      {(tx.action === 'CARD_PAYMENT' || tx.action === 'CASH_ADVANCE') && (
-                                        <Select
-                                          value={tx.target_card_id || ''}
-                                          onChange={(e) =>
-                                            handleRowFieldChange(
-                                              item.id,
-                                              tx.id,
-                                              'target_card_id',
-                                              e.target.value
-                                            )
-                                          }
-                                          className="h-7 text-[11px] border-primary/50 bg-primary/10 text-primary font-medium"
-                                        >
-                                          <option value="">💳 (Kart Seçin)</option>
-                                          {cards.map((c) => (
-                                            <option key={c.id} value={c.id}>
-                                              {c.bank} {c.card_name}
-                                            </option>
-                                          ))}
-                                        </Select>
-                                      )}
-                                    </div>
-                                  </td>
-                                )}
 
                                 <td className="p-2.5">
                                   <Select
@@ -1783,27 +1525,7 @@ export default function ImportPage() {
                                   </Select>
                                 </td>
 
-                                <td className="p-2.5">
-                                  <Select
-                                    value={tx.project_id || ''}
-                                    onChange={(e) =>
-                                      handleRowFieldChange(
-                                        item.id,
-                                        tx.id,
-                                        'project_id',
-                                        e.target.value || undefined
-                                      )
-                                    }
-                                    className="h-7 text-xs w-32 font-sans"
-                                  >
-                                    <option value="">(Yok)</option>
-                                    {projects.map((p) => (
-                                      <option key={p.id} value={p.id}>
-                                        {p.name}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                </td>
+
 
                                 <td className="p-2.5 text-right font-bold whitespace-nowrap">
                                   <span

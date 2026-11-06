@@ -1033,8 +1033,9 @@ export default function CredentialsPage() {
               <p>
                 Bu süre boyunca <strong>ana dashboard'da</strong> ve bu ekranda canlı bir geri sayım sayacı çalışır. Parolanızı hatırlarsanız veya bu işlemi siz başlatmadıysanız dilediğiniz an tek tıkla iptal edebilirsiniz.
               </p>
-              <p className="font-semibold text-rose-600 dark:text-rose-400">
-                ⚠️ 24 saat tamamlandığında eski çözülemeyen şifreli veriler kalıcı olarak silinecek ve yeni bir ana parola belirleyebileceksiniz.
+              <p className="font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+                <span>24 saat tamamlandığında eski çözülemeyen şifreli veriler kalıcı olarak silinecek ve yeni bir ana parola belirleyebileceksiniz.</span>
               </p>
             </div>
 
@@ -1666,7 +1667,7 @@ export default function CredentialsPage() {
                 className="h-7 text-[11px] font-medium text-primary hover:text-primary-foreground hover:bg-primary"
               >
                 <Sparkles className="w-3 h-3 mr-1" />
-                {isGeneratorOpen ? 'Üreteci Kapat' : '🔑 Parola / PIN Üret'}
+                {isGeneratorOpen ? 'Üreteci Kapat' : 'Parola / PIN Üret'}
               </Button>
             </div>
 

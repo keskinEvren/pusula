@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
+import { DynamicIcon } from '@/components/ui/icon-picker'
 import { useToast } from '@/lib/toast-context'
 import { formatLocalDateInput, isUUID } from '@/lib/utils'
 import type { JournalEntry, Routine, RoutineLog, Transaction } from '@/types/database'
@@ -495,7 +496,7 @@ function JournalPageContent() {
                   title={m.label}
                   aria-label={m.label}
                 >
-                  <span>{m.icon}</span>
+                  <DynamicIcon name={m.icon} className="h-3.5 w-3.5" />
                 </button>
               ))}
             </div>
@@ -519,7 +520,9 @@ function JournalPageContent() {
                 >
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-sm">{m.icon}</span>
+                      <span className="p-1 rounded-md bg-muted/60 text-foreground shrink-0">
+                        <DynamicIcon name={m.icon} className="h-3.5 w-3.5" />
+                      </span>
                       <span className="text-[11px] font-semibold text-muted-foreground">
                         {entry.entry_date}
                       </span>
@@ -627,7 +630,7 @@ function JournalPageContent() {
                       title={m.label}
                       aria-label={m.label}
                     >
-                      <span>{m.icon}</span>
+                      <DynamicIcon name={m.icon} className="h-3.5 w-3.5" />
                       <span className="hidden sm:inline text-[11px]">{m.label.split('/')[0]}</span>
                     </button>
                   ))}
@@ -697,7 +700,7 @@ function JournalPageContent() {
                         : 'bg-background/40 text-muted-foreground border-border hover:bg-muted'
                     }`}
                   >
-                    <span>{tmpl.icon}</span>
+                    <DynamicIcon name={tmpl.icon} className="h-3 w-3" />
                     <span>{tmpl.title}</span>
                   </button>
                 ))}
@@ -797,7 +800,10 @@ function JournalPageContent() {
                 <span>•</span>
                 <span>{editorDate}</span>
                 <span>•</span>
-                <span>{moodMeta.icon} {moodMeta.label.split(' ')[0]}</span>
+                <span className="flex items-center gap-1">
+                  <DynamicIcon name={moodMeta.icon} className="h-3.5 w-3.5" />
+                  <span>{moodMeta.label.split(' ')[0]}</span>
+                </span>
               </div>
 
               <div className="flex items-center gap-3">

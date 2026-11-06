@@ -1989,7 +1989,7 @@ function DebtsContent() {
           setIsDeductModalOpen(false)
           setSelectedDebt(null)
         }}
-        title={selectedDebt?.type === 'Alacak' ? '💰 Tahsilat Al' : '💸 Borç Ödemesi Düş'}
+        title={selectedDebt?.type === 'Alacak' ? 'Tahsilat Al' : 'Borç Ödemesi Düş'}
         description={
           selectedDebt?.type === 'Alacak'
             ? `${selectedDebt.person_or_entity} alacağından tahsil edilen tutarı girin.`

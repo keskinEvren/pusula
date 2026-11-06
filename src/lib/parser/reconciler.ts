@@ -1,6 +1,6 @@
 import type { ClassificationStatus, ExtractedTransaction, ReconciliationActionType } from './types'
 import { matchMerchant } from './merchant-matcher'
-import type { Debt, CreditCard, Project, MerchantMapping } from '@/types/database'
+import type { Debt, CreditCard, MerchantMapping } from '@/types/database'
 
 export interface ReconciliationSuggestion {
   action: ReconciliationActionType
@@ -9,7 +9,6 @@ export interface ReconciliationSuggestion {
   merchant: string
   target_card_id?: string
   target_debt_id?: string
-  project_id?: string
   confidence: 'high' | 'medium' | 'low'
   classification_status: ClassificationStatus
   reasons: string[]
@@ -217,7 +216,6 @@ export function reconcileBankMovement(
       type: 'Transfer',
       analysis_group: 'Hariç',
       merchant: matched.merchant || 'Yatırım / Varlık Transferi',
-      project_id: matched.project_id,
       confidence: 'high',
       classification_status: 'HIGH_CONFIDENCE',
       reasons: ['Yatırım kuruluşu veya varlık transferi ifadesi eşleşti.'],
@@ -225,7 +223,7 @@ export function reconcileBankMovement(
   }
 
   // 2.5. Doğrudan FAST / EFT ile Harcama veya Eşleşen Diğer Transferler
-  const { merchant, analysis_group, type: mappedType, project_id } = matchMerchant(rawDescription, userMappings)
+  const { merchant, analysis_group, type: mappedType } = matchMerchant(rawDescription, userMappings)
 
   if (analysis_group === 'Hariç') {
     return {
@@ -233,7 +231,6 @@ export function reconcileBankMovement(
       type: mappedType || 'Transfer',
       analysis_group: 'Hariç',
       merchant,
-      project_id,
       confidence: 'high',
       classification_status: mappedType === 'Transfer' ? 'HIGH_CONFIDENCE' : 'NEEDS_REVIEW',
       reasons: mappedType === 'Transfer'
@@ -247,7 +244,6 @@ export function reconcileBankMovement(
     type: mappedType || 'Harcama',
     analysis_group,
     merchant,
-    project_id,
     confidence: 'medium',
     classification_status: 'HIGH_CONFIDENCE',
     reasons: ['Normal gider olarak sınıflandırıldı.'],

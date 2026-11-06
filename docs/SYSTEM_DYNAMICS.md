@@ -1,103 +1,92 @@
 # ⚡ Pusula — Sistem Dinamikleri & Olay Akışları (System Dynamics)
 
-Bu döküman, Pusula'da gerçekleşen bir olayın (Event) sistemdeki diğer varlıkları ve finansal dengeleri **nasıl zincirleme etkilediğini** detaylandırır.
+Bu döküman, Pusula'daki modüllerin **bağımsız, öngörülebilir ve kontrollü** çalışma akışlarını detaylandırır. Modüller arası gizli yan etkiler (otomatik çapraz bakiye düşümleri veya zorunlu proje maliyet köprüleri) kaldırılmış; her akış kendi sorumluluk alanında atomik ve şeffaf hale getirilmiştir.
 
 ---
 
 ## 🔄 1. Olay: Ekstre PDF/CSV Yüklendiğinde (Statement Ingestion)
 
+Kullanıcı ekstre yüklerken iki farklı moddan birini seçebilir: **Tam Hareket İçe Aktarımı** veya **Sadece Ekstre Özeti (`summary_only`)**.
+
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Founder as 👤 Kurucu
+    actor User as 👤 Kullanıcı
     participant Parser as 📄 Ekstre Ayrıştırıcı
     participant Review as 🔍 Onay Ekranı
-    participant DB as 🗄️ Supabase
-    participant Dashboard as 📊 Canlı Dashboard
-    participant Project as 🚀 Proje Çalışma Alanı
+    participant DB as 🗄️ Supabase (Atomik RPC)
+    participant Dashboard as 📊 Kokpit
 
-    Founder->>Parser: Ekstre PDF/CSV Yükler
+    User->>Parser: Ekstre PDF/CSV/XLSX Yükler
     Parser->>Parser: 1. Türkçe harf restorasyonu yapar<br/>2. Başlık/özet satırlarını eler<br/>3. Taksit sütununu ayrıştırır<br/>4. İşyerlerini normalize eder
-    Parser->>Review: Ayrıştırılmış satırları sunar
-    Founder->>Review: İşyeri, grup, proje seçimlerini onaylar
-    Review->>DB: 1. `transactions` tablosuna toplu yazar<br/>2. `card_statements` dönem kaydı ekler<br/>3. `credit_cards.statement_debt` günceller
-    DB->>Dashboard: Net Varlık, Kart Borcu ve Harcama Dağılımını reaktif günceller
-    DB->>Project: Projeye bağlı harcamaları Proje Maliyetine ekler
+    Parser->>Review: Ayrıştırılmış satırları ve ekstre özetini sunar
+    User->>Review: İçe aktarım modunu (Tam / Sadece Özet) ve satırları onaylar
+    Review->>DB: `import_statement_bundle` RPC çağrılır:<br/>1. `statement_imports` kaydı açılır (idempotent hash kontrolü)<br/>2. Seçildiyse `transactions` satırları yazılır<br/>3. `card_statements` dönem özeti eklenir<br/>4. `credit_cards` dönem borcu güncellenir
+    DB->>Dashboard: Kart borcu, ekstre trendi ve işlem defteri güncellenir
 ```
 
-### Zincirleme Etkiler:
-1. **Borç Ödemesi Ayrımı:** Ekstredeki `Ödeme - Enpara` gibi satırlar `Kart Ödemesi` (`Hariç`) olarak işaretlenir. Bu sayede hem kart borcu hem de ödeme ikinci kez harcama olarak **çift sayılmaz**.
-2. **Kredi Kartı Trendi:** Kartın bir önceki ekstre borcu ile yeni ekstre borcu kıyaslanır; aradaki fark (▲ Artış / ▼ Azalış) ve yüzde değişimi hesaplanarak ekstre geçmişine işlenir.
-3. **Proje Maliyeti:** Ekstredeki `Hostinger`, `Meta Ads`, `Canva` gibi hareketlere bir `project_id` seçildiyse, ilgili projenin harcanan bütçesi otomatik olarak artar.
+### Temel Kurallar:
+1. **Çift Sayım Koruması (No Double-Counting):** Ekstredeki `Ödeme - Enpara` gibi borç ödeme satırları `Kart Ödemesi` (`Hariç`) olarak işaretlenir. Böylece hem kart borcu hem de yapılan ödeme ikinci kez harcama olarak sayılmaz.
+2. **Kredi Kartı Trendi:** Kartın bir önceki ekstre borcu ile yeni ekstre borcu kıyaslanır; aradaki fark (▲ Artış / ▼ Azalış) ve yüzde değişimi hesaplanarak `card_statements` geçmişine işlenir.
+3. **Atomik Geri Alma (Rollback):** İçe aktarılan bir ekstre geri alındığında (`rollback_statement_import`), yalnızca o içe aktarıma ait işlemler silinir ve kartın önceki ekstre durumu güvenle geri yüklenir.
 
 ---
 
-## 💸 2. Olay: Manuel Hareket Girişi Yapıldığında (Transaction Event)
+## 💳 2. Olay: Hesap ve Kredi Kartı Bakiye Yönetimi (Manuel Kontrol & Damla Motoru)
+
+Hesap bakiyeleri (`accounts`) ve kredi kartı borçları (`credit_cards`), diğer modüllerin yan etkilerinden bağımsız olarak doğrudan kullanıcı kontrolündedir:
+
+1. **Manuel Bakiye ve Borç Güncelleme:**
+   - Kullanıcı banka/nakit hesap bakiyelerini veya kredi kartı güncel borçlarını doğrudan ilgili modülden günceller.
+   - Kredi kartı ödeme kaydı girildiğinde, başka bir banka hesabından otomatik bakiye düşümü yapılmaz; kart borcu ve hesap bakiyesi kullanıcının gerçek banka durumuna göre bağımsız tutulur.
+2. **Birikim Hesapları & "Damla" Günlük Getiri Motoru:**
+   - `Birikim` türündeki hesaplarda kullanıcı ana para (`savings_principal`), yıllık net getiri oranı (`annual_yield_rate`) ve başlangıç tarihini (`yield_start_date`) tanımlar.
+   - Sistem (`savings-engine.ts`), geçen gün sayısına göre biriken net getiriyi, günlük damla hızını ve ay sonu projeksiyonunu kuruş hassasiyetinde hesaplar.
+
+---
+
+## 🤝 3. Olay: Borç, Alacak ve Taksit Planı Yönetimi (`debts` & `debt_installments`)
+
+Borç ve alacak modülü, banka hesap bakiyelerinden bağımsız olarak kendi iç bütünlüğüyle çalışır:
 
 ```mermaid
 flowchart TD
-    A["➕ Yeni Hareket Girişi"] --> B{"Ödeme Aracı Nedir?"}
-    
-    B -->|Vadesiz Hesap / Nakit| C["`accounts.balance` Düşer"]
-    B -->|Kredi Kartı| D["`credit_cards.current_debt` Artar"]
+    A["🤝 Borç / Alacak İşlemi"] --> B{"Kayıt Yapısı Nedir?"}
 
-    A --> E{"Analiz Grubu Nedir?"}
-    E -->|Kişisel| F["Kişisel Tüketime Eklenir"]
-    E -->|İş / Proje| G{"Bağlı Proje Var mı?"}
-    E -->|Finansman| H["Finansman Maliyetine Eklenir"]
-    E -->|Hariç| I["Tüketimden Muaf Tutulur"]
+    B -->|Düz Borç / Alacak| C["`debts.past_payments` Artar<br/>`debts.remaining` Düşer"]
+    B -->|Taksit Planlı Borç| D["`debt_installments` Taksit Satırı `Ödendi` İşaretlenir"]
 
-    G -->|Evet| J["`projects.total_cost` Canlı Yükselir"]
-    G -->|Hayır| K["Genel İş Giderine Yazılır"]
-
-    C & D & F & H & J --> L["📊 Dashboard Net Varlık & Runway Anında Güncellenir"]
+    D --> E["Kalan Açık Taksitlerin Toplamı `debts.remaining` Olarak Senkronize Edilir"]
+    C --> F{"Kalan Bakiye 0 mı?"}
+    E --> F
+    F -->|Evet| G["Durum: `Kapatıldı`"]
+    F -->|Hayır| H["Durum: `Açık`"]
 ```
 
----
-
-## 🤝 3. Olay: Alacak Tahsilatı veya Borç Geri Ödemesi (Debt/Receivable Auto-Sync)
-
-```mermaid
-flowchart TD
-    A["🤝 Tahsilat / Geri Ödeme Gerçekleşti"] --> B{"İşlem Türü Nedir?"}
-
-    B -->|Alacak Tahsilatı (Maaş / Hakediş)| C["`debts.past_payments` Artar<br/>`debts.remaining` Düşer"]
-    B -->|Borç Geri Ödemesi (Şahıs / Artı Para)| D["`debts.past_payments` Artar<br/>`debts.remaining` Düşer"]
-
-    C --> E{"Kalan Bakiye 0 mı?"}
-    D --> E
-    E -->|Evet| F["Durum: `Kapatıldı` olarak pasife geçer"]
-    E -->|Hayır| G["Durum: `Açık` kalmaya devam eder"]
-
-    C --> H["Nakit Girişi ➔ Seçilen `accounts.balance` Otomatik Yükselir"]
-    D --> I["Nakit Çıkışı ➔ Seçilen `accounts.balance` Otomatik Düşer"]
-
-    H & I & F & G --> J["📊 Net Varlık & Nakit Bakiyesi Anında Güncellenir"]
-```
+- **Aynı Gün Taksit Birleştirme (`mergeSameDayInstallments`):** Aynı borç altında aynı vade gününe düşen taksit kalemleri otomatik birleştirilerek takip karmaşası önlenir.
+- **Bağımsız Bakiye:** Bir borç taksiti ödendiğinde veya alacak tahsil edildiğinde yalnızca ilgili borç/alacak kaydının kalan tutarı (`remaining`) güncellenir; vadesiz hesap bakiyelerine otomatik müdahale edilmez.
 
 ---
 
-## ⏰ 4. Olay: 6 Aylık Planlı Nakit Yükü Projeksiyonu (Abonelikler + Taksitler)
+## 📊 4. Olay: Aylık Bütçe Dengesi & 6 Aylık Nakit Yükü Projeksiyonu
 
-Sistem gelecek 6 ayın nakit çıkış yükünü sadece aboneliklerden değil, **kredi kartlarının devam eden taksitlerinden** de hesaplar:
+Kokpit (`/`), kullanıcının aylık finansal dengesini beyan edilen gelirler, sabit taahhütler ve değişken yük üzerinden hesaplar:
 
-$$\text{Ay } N \text{ Nakit Yükü} = \sum \text{Aktif Aylık Abonelikler} + \sum \text{Ay } N\text{'e İsabet Eden Kredi Kartı Taksitleri}$$
+$$\text{Aylık Serbest Bütçe} = \text{Aylık Net Gelir} - \text{Sabit Taahhütler (Abonelik + Bu Ayın Taksitleri)} - \text{Değişken Yük}$$
 
-1. **Abonelikler:** Her ay düzenli yük (Örn: Cursor ₺960 + ChatGPT ₺1.090 = ₺2.050/ay).
-2. **Taksitler:** Devam eden taksitler (Örn: `RIHTIM VE VERASET 4/6` ➔ Gelecek 2 ay boyunca her ay ₺1.879 ek nakit yükü).
-3. **İptal Kararı:** Abonelik `İptal Et` işaretlendiğinde veya kapatıldığında projeksiyondan anında düşer.
+1. **Beyan Edilen Gelirler (`incomes`):** Düzenli (maaş, kira vb.) ve tek seferlik gelirler, döviz kuru dönüşümü (`USD`, `EUR`, `GBP` ➔ `TRY`) destekli olarak aylık net geliri oluşturur.
+2. **6 Aylık Planlı Nakit Yükü (`projectSixMonthCashLoad`):**
+   - Aktif abonelikler (`subscriptions`) + kredi kartı devam eden taksitleri + borç taksit planı (`debt_installments`) birleştirilerek gelecek 6 ayın nakit çıkış projeksiyonu oluşturulur.
+   - Kredi kartı üzerinden ödenen abonelikler ve taksitler, kart ekstresiyle çift sayılmaması için ayrıştırılır.
 
 ---
 
-## 🚀 5. Olay: Proje Yaşam Döngüsü & Bütçe Tavanı (Budget Cap & Focus Gate)
+## 🚀 5. Olay: Proje Çalışma Masası, Ajanda & AI Bağlamı (`life.md`)
 
-1. **Fikir Aşaması:** `ideas` havuzunda depolanır.
-2. **Projeye Dönüştürme:** Fikir onaylandığında tek tıkla `projects` tablosunda `status: 'Fikir'` veya `'Planlama'` olarak yeni proje açılır; opsiyonel bir **Bütçe Tavanı (`budget_limit`)** belirlenir (Örn: ₺20.000).
-3. **Bütçe Kontrol Dinamiği:**
-   - $\text{Harcanan} \ge \text{Bütçe} \times 0.85$ ➔ 🟡 **Yaklaşan Bütçe Uyarısı**
-   - $\text{Harcanan} \ge \text{Bütçe}$ ➔ 🔴 **Bütçe Aşımı Uyarısı**
-4. **Kapasite Kapısı (Focus Gate):**
-   - Aktif geliştirme sayısı $\ge 2$ olduğunda kurucu uyarılır.
-5. **Maliyet Muhasebesi (Bridge):**
-   - $\text{Proje Gerçek Maliyeti} = \sum \text{Transactions}(project\_id) + \sum \text{Subscriptions}(project\_id)$
-   - Her harcama ve abonelik projeye anında yansır.
+1. **Çalışma Masası Kapasite Kapısı (Focus Gate):**
+   - `Planlama` ve `Geliştirmede` durumundaki aktif projelerin toplamı en fazla **2** olabilir (`checkProjectCapacity`).
+   -Projeler finansal işlemlerden tamamen bağımsızdır; odak noktası Markdown şartname (`spec_markdown`), repo/canlı bağlantılar ve üretim takibidir.
+2. **Ajanda & Zamanlayıcı (`agenda_items`):**
+   - Günlük görevler bir projeye bağlanabilir, Pomodoro veya kronometre ile odak süresi (`duration_minutes`) kaydedilir ve yarım kalan görevler tek tıkla bugüne taşınabilir.
+3. **AI Bağlam Motoru (`life-md-engine.ts`):**
+   - Kullanıcının tüm modüllerdeki güncel durumu (net varlık, hesaplar, kartlar, borçlar, gelirler, projeler, rutinler, hedefler) tek bir yapılandırılmış `life.md` dokümanına dönüştürülerek yapay zekâ araçlarına bağlam olarak verilebilir.

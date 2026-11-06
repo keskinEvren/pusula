@@ -46,20 +46,6 @@ export interface CardStatementRemainingResult {
   isFullyPaid: boolean
 }
 
-export interface BudgetEvaluationResult {
-  ratio: number | null
-  status: 'GREEN' | 'YELLOW' | 'RED' | 'NO_BUDGET'
-  isWarning: boolean
-  isExceeded: boolean
-}
-
-export interface FounderRunwayResult {
-  monthlyBurn: number
-  projectMonthlyLoad: number
-  totalMonthlyCashDrain: number
-  runwayMonths: number | 'infinite'
-}
-
 export interface InstallmentScheduleItem {
   amountPerMonth?: number | string
   remainingMonths?: number
@@ -280,66 +266,6 @@ export function calculateSpendingBreakdown(
     financing: round2(financing),
     excluded: round2(excluded),
     totalConsumption,
-  }
-}
-
-/**
- * 4. Proje Gerçek Maliyeti (The Bridge)
- * Projeye ait tüm tekil harcamalar ve aktif SaaS aboneliklerinin canlı toplamı
- */
-export function calculateProjectTotalCost(
-  projectId: string,
-  transactions: Array<{ project_id?: string | null; amount: number | null | undefined }>,
-  subscriptions: Array<{
-    project_id?: string | null
-    amount: number | null | undefined
-    status?: string | null
-    decision?: string | null
-    currency?: string | null
-  }>,
-  rates?: Record<string, number>
-): number {
-  const directCost = (transactions || [])
-    .filter((t) => t && t.project_id === projectId)
-    .reduce((sum, t) => sum + safeParseAmount(t.amount), 0)
-
-  const subCost = (subscriptions || [])
-    .filter((s) => s && s.project_id === projectId && s.status !== 'İptal' && (s as any).decision !== 'İptal Et')
-    .reduce((sum, s) => {
-      const amt = safeParseAmount(s.amount)
-      const cur = (s.currency || 'TRY').toUpperCase()
-      const rate = (rates && rates[cur]) ? rates[cur] : 1
-      return sum + round2(amt * rate)
-    }, 0)
-
-  return round2(directCost + subCost)
-}
-
-/**
- * 5. Proje Bütçe Tavanı Değerlendirmesi
- * %85 ve üstü: Sarı Uyarı | %100 ve üstü: Kırmızı Aşım
- */
-export function evaluateProjectBudget(
-  totalCost: number,
-  budgetLimit: number | null | undefined
-): BudgetEvaluationResult {
-  if (!budgetLimit || budgetLimit <= 0) {
-    return { ratio: null, status: 'NO_BUDGET', isWarning: false, isExceeded: false }
-  }
-
-  const ratio = round2(totalCost / budgetLimit)
-  const isExceeded = totalCost >= budgetLimit
-  const isWarning = totalCost >= budgetLimit * 0.85 && !isExceeded
-
-  let status: BudgetEvaluationResult['status'] = 'GREEN'
-  if (isExceeded) status = 'RED'
-  else if (isWarning) status = 'YELLOW'
-
-  return {
-    ratio,
-    status,
-    isWarning,
-    isExceeded,
   }
 }
 
@@ -596,76 +522,6 @@ export function projectSixMonthCashLoad(
 }
 
 /**
- * 7. Kurucu Runway Formülü
- * Likit Nakit / (Kişisel Aylık Tüketim + Proje Aylık Yakma Hızı)
- */
-export function calculateFounderRunway(
-  availableCash: number,
-  monthlyPersonalBurn: number,
-  projectMonthlyCosts = 0
-): FounderRunwayResult {
-  const totalMonthlyCashDrain = round2(monthlyPersonalBurn + projectMonthlyCosts)
-
-  if (totalMonthlyCashDrain <= 0) {
-    return {
-      monthlyBurn: round2(monthlyPersonalBurn),
-      projectMonthlyLoad: round2(projectMonthlyCosts),
-      totalMonthlyCashDrain: 0,
-      runwayMonths: 'infinite',
-    }
-  }
-
-  const runwayMonths = round2(availableCash / totalMonthlyCashDrain)
-
-  return {
-    monthlyBurn: round2(monthlyPersonalBurn),
-    projectMonthlyLoad: round2(projectMonthlyCosts),
-    totalMonthlyCashDrain,
-    runwayMonths,
-  }
-}
-
-/**
- * 8. Alacak Tahsilat Senkronizasyonu
- * Alacak tahsil edildiğinde: Hesap bakiyesi artar, kalan alacak düşer
- */
-export function collectReceivable(
-  currentAccountBalance: number,
-  currentRemaining: number,
-  collectedAmount: number
-): { newAccountBalance: number; newReceivableRemaining: number; isClosed: boolean } {
-  const newAccountBalance = round2(currentAccountBalance + collectedAmount)
-  const newReceivableRemaining = round2(Math.max(0, currentRemaining - collectedAmount))
-  const isClosed = newReceivableRemaining <= 0
-
-  return {
-    newAccountBalance,
-    newReceivableRemaining,
-    isClosed,
-  }
-}
-
-/**
- * 9. Borç Geri Ödeme Senkronizasyonu
- * Borç ödendiğinde: Hesap bakiyesi düşer, kalan borç düşer
- */
-export function payDebt(
-  currentAccountBalance: number,
-  currentRemaining: number,
-  paidAmount: number
-): { newAccountBalance: number; newDebtRemaining: number; isClosed: boolean } {
-  const newAccountBalance = round2(currentAccountBalance - paidAmount)
-  const newDebtRemaining = round2(Math.max(0, currentRemaining - paidAmount))
-  const isClosed = newDebtRemaining <= 0
-
-  return {
-    newAccountBalance,
-    newDebtRemaining,
-    isClosed,
-  }
-}
-
-/**
  * 10. Kademeli Alım & Ağırlıklı Ortalama Maliyet (DCA - Dollar Cost Averaging)
  * Yeni Adet = Eski Adet + Alınan Adet
  * Yeni Birim Maliyet = ((Eski Adet * Eski Maliyet) + (Alınan Adet * Alış Fiyatı)) / Yeni Adet
@@ -909,5 +765,226 @@ export function calculateMonthlyBudgetBalance(
     totalUsedRatioPct,
   }
 }
+
+/**
+ * 14. Getirili & Günlük Birikim Hesabı ("Damla Motoru")
+ */
+export interface AccountYieldInput {
+  balance?: number | string | null
+  interest_rate?: number | string | null
+  withholding_tax_rate?: number | string | null
+  reserved_base_amount?: number | string | null
+  maturity_date?: string | null
+  last_yield_applied_at?: string | null
+  type?: string | null
+}
+
+export interface AccountYieldResult {
+  activePrincipal: number
+  reservedBaseAmount: number
+  interestRate: number
+  withholdingTaxRate: number
+  dailyGrossYield: number
+  dailyNetYield: number
+  monthlySimpleNetYield: number
+  monthlyCompoundNetYield: number
+  yearlySimpleNetYield: number
+  pendingDays: number
+  pendingNetYield: number
+  daysToMaturity: number | null
+  isMatured: boolean
+  hasYield: boolean
+}
+
+export interface AccountsYieldSummaryResult {
+  totalCash: number
+  liquidCash: number
+  savingsCash: number
+  totalActivePrincipal: number
+  totalDailyNetYield: number
+  totalMonthlyNetYield: number
+  totalYearlyNetYield: number
+  totalPendingNetYield: number
+  yieldAccountCount: number
+}
+
+function parseYMDParts(dateStr: string): [number, number, number] | null {
+  if (!dateStr || typeof dateStr !== 'string') return null
+  const match = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const y = parseInt(match[1], 10)
+  const m = parseInt(match[2], 10)
+  const d = parseInt(match[3], 10)
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null
+  return [y, m - 1, d]
+}
+
+function calculateDayDifference(fromDateStr: string, toDateStr: string): number {
+  const fromParts = parseYMDParts(fromDateStr)
+  const toParts = parseYMDParts(toDateStr)
+  if (!fromParts || !toParts) return 0
+  const fromUtc = Date.UTC(fromParts[0], fromParts[1], fromParts[2])
+  const toUtc = Date.UTC(toParts[0], toParts[1], toParts[2])
+  return Math.round((toUtc - fromUtc) / (1000 * 60 * 60 * 24))
+}
+
+function formatDateToYMD(date: Date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function calculateAccountYield(
+  account?: AccountYieldInput | null,
+  referenceDate?: string | Date
+): AccountYieldResult {
+  if (!account) {
+    return {
+      activePrincipal: 0,
+      reservedBaseAmount: 0,
+      interestRate: 0,
+      withholdingTaxRate: 10,
+      dailyGrossYield: 0,
+      dailyNetYield: 0,
+      monthlySimpleNetYield: 0,
+      monthlyCompoundNetYield: 0,
+      yearlySimpleNetYield: 0,
+      pendingDays: 0,
+      pendingNetYield: 0,
+      daysToMaturity: null,
+      isMatured: false,
+      hasYield: false,
+    }
+  }
+
+  const refStr = referenceDate instanceof Date
+    ? formatDateToYMD(referenceDate)
+    : (typeof referenceDate === 'string' && referenceDate.trim()
+        ? referenceDate.trim().slice(0, 10)
+        : formatDateToYMD(new Date()))
+
+  const rawBalance = safeParseAmount(account.balance)
+  const balance = round2(Math.max(0, rawBalance))
+  const reservedBaseAmount = round2(Math.max(0, safeParseAmount(account.reserved_base_amount)))
+  const activePrincipal = Math.max(0, round2(balance - reservedBaseAmount))
+
+  const interestRate = Math.max(0, safeParseAmount(account.interest_rate))
+  const withholdingTaxRate = account.withholding_tax_rate !== undefined && account.withholding_tax_rate !== null
+    ? Math.max(0, Math.min(100, safeParseAmount(account.withholding_tax_rate)))
+    : 10
+
+  const hasYield = activePrincipal > 0 && interestRate > 0
+
+  const dailyGrossYield = hasYield ? round2((activePrincipal * (interestRate / 100)) / 365) : 0
+  const dailyNetYield = hasYield ? round2(dailyGrossYield * (1 - withholdingTaxRate / 100)) : 0
+  const monthlySimpleNetYield = hasYield ? round2(dailyNetYield * 30) : 0
+
+  // 30-day compound net yield for daily compounding interest
+  const dailyNetRate = hasYield ? ((interestRate / 100) / 365) * (1 - withholdingTaxRate / 100) : 0
+  const monthlyCompoundNetYield = hasYield ? round2(activePrincipal * (Math.pow(1 + dailyNetRate, 30) - 1)) : 0
+  const yearlySimpleNetYield = hasYield ? round2(dailyNetYield * 365) : 0
+
+  // Pending days & pending net yield calculation
+  let pendingDays = 0
+  if (hasYield) {
+    if (account.last_yield_applied_at && typeof account.last_yield_applied_at === 'string' && account.last_yield_applied_at.trim()) {
+      const parts = parseYMDParts(account.last_yield_applied_at)
+      if (parts) {
+        const diff = calculateDayDifference(account.last_yield_applied_at.trim().slice(0, 10), refStr)
+        pendingDays = Math.max(0, diff)
+      } else {
+        // Geçersiz veya bozuk tarih formatında en az 1 günlük getiri kabul edilir
+        pendingDays = 1
+      }
+    } else {
+      pendingDays = 1
+    }
+  }
+  const pendingNetYield = hasYield && pendingDays > 0 ? round2(dailyNetYield * pendingDays) : 0
+
+  // Maturity calculation
+  let daysToMaturity: number | null = null
+  let isMatured = false
+  if (account.maturity_date && typeof account.maturity_date === 'string' && account.maturity_date.trim()) {
+    const parts = parseYMDParts(account.maturity_date)
+    if (parts) {
+      const diff = calculateDayDifference(refStr, account.maturity_date.trim().slice(0, 10))
+      daysToMaturity = diff
+      isMatured = diff <= 0
+    }
+  }
+
+  return {
+    activePrincipal,
+    reservedBaseAmount,
+    interestRate,
+    withholdingTaxRate,
+    dailyGrossYield,
+    dailyNetYield,
+    monthlySimpleNetYield,
+    monthlyCompoundNetYield,
+    yearlySimpleNetYield,
+    pendingDays,
+    pendingNetYield,
+    daysToMaturity,
+    isMatured,
+    hasYield,
+  }
+}
+
+export function calculateAccountsYieldSummary(
+  accounts: AccountYieldInput[] = [],
+  referenceDate?: string | Date
+): AccountsYieldSummaryResult {
+  let totalCash = 0
+  let liquidCash = 0
+  let savingsCash = 0
+  let totalActivePrincipal = 0
+  let totalDailyNetYield = 0
+  let totalMonthlyNetYield = 0
+  let totalYearlyNetYield = 0
+  let totalPendingNetYield = 0
+  let yieldAccountCount = 0
+
+  for (const acc of accounts || []) {
+    if (!acc) continue
+    const balance = round2(safeParseAmount(acc.balance))
+    totalCash = round2(totalCash + balance)
+
+    const type = (acc.type || '').toLowerCase()
+    if (type === 'vadesiz' || type === 'kasa' || type === 'gunluk_birikim' || type === 'nakit') {
+      liquidCash = round2(liquidCash + balance)
+    }
+
+    const yieldRes = calculateAccountYield(acc, referenceDate)
+
+    if (yieldRes.hasYield || type === 'gunluk_birikim' || type === 'vadeli') {
+      savingsCash = round2(savingsCash + balance)
+    }
+
+    if (yieldRes.hasYield) {
+      yieldAccountCount++
+      totalActivePrincipal = round2(totalActivePrincipal + yieldRes.activePrincipal)
+      totalDailyNetYield = round2(totalDailyNetYield + yieldRes.dailyNetYield)
+      totalMonthlyNetYield = round2(totalMonthlyNetYield + yieldRes.monthlySimpleNetYield)
+      totalYearlyNetYield = round2(totalYearlyNetYield + yieldRes.yearlySimpleNetYield)
+      totalPendingNetYield = round2(totalPendingNetYield + yieldRes.pendingNetYield)
+    }
+  }
+
+  return {
+    totalCash,
+    liquidCash,
+    savingsCash,
+    totalActivePrincipal,
+    totalDailyNetYield,
+    totalMonthlyNetYield,
+    totalYearlyNetYield,
+    totalPendingNetYield,
+    yieldAccountCount,
+  }
+}
+
 
 

@@ -11,7 +11,6 @@ import {
   Sparkles,
   CheckCircle2,
   ArrowRight,
-  FolderKanban,
   ShieldCheck,
   Bell,
   BellRing,
@@ -38,13 +37,12 @@ import {
   unsubscribeBrowserFromPush,
   getCurrentPushSubscription,
 } from '@/lib/push-client'
-import type { Account, MerchantMapping, Project, NotificationPreference } from '@/types/database'
+import type { Account, MerchantMapping, NotificationPreference } from '@/types/database'
 
 export default function SettingsPage() {
   const { toast } = useToast()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [mappings, setMappings] = useState<MerchantMapping[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
 
   // Bildirimler & Tetikleyiciler Durumu
@@ -77,7 +75,6 @@ export default function SettingsPage() {
     raw_pattern: '',
     merchant_name: '',
     default_group: 'Kişisel' as 'Kişisel' | 'İş' | 'Finansman' | 'Hariç',
-    default_project_id: '',
   })
 
   const [submitting, setSubmitting] = useState(false)
@@ -91,15 +88,13 @@ export default function SettingsPage() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const [{ data: aData }, { data: mData }, { data: pData }] = await Promise.all([
+      const [{ data: aData }, { data: mData }] = await Promise.all([
         supabase.from('accounts').select('*').order('created_at', { ascending: false }),
         supabase.from('merchant_mappings').select('*').order('created_at', { ascending: false }),
-        supabase.from('projects').select('*'),
       ])
 
       if (aData) setAccounts(aData)
       if (mData) setMappings(mData)
-      if (pData) setProjects(pData)
     } catch (err) {
       console.error('Error loading settings:', err)
     } finally {
@@ -154,7 +149,7 @@ export default function SettingsPage() {
         if (res.success) {
           setIsSubscribedDevice(true)
           setDeviceCount((prev) => prev + 1)
-          toast.success('Bu cihazda Web Push bildirimleri başarıyla etkinleştirildi! 🔔')
+          toast.success('Bu cihazda Web Push bildirimleri başarıyla etkinleştirildi!')
         } else {
           toast.error(res.error || 'Bildirim izni alınamadı.')
         }
@@ -325,7 +320,6 @@ export default function SettingsPage() {
           raw_pattern: mappingForm.raw_pattern,
           merchant_name: mappingForm.merchant_name,
           default_group: mappingForm.default_group,
-          default_project_id: mappingForm.default_project_id || null,
         })
         .select()
         .single()
@@ -338,7 +332,6 @@ export default function SettingsPage() {
           raw_pattern: '',
           merchant_name: '',
           default_group: 'Kişisel',
-          default_project_id: '',
         })
         toast.success('Eşleştirme kuralı eklendi.')
       }
@@ -595,7 +588,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Her akşam 21:30&apos;da tamamlanmamış rutinler ve 🔥 Seri (Streak) koruma uyarısı.
+                  Her akşam 21:30&apos;da tamamlanmamış rutinler ve Seri (Streak) koruma uyarısı.
                 </p>
               </div>
 
@@ -723,13 +716,11 @@ export default function SettingsPage() {
                   <th scope="col" className="p-3">Ekstrede Geçen Metin</th>
                   <th scope="col" className="p-3">Dönüştürülecek İşyeri</th>
                   <th scope="col" className="p-3">Varsayılan Grup</th>
-                  <th scope="col" className="p-3">Varsayılan Proje</th>
                   <th scope="col" className="p-3 text-center">İşlem</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40 font-mono">
                 {mappings.map((m) => {
-                  const project = projects.find((p) => p.id === m.default_project_id)
                   return (
                     <tr key={m.id} className="hover:bg-muted/30 transition-colors font-sans">
                       <td className="p-3 font-mono font-semibold text-foreground">
@@ -754,16 +745,6 @@ export default function SettingsPage() {
                           {m.default_group}
                         </Badge>
                       </td>
-                      <td className="p-3 font-sans">
-                        {project ? (
-                          <Badge variant="outline" className="text-[11px] gap-1 border-primary/25 text-primary bg-primary/10">
-                            <FolderKanban className="h-3 w-3" />
-                            {project.name}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground/60">-</span>
-                        )}
-                      </td>
                       <td className="p-3 text-center">
                         <button
                           type="button"
@@ -780,7 +761,7 @@ export default function SettingsPage() {
 
                 {mappings.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={4} className="p-8 text-center text-xs text-muted-foreground font-sans">
                       Henüz özel işyeri kuralı eklenmedi.
                     </td>
                   </tr>
@@ -792,7 +773,6 @@ export default function SettingsPage() {
           {/* Mobile Cards View */}
           <div className="md:hidden divide-y divide-border/60">
             {mappings.map((m) => {
-              const project = projects.find((p) => p.id === m.default_project_id)
               return (
                 <div key={m.id} className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
@@ -828,12 +808,6 @@ export default function SettingsPage() {
                     >
                       {m.default_group}
                     </Badge>
-                    {project && (
-                      <Badge variant="outline" className="text-[11px] gap-1 border-primary/25 text-primary bg-primary/10">
-                        <FolderKanban className="h-3 w-3" />
-                        {project.name}
-                      </Badge>
-                    )}
                   </div>
                 </div>
               )
@@ -879,6 +853,8 @@ export default function SettingsPage() {
                 className="text-xs"
               >
                 <option value="vadesiz">Vadesiz Hesap</option>
+                <option value="gunluk_birikim">Günlük Birikim Hesabı</option>
+                <option value="vadeli">Vadeli Mevduat</option>
                 <option value="nakit">Nakit Cüzdan</option>
                 <option value="yatırım">Yatırım Hesabı</option>
               </Select>
@@ -944,45 +920,24 @@ export default function SettingsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="settings-map-group" className="text-xs font-semibold text-muted-foreground">Varsayılan Grup</label>
-              <Select
-                id="settings-map-group"
-                value={mappingForm.default_group}
-                onChange={(e) =>
-                  setMappingForm({
-                    ...mappingForm,
-                    default_group: e.target.value as any,
-                  })
-                }
-                className="text-xs"
-              >
-                <option value="Kişisel">Kişisel</option>
-                <option value="İş">İş</option>
-                <option value="Finansman">Finansman</option>
-                <option value="Hariç">Hariç</option>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="settings-map-project" className="text-xs font-semibold text-muted-foreground">Varsayılan Proje (Opsiyonel)</label>
-              <Select
-                id="settings-map-project"
-                value={mappingForm.default_project_id}
-                onChange={(e) =>
-                  setMappingForm({ ...mappingForm, default_project_id: e.target.value })
-                }
-                className="text-xs"
-              >
-                <option value="">(Yok)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <label htmlFor="settings-map-group" className="text-xs font-semibold text-muted-foreground">Varsayılan Grup</label>
+            <Select
+              id="settings-map-group"
+              value={mappingForm.default_group}
+              onChange={(e) =>
+                setMappingForm({
+                  ...mappingForm,
+                  default_group: e.target.value as any,
+                })
+              }
+              className="text-xs"
+            >
+              <option value="Kişisel">Kişisel</option>
+              <option value="İş">İş</option>
+              <option value="Finansman">Finansman</option>
+              <option value="Hariç">Hariç</option>
+            </Select>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-border">

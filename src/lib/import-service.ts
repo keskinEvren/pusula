@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { StatementImport, Transaction, CreditCard, Account, Debt } from '../types/database'
+import type { StatementImport, Transaction, CreditCard, Account } from '../types/database'
 import type { ExtractedTransaction, ParseResult } from './parser/types'
 import { attachTransactionIdentities, IMPORT_PARSER_VERSION, type ImportIdentityContext } from './import-identity'
 import { calculateFileHash } from './hash'
@@ -393,7 +393,6 @@ export interface CommitStatementBatchParams {
   summaryOnly?: boolean
   cards: CreditCard[]
   accounts: Account[]
-  debts: Debt[]
 }
 
 export interface CommitStatementBatchResult {
@@ -487,10 +486,6 @@ async function commitStatementBatchAtomic(
       amount: transaction.amount,
       analysis_group: sanitizeAnalysisGroup(transaction.analysis_group),
       recurrence: transaction.recurrence || null,
-      project_id: transaction.project_id || null,
-      action: transaction.action || null,
-      target_card_id: transaction.target_card_id || null,
-      target_debt_id: transaction.target_debt_id || null,
       classification_status: transaction.classification_status || 'UNKNOWN',
       confidence: transaction.confidence,
       classification_reasons: transaction.classification_reasons || [],

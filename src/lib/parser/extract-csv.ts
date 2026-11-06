@@ -109,7 +109,7 @@ export async function extractFromCSVOrExcel(
         type = 'İade'
       }
 
-      const { merchant, analysis_group, type: mappedType, recurrence, project_id } = matchMerchant(repairedDesc, userMappings)
+      const { merchant, analysis_group, type: mappedType, recurrence } = matchMerchant(repairedDesc, userMappings)
 
       const finalType = mappedType || type
       const finalGroup = finalType === 'Kart Ödemesi' ? 'Hariç' : analysis_group
@@ -124,7 +124,6 @@ export async function extractFromCSVOrExcel(
         type: finalType,
         analysis_group: finalGroup,
         recurrence,
-        project_id,
         confidence: 'high',
         classification_status: 'HIGH_CONFIDENCE',
         classification_reasons: finalType === 'Kart Ödemesi'

@@ -207,7 +207,6 @@ describe('Import Service Testleri', () => {
         transactions: [], // boş
         cards: [],
         accounts: [],
-        debts: [],
       })
       
       expect(res.success).toBe(false)
@@ -233,7 +232,6 @@ describe('Import Service Testleri', () => {
         selectedCardId: 'c1',
         cards: [mockCard as any],
         accounts: [],
-        debts: [],
       })
       
       expect(res.success).toBe(true)
