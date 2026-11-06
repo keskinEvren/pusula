@@ -630,6 +630,63 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const updatedPrefs = await db.query('select last_morning_sent_date from notification_preferences where user_id = $1', [userA])
     expect(updatedPrefs.rows).toEqual([{ last_morning_sent_date: '2026-10-16' }])
   })
+
+  it('migration 031: accounts table supports yield, rate, withholdings, reserve, and maturity columns', async () => {
+    await asUser(userA)
+    const accId = '33333333-3333-4333-8333-333333333333'
+    await db.query(
+      `insert into accounts(id, user_id, name, type, balance, interest_rate, withholding_tax_rate, reserved_base_amount, maturity_date, last_yield_applied_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [accId, userA, 'VakıfBank ARI', 'gunluk_birikim', 50000, 49.00, 10.00, 2500.00, '2026-12-31', '2026-11-05']
+    )
+
+    const row = await db.query(
+      `select name, type, balance, interest_rate, withholding_tax_rate, reserved_base_amount, maturity_date::text, last_yield_applied_at::text
+       from accounts where id = $1`,
+      [accId]
+    )
+
+    expect(row.rows).toEqual([
+      {
+        name: 'VakıfBank ARI',
+        type: 'gunluk_birikim',
+        balance: '50000.00',
+        interest_rate: '49.00',
+        withholding_tax_rate: '10.00',
+        reserved_base_amount: '2500.00',
+        maturity_date: '2026-12-31',
+        last_yield_applied_at: '2026-11-05',
+      },
+    ])
+
+    // Apply yield via fn_record_income_atomic and update last_yield_applied_at
+    const incomeRes = await db.query<{ result: { success: boolean; transaction_id: string } }>(
+      'select fn_record_income_atomic($1, $2, $3, $4, $5, $6, $7) as result',
+      [userA, '2026-11-06', 57.39, 'VakıfBank ARI — Günlük Birikim Getirisi (Damla)', 'Kişisel', 'Mevduat / Faiz Getirisi', accId]
+    )
+    expect(incomeRes.rows[0].result.success).toBe(true)
+
+    await db.query('update accounts set last_yield_applied_at = $1 where id = $2 and user_id = $3', ['2026-11-06', accId, userA])
+
+    const updatedRow = await db.query(
+      `select balance, last_yield_applied_at::text from accounts where id = $1`,
+      [accId]
+    )
+    expect(updatedRow.rows).toEqual([
+      {
+        balance: '50057.39',
+        last_yield_applied_at: '2026-11-06',
+      },
+    ])
+
+    // RLS: User B cannot modify User A's yield fields or account
+    await asUser(userB)
+    const updateAttempt = await db.query(
+      `update accounts set interest_rate = 0 where id = $1`,
+      [accId]
+    )
+    expect(updateAttempt.affectedRows).toBe(0)
+  })
 })
 
 

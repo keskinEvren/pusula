@@ -47,6 +47,11 @@ export interface Database {
           balance: number
           balance_as_of: string | null
           note: string | null
+          interest_rate: number | null
+          withholding_tax_rate: number | null
+          reserved_base_amount: number | null
+          maturity_date: string | null
+          last_yield_applied_at: string | null
           created_at: string
           updated_at: string
         }
@@ -58,6 +63,11 @@ export interface Database {
           balance?: number
           balance_as_of?: string | null
           note?: string | null
+          interest_rate?: number | null
+          withholding_tax_rate?: number | null
+          reserved_base_amount?: number | null
+          maturity_date?: string | null
+          last_yield_applied_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -69,6 +79,11 @@ export interface Database {
           balance?: number
           balance_as_of?: string | null
           note?: string | null
+          interest_rate?: number | null
+          withholding_tax_rate?: number | null
+          reserved_base_amount?: number | null
+          maturity_date?: string | null
+          last_yield_applied_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1227,6 +1242,8 @@ export interface Database {
 // Convenience Type Aliases
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Account = Database['public']['Tables']['accounts']['Row']
+export type AccountInsert = Database['public']['Tables']['accounts']['Insert']
+export type AccountUpdate = Database['public']['Tables']['accounts']['Update']
 export type Project = Database['public']['Tables']['projects']['Row']
 export type CreditCard = Database['public']['Tables']['credit_cards']['Row']
 export type CardStatement = Database['public']['Tables']['card_statements']['Row']

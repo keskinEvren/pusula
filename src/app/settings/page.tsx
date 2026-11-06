@@ -879,6 +879,8 @@ export default function SettingsPage() {
                 className="text-xs"
               >
                 <option value="vadesiz">Vadesiz Hesap</option>
+                <option value="gunluk_birikim">Günlük Birikim Hesabı</option>
+                <option value="vadeli">Vadeli Mevduat</option>
                 <option value="nakit">Nakit Cüzdan</option>
                 <option value="yatırım">Yatırım Hesabı</option>
               </Select>
