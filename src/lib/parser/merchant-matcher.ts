@@ -99,7 +99,7 @@ const DEFAULT_PATTERNS: Array<{
 export function matchMerchant(
   rawDescription: string,
   userMappings: MerchantMapping[] = []
-): { merchant: string; analysis_group: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç'; type?: string; recurrence?: string; project_id?: string } {
+): { merchant: string; analysis_group: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç'; type?: string; recurrence?: string } {
   const upperRaw = rawDescription.toUpperCase().trim()
 
   // 1. Check user custom mappings first (highest priority)
@@ -109,7 +109,6 @@ export function matchMerchant(
         merchant: m.merchant_name,
         analysis_group: m.default_group,
         type: m.default_group === 'Hariç' ? 'Transfer' : 'Harcama',
-        project_id: m.default_project_id || undefined,
       }
     }
   }

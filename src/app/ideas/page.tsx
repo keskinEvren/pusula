@@ -92,7 +92,6 @@ function IdeasContent() {
   // Promote Modal State
   const [promoteTarget, setPromoteTarget] = useState<Idea | null>(null)
   const [promoteSlug, setPromoteSlug] = useState('')
-  const [promoteBudget, setPromoteBudget] = useState('10000')
   const [promoting, setPromoting] = useState(false)
 
   // Dialog States
@@ -240,7 +239,6 @@ function IdeasContent() {
   const proceedWithPromote = (idea: Idea) => {
     setPromoteTarget(idea)
     setPromoteSlug(slugify(idea.title))
-    setPromoteBudget('10000')
   }
 
   const handleExecutePromote = async (e: React.FormEvent) => {
@@ -254,15 +252,12 @@ function IdeasContent() {
         data: { user },
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
-
-      const budgetNum = promoteBudget ? parseFloat(promoteBudget) : null
       const finalSlug = slugify(promoteSlug || promoteTarget.title) || 'proje-' + Date.now()
 
       const { data, error } = await supabase.rpc('fn_promote_idea_to_project_atomic', {
         p_user_id: user.id,
         p_idea_id: promoteTarget.id,
         p_slug: finalSlug,
-        p_budget_limit: budgetNum || null,
       })
       if (error) throw error
       if (!data?.success) throw new Error(data?.error || 'Projeye dönüştürme doğrulanamadı.')
@@ -951,23 +946,7 @@ function IdeasContent() {
               </p>
             </div>
 
-            <div className="space-y-1">
-              <label htmlFor="idea-promote-budget" className="text-xs font-semibold text-muted-foreground">
-                Proje Bütçe Limiti (Opsiyonel)
-              </label>
-              <Input
-                id="idea-promote-budget"
-                type="number"
-                placeholder="10000.00"
-                prefix="₺"
-                value={promoteBudget}
-                onChange={(e) => setPromoteBudget(e.target.value)}
-                className="text-xs font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Proje geliştirme sürecinde maliyet hedefini takip etmek için opsiyonel bütçe.
-              </p>
-            </div>
+
 
             <div className="flex justify-end gap-2 pt-3 border-t border-border">
               <Button type="button" variant="outline" onClick={() => setPromoteTarget(null)}>

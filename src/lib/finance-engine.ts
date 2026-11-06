@@ -46,20 +46,6 @@ export interface CardStatementRemainingResult {
   isFullyPaid: boolean
 }
 
-export interface BudgetEvaluationResult {
-  ratio: number | null
-  status: 'GREEN' | 'YELLOW' | 'RED' | 'NO_BUDGET'
-  isWarning: boolean
-  isExceeded: boolean
-}
-
-export interface FounderRunwayResult {
-  monthlyBurn: number
-  projectMonthlyLoad: number
-  totalMonthlyCashDrain: number
-  runwayMonths: number | 'infinite'
-}
-
 export interface InstallmentScheduleItem {
   amountPerMonth?: number | string
   remainingMonths?: number
@@ -280,66 +266,6 @@ export function calculateSpendingBreakdown(
     financing: round2(financing),
     excluded: round2(excluded),
     totalConsumption,
-  }
-}
-
-/**
- * 4. Proje Gerçek Maliyeti (The Bridge)
- * Projeye ait tüm tekil harcamalar ve aktif SaaS aboneliklerinin canlı toplamı
- */
-export function calculateProjectTotalCost(
-  projectId: string,
-  transactions: Array<{ project_id?: string | null; amount: number | null | undefined }>,
-  subscriptions: Array<{
-    project_id?: string | null
-    amount: number | null | undefined
-    status?: string | null
-    decision?: string | null
-    currency?: string | null
-  }>,
-  rates?: Record<string, number>
-): number {
-  const directCost = (transactions || [])
-    .filter((t) => t && t.project_id === projectId)
-    .reduce((sum, t) => sum + safeParseAmount(t.amount), 0)
-
-  const subCost = (subscriptions || [])
-    .filter((s) => s && s.project_id === projectId && s.status !== 'İptal' && (s as any).decision !== 'İptal Et')
-    .reduce((sum, s) => {
-      const amt = safeParseAmount(s.amount)
-      const cur = (s.currency || 'TRY').toUpperCase()
-      const rate = (rates && rates[cur]) ? rates[cur] : 1
-      return sum + round2(amt * rate)
-    }, 0)
-
-  return round2(directCost + subCost)
-}
-
-/**
- * 5. Proje Bütçe Tavanı Değerlendirmesi
- * %85 ve üstü: Sarı Uyarı | %100 ve üstü: Kırmızı Aşım
- */
-export function evaluateProjectBudget(
-  totalCost: number,
-  budgetLimit: number | null | undefined
-): BudgetEvaluationResult {
-  if (!budgetLimit || budgetLimit <= 0) {
-    return { ratio: null, status: 'NO_BUDGET', isWarning: false, isExceeded: false }
-  }
-
-  const ratio = round2(totalCost / budgetLimit)
-  const isExceeded = totalCost >= budgetLimit
-  const isWarning = totalCost >= budgetLimit * 0.85 && !isExceeded
-
-  let status: BudgetEvaluationResult['status'] = 'GREEN'
-  if (isExceeded) status = 'RED'
-  else if (isWarning) status = 'YELLOW'
-
-  return {
-    ratio,
-    status,
-    isWarning,
-    isExceeded,
   }
 }
 
@@ -593,76 +519,6 @@ export function projectSixMonthCashLoad(
   }
 
   return projection
-}
-
-/**
- * 7. Kurucu Runway Formülü
- * Likit Nakit / (Kişisel Aylık Tüketim + Proje Aylık Yakma Hızı)
- */
-export function calculateFounderRunway(
-  availableCash: number,
-  monthlyPersonalBurn: number,
-  projectMonthlyCosts = 0
-): FounderRunwayResult {
-  const totalMonthlyCashDrain = round2(monthlyPersonalBurn + projectMonthlyCosts)
-
-  if (totalMonthlyCashDrain <= 0) {
-    return {
-      monthlyBurn: round2(monthlyPersonalBurn),
-      projectMonthlyLoad: round2(projectMonthlyCosts),
-      totalMonthlyCashDrain: 0,
-      runwayMonths: 'infinite',
-    }
-  }
-
-  const runwayMonths = round2(availableCash / totalMonthlyCashDrain)
-
-  return {
-    monthlyBurn: round2(monthlyPersonalBurn),
-    projectMonthlyLoad: round2(projectMonthlyCosts),
-    totalMonthlyCashDrain,
-    runwayMonths,
-  }
-}
-
-/**
- * 8. Alacak Tahsilat Senkronizasyonu
- * Alacak tahsil edildiğinde: Hesap bakiyesi artar, kalan alacak düşer
- */
-export function collectReceivable(
-  currentAccountBalance: number,
-  currentRemaining: number,
-  collectedAmount: number
-): { newAccountBalance: number; newReceivableRemaining: number; isClosed: boolean } {
-  const newAccountBalance = round2(currentAccountBalance + collectedAmount)
-  const newReceivableRemaining = round2(Math.max(0, currentRemaining - collectedAmount))
-  const isClosed = newReceivableRemaining <= 0
-
-  return {
-    newAccountBalance,
-    newReceivableRemaining,
-    isClosed,
-  }
-}
-
-/**
- * 9. Borç Geri Ödeme Senkronizasyonu
- * Borç ödendiğinde: Hesap bakiyesi düşer, kalan borç düşer
- */
-export function payDebt(
-  currentAccountBalance: number,
-  currentRemaining: number,
-  paidAmount: number
-): { newAccountBalance: number; newDebtRemaining: number; isClosed: boolean } {
-  const newAccountBalance = round2(currentAccountBalance - paidAmount)
-  const newDebtRemaining = round2(Math.max(0, currentRemaining - paidAmount))
-  const isClosed = newDebtRemaining <= 0
-
-  return {
-    newAccountBalance,
-    newDebtRemaining,
-    isClosed,
-  }
 }
 
 /**

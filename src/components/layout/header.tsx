@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { isolateUserCache } from '@/lib/user-cache'
 import { Button } from '@/components/ui/button'
 import {
   Menu,
@@ -94,16 +95,32 @@ export function Header({ onOpenMobileMenu, onOpenQuickCapture }: HeaderProps) {
   }, [onOpenQuickCapture, router])
 
   useEffect(() => {
+    const supabase = createClient()
+
     async function getUser() {
-      const supabase = createClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
+      if (typeof window !== 'undefined') {
+        isolateUserCache(window.localStorage, user?.id ?? null)
+      }
       if (user) {
         setUserEmail(user.email || null)
       }
     }
     getUser()
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const uid = session?.user?.id ?? null
+      if (typeof window !== 'undefined') {
+        isolateUserCache(window.localStorage, uid)
+      }
+      setUserEmail(session?.user?.email || null)
+    })
+
+    return () => {
+      authListener?.subscription.unsubscribe()
+    }
   }, [])
 
   // Dışarı tıklandığında hızlı ekle menüsünü kapat
@@ -122,14 +139,7 @@ export function Header({ onOpenMobileMenu, onOpenQuickCapture }: HeaderProps) {
     await supabase.auth.signOut()
     // F14: Clear cached user data in localStorage on sign out
     if (typeof window !== 'undefined') {
-      const keysToRemove: string[] = []
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key && (key.startsWith('pusula_') || key.startsWith('pusula:'))) {
-          keysToRemove.push(key)
-        }
-      }
-      keysToRemove.forEach((k) => localStorage.removeItem(k))
+      isolateUserCache(window.localStorage, null)
     }
     router.push('/login')
     router.refresh()

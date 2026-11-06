@@ -19,7 +19,6 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, formatLocalDateInput, cn } from '@/lib/utils'
 import { calculateStatementChange, calculateCardStatementRemaining, round2 } from '@/lib/finance-engine'
-import { financialBridge } from '@/lib/financial-bridge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -309,17 +308,18 @@ export default function CardsPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Oturum açılmamış')
 
-      const res = await financialBridge.recordCardPayment({
-        userId: user.id,
-        amount: amountNum,
-        cardId: paymentTargetCard.id,
-        date: paymentForm.date || formatLocalDateInput(),
-        description: paymentForm.description || 'Kart Ödemesi',
-        sourceAccountId: undefined,
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('fn_record_payment_atomic', {
+        p_user_id: user.id,
+        p_date: paymentForm.date || formatLocalDateInput(),
+        p_amount: round2(amountNum),
+        p_description: paymentForm.description || 'Kart Ödemesi',
+        p_type: 'Kart Ödemesi',
+        p_account_id: null,
+        p_target_id: paymentTargetCard.id,
       })
 
-      if (!res.success) {
-        throw new Error(res.error || 'Ödeme kaydedilemedi.')
+      if (rpcErr || !(rpcRes as any)?.success) {
+        throw new Error(rpcErr?.message || (rpcRes as any)?.error || 'Ödeme kaydedilemedi.')
       }
 
       toast.success('Kart ödemesi başarıyla kaydedildi!')

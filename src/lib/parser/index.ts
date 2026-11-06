@@ -272,7 +272,7 @@ export function parseStatementLines(
       detectedType = 'Nakit Avans'
     }
 
-    const { merchant, analysis_group, type: mappedType, recurrence, project_id } = matchMerchant(rawDesc, userMappings)
+    const { merchant, analysis_group, type: mappedType, recurrence } = matchMerchant(rawDesc, userMappings)
 
     const finalType = mappedType || detectedType
     const finalGroup = finalType === 'Kart Ödemesi' ? 'Hariç' : analysis_group
@@ -288,7 +288,6 @@ export function parseStatementLines(
       type: finalType,
       analysis_group: finalGroup,
       recurrence: finalRecurrence,
-      project_id,
       confidence: 'high',
       classification_status: 'HIGH_CONFIDENCE',
       classification_reasons: finalType === 'Kart Ödemesi'

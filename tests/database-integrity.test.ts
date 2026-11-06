@@ -149,27 +149,8 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
       .toEqual([{remaining:'200.00',past_payments:'100.00'}])
     expect((await db.query('select balance from accounts where id=$1',[source])).rows).toEqual(accountBefore.rows)
 
-    const tx = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-    await db.query(
-      `insert into transactions(id,user_id,date,type,description,amount,analysis_group,account_id)
-       values($1,$2,'2026-09-17','Harcama','Mevcut banka hareketi',50,'Kişisel',$3)`,
-      [tx,userA,source]
-    )
-    const linked = await db.query<{ result: any }>(
-      'select fn_link_transaction_to_debt_atomic($1,$2,$3) as result',[userA,tx,debt]
-    )
-    expect(linked.rows[0].result.success).toBe(true)
-    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
-      .toEqual([{remaining:'150.00',past_payments:'150.00'}])
-    expect((await db.query('select type,related_debt_id from transactions where id=$1',[tx])).rows)
-      .toEqual([{type:'Borç Ödemesi',related_debt_id:debt}])
-
-    const repeated = await db.query<{ result: any }>(
-      'select fn_link_transaction_to_debt_atomic($1,$2,$3) as result',[userA,tx,debt]
-    )
-    expect(repeated.rows[0].result.already_linked).toBe(true)
-    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
-      .toEqual([{remaining:'150.00',past_payments:'150.00'}])
+    // fn_link_transaction_to_debt_atomic was dropped in migration 032
+    await expect(db.query('select fn_link_transaction_to_debt_atomic($1,$2,$3)', [userA, debt, debt])).rejects.toThrow()
 
     const accountPayment = await db.query<{ result: any }>(
       'select fn_record_payment_atomic($1,$2,$3,$4,$5,$6,$7) as result',
@@ -177,12 +158,13 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     )
     expect(accountPayment.rows[0].result.success).toBe(true)
     expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows)
-      .toEqual([{remaining:'100.00',past_payments:'200.00'}])
+      .toEqual([{remaining:'150.00',past_payments:'150.00'}])
     const accountAfter = await db.query<{balance:string}>('select balance from accounts where id=$1',[source])
     expect(Number(accountAfter.rows[0].balance)).toBe(Number((accountBefore.rows[0] as any).balance)-50)
 
     // Keep later aggregate/pagination tests isolated from this scenario.
-    await db.query('delete from transactions where related_debt_id=$1',[debt])
+    const paymentTxId = accountPayment.rows[0].result.transaction_id
+    await db.query('delete from transactions where id=$1',[paymentTxId])
     await db.query('delete from debts where id=$1',[debt])
     await db.query('update accounts set balance=$1 where id=$2',[(accountBefore.rows[0] as any).balance,source])
   })
@@ -227,28 +209,17 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const otherMonthRes = await db.query<{ stats: any }>("select fn_transactions_stats(p_month => '2026-08') as stats")
     expect(otherMonthRes.rows[0].stats.total_count).toBe(0)
   })
-  it('fn_project_finance_summary and fn_all_projects_direct_costs calculate project costs correctly and isolate users', async () => {
+  it('migration 032 successfully dropped legacy bridge columns and functions', async () => {
     await asUser(userA)
     const projA = '33333333-3333-4333-8333-333333333333'
-    await db.query(`insert into projects(id, user_id, name, slug, budget_limit) values ('${projA}', '${userA}', 'Pusula Core', 'pusula-core', 50000)`)
-    await db.query(`insert into transactions (user_id, project_id, date, amount, type, analysis_group, description) values
-      ('${userA}', '${projA}', '2026-09-01', 2500.00, 'Harcama', 'İş', 'Sunucu Masrafı'),
-      ('${userA}', '${projA}', '2026-09-05', 10000.00, 'Gelir', 'İş', 'Lisans Satışı')`)
-
-    const projRes = await db.query<{ summary: any }>(`select fn_project_finance_summary('${projA}') as summary`)
-    const summary = projRes.rows[0].summary
-    expect(Number(summary.direct_cost_total)).toBe(12500)
-    expect(Number(summary.direct_expense)).toBe(2500)
-    expect(Number(summary.direct_revenue)).toBe(10000)
-    expect(summary.total_count).toBe(2)
-
-    // All projects RPC
-    const allProjRes = await db.query<{ costs: any }>('select fn_all_projects_direct_costs() as costs')
-    expect(Number(allProjRes.rows[0].costs[projA])).toBe(12500)
-
-    // Another user cannot access userA's project summary
-    await asUser(userB)
-    await expect(db.query(`select fn_project_finance_summary('${projA}')`)).rejects.toThrow(/yetkisiz/)
+    await db.query(`insert into projects(id, user_id, name, slug) values ('${projA}', '${userA}', 'Pusula Core', 'pusula-core')`)
+    await expect(db.query(`insert into projects(id, user_id, name, slug, budget_limit) values ('${projA}-2', '${userA}', 'Pusula Core 2', 'pusula-core-2', 50000)`)).rejects.toThrow()
+    await expect(db.query(`select fn_project_finance_summary('${projA}')`)).rejects.toThrow()
+    await expect(db.query('select fn_all_projects_direct_costs()')).rejects.toThrow()
+    // Insert 2 transactions for userA so subsequent pagination/count tests have expected counts
+    await db.query(`insert into transactions (user_id, date, amount, type, analysis_group, description) values
+      ('${userA}', '2026-09-01', 2500.00, 'Harcama', 'İş', 'Sunucu Masrafı'),
+      ('${userA}', '2026-09-05', 10000.00, 'Gelir', 'İş', 'Lisans Satışı')`)
   })
   it('fn_transactions_page retrieves pages with row-constructor keyset seeking and isolates users', async () => {
     await asUser(userA)
@@ -438,8 +409,9 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
       [JSON.stringify(cardPayPayload)]
     )
     expect(cardPayRes.rows[0].result.success).toBe(true)
+    // Decoupled architecture: bank statement import does not mutate other credit cards
     const cardAfter = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
-    expect(Number(cardAfter.rows[0].current_debt)).toBe(800)
+    expect(Number(cardAfter.rows[0].current_debt)).toBe(1000)
     await db.query('select rollback_statement_import($1::uuid,$2::uuid)', [cardPayRes.rows[0].result.import_id, userA])
     const cardRestored = await db.query<{ current_debt: string }>('select current_debt from credit_cards where id=$1', [stmtCard])
     expect(Number(cardRestored.rows[0].current_debt)).toBe(1000)
@@ -482,29 +454,23 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     )
     expect(Number(cardSummaryRestored.rows[0].current_debt)).toBe(1000)
 
-    const foreignProject = '77777777-7777-4777-8777-777777777777'
+    const foreignAccount = '77777777-7777-4777-8777-777777777777'
     await asUser(userB)
     await db.query(
-      'insert into projects(id,user_id,name,slug) values ($1,$2,$3,$4)',
-      [foreignProject, userB, 'Foreign Project', 'foreign-project']
+      'insert into accounts(id,user_id,name,type,balance) values ($1,$2,$3,$4,100)',
+      [foreignAccount, userB, 'Foreign Account', 'vadesiz']
     )
     await asUser(userA)
     const crossTenantPayload = {
       ...payload,
+      account_id: foreignAccount,
       idempotency_key: 'db-test-cross-tenant-v1',
       file_hash: 'db-test-cross-tenant-file-v1',
-      transactions: [{
-        ...payload.transactions[0],
-        project_id: foreignProject,
-        external_reference: 'BANK-REF-CROSS-TENANT-1',
-        source_fingerprint: 'strong-fingerprint-cross-tenant-1',
-        weak_fingerprint: 'weak-fingerprint-cross-tenant-1',
-      }],
     }
     await expect(db.query(
       'select fn_commit_statement_import_atomic($1::jsonb)',
       [JSON.stringify(crossTenantPayload)]
-    )).rejects.toThrow(/kullanıcıya ait değil/)
+    )).rejects.toThrow(/Hedef hesap bulunamadı/)
   })
 
   it('debt unlink and investment link/unlink complete as atomic RPCs', async () => {
@@ -517,23 +483,20 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     await db.query(`insert into investments(id,user_id,name,category,quantity,unit_cost,current_price) values($1,$2,'Fund','Diğer',10,20,20)`,[investment,userA])
     await db.query(`insert into transactions(id,user_id,date,type,description,amount) values($1,$2,current_date,'Harcama','Debt',25),($3,$2,current_date,'Harcama','Investment',60)`,[debtTx,userA,investmentTx])
 
-    expect((await db.query<{result:any}>('select fn_link_transaction_to_debt_atomic($1,$2,$3) result',[userA,debtTx,debt])).rows[0].result.success).toBe(true)
-    expect((await db.query<{result:any}>('select fn_unlink_transaction_from_debt_atomic($1,$2) result',[userA,debtTx])).rows[0].result.success).toBe(true)
-    expect((await db.query('select remaining,past_payments from debts where id=$1',[debt])).rows).toEqual([{remaining:'100.00',past_payments:'0.00'}])
-
-    expect((await db.query<{result:any}>('select fn_link_transaction_to_investment_atomic($1,$2,$3,$4,$5) result',[userA,investmentTx,investment,2,30])).rows[0].result.success).toBe(true)
-    expect((await db.query('select quantity,unit_cost from investments where id=$1',[investment])).rows).toEqual([{quantity:'12.000000',unit_cost:'21.6667'}])
-    expect((await db.query<{result:any}>('select fn_unlink_transaction_from_investment_atomic($1,$2) result',[userA,investmentTx])).rows[0].result.success).toBe(true)
-    expect((await db.query('select quantity,unit_cost from investments where id=$1',[investment])).rows).toEqual([{quantity:'10.000000',unit_cost:'20.0000'}])
+    // In migration 032, legacy linking RPCs have been dropped
+    await expect(db.query('select fn_link_transaction_to_debt_atomic($1,$2,$3)', [userA, debtTx, debt])).rejects.toThrow()
+    await expect(db.query('select fn_unlink_transaction_from_debt_atomic($1,$2)', [userA, debtTx])).rejects.toThrow()
+    await expect(db.query('select fn_link_transaction_to_investment_atomic($1,$2,$3,$4,$5)', [userA, investmentTx, investment, 2, 30])).rejects.toThrow()
+    await expect(db.query('select fn_unlink_transaction_from_investment_atomic($1,$2)', [userA, investmentTx])).rejects.toThrow()
   })
 
   it('idea promotion is all-or-nothing and idempotent', async () => {
     await asUser(userA)
     const idea='16161616-1616-4616-8616-161616161616'
     await db.query(`insert into ideas(id,user_id,title,description) values($1,$2,'Atomic idea','Description')`,[idea,userA])
-    const first=await db.query<{result:any}>('select fn_promote_idea_to_project_atomic($1,$2,$3,$4) result',[userA,idea,'atomic-idea',500])
+    const first=await db.query<{result:any}>('select fn_promote_idea_to_project_atomic($1,$2,$3) result',[userA,idea,'atomic-idea'])
     expect(first.rows[0].result.success).toBe(true)
-    const second=await db.query<{result:any}>('select fn_promote_idea_to_project_atomic($1,$2,$3,$4) result',[userA,idea,'different-slug',500])
+    const second=await db.query<{result:any}>('select fn_promote_idea_to_project_atomic($1,$2,$3) result',[userA,idea,'different-slug'])
     expect(second.rows[0].result.already_promoted).toBe(true)
     expect((await db.query('select count(*)::int count from projects where id=$1',[first.rows[0].result.project_id])).rows).toEqual([{count:1}])
   })
@@ -544,6 +507,109 @@ describe('isolated PostgreSQL migrations, RLS and financial integrity', () => {
     const invalid={ accounts:[{id:source,user_id:userA,name:null}], credit_cards:[], transactions:[], debts:[], debt_installments:[], subscriptions:[], incomes:[], statement_imports:[], merchant_mappings:[], investments:[], projects:[], ideas:[], agenda_items:[], dreams:[], routines:[], routine_logs:[], journal_entries:[], credentials:[], card_statements:[] }
     await expect(db.query('select fn_restore_vault_replace_atomic($1::jsonb)',[JSON.stringify(invalid)])).rejects.toThrow()
     expect((await db.query('select name,balance from accounts where id=$1',[source])).rows).toEqual(before.rows)
+  })
+
+  it('vault replace backward compatibility: restores legacy backup containing dropped bridge columns', async () => {
+    await asUser(userA)
+    const legacyData = {
+      accounts: [{ id: source, user_id: userA, name: 'Main Account', balance: 1000, created_at: '2026-10-29T00:00:00Z', updated_at: '2026-10-29T00:00:00Z' }],
+      credit_cards: [],
+      transactions: [{
+        id: '99999999-9999-4999-8999-999999999999',
+        user_id: userA,
+        date: '2026-10-01',
+        type: 'Harcama',
+        description: 'Legacy Transaction',
+        amount: 150,
+        analysis_group: 'Kişisel',
+        project_id: '88888888-8888-4888-8888-888888888888',
+        source_account_id: source,
+        target_account_id: null,
+        related_debt_id: null,
+        created_at: '2026-10-29T00:00:00Z',
+        updated_at: '2026-10-29T00:00:00Z',
+      }],
+      debts: [{
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        user_id: userA,
+        person_or_entity: 'Legacy Friend',
+        type: 'Borç',
+        principal: 500,
+        remaining: 500,
+        past_payments: 0,
+        status: 'Açık',
+        linked_account_id: source,
+        project_id: null,
+        created_at: '2026-10-29T00:00:00Z',
+        updated_at: '2026-10-29T00:00:00Z',
+      }],
+      debt_installments: [],
+      subscriptions: [{
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        user_id: userA,
+        service: 'Old Tool',
+        group_type: 'İş',
+        model: 'Aylık',
+        amount: 100,
+        currency: 'TRY',
+        period: 'Aylık',
+        status: 'Aktif',
+        decision: 'Devam',
+        project_id: null,
+        payment_card_id: null,
+        created_at: '2026-10-29T00:00:00Z',
+        updated_at: '2026-10-29T00:00:00Z',
+      }],
+      incomes: [{
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        user_id: userA,
+        title: 'Legacy Contract',
+        category: 'Freelance & Danışmanlık',
+        amount: 10000,
+        status: 'Aktif',
+        income_type: 'Sabit',
+        period: 'Aylık',
+        currency: 'TRY',
+        project_id: null,
+        created_at: '2026-10-29T00:00:00Z',
+        updated_at: '2026-10-29T00:00:00Z',
+      }],
+      statement_imports: [],
+      merchant_mappings: [{
+        id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        user_id: userA,
+        raw_pattern: 'OLDSHOP',
+        merchant_name: 'Old Shop',
+        default_group: 'Kişisel',
+        default_project_id: null,
+        created_at: '2026-10-29T00:00:00Z',
+        updated_at: '2026-10-29T00:00:00Z',
+      }],
+      investments: [],
+      projects: [{
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        user_id: userA,
+        name: 'Legacy Project',
+        slug: 'legacy-project',
+        status: 'Planlama',
+        budget_limit: 10000,
+        created_at: '2026-10-29T00:00:00Z',
+        updated_at: '2026-10-29T00:00:00Z',
+      }],
+      ideas: [],
+      agenda_items: [],
+      dreams: [],
+      routines: [],
+      routine_logs: [],
+      journal_entries: [],
+      credentials: [],
+      card_statements: []
+    }
+
+    const restoreRes = await db.query<{ result: { success: boolean } }>('select fn_restore_vault_replace_atomic($1::jsonb) as result', [JSON.stringify(legacyData)])
+    expect(restoreRes.rows[0].result.success).toBe(true)
+    const restoredProjects = await db.query('select name, slug from projects where id=$1', ['eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'])
+    expect(restoredProjects.rows).toEqual([{ name: 'Legacy Project', slug: 'legacy-project' }])
   })
 
   it('vault replace successfully restores incomes and debt_installments atomically', async () => {

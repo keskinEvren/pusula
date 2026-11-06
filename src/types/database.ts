@@ -97,7 +97,6 @@ export interface Database {
           description: string | null
           status: 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
           project_type: 'saas' | 'workplace' | 'client' | 'internal'
-          budget_limit: number | null
           repo_url: string | null
           live_url: string | null
           created_at: string
@@ -111,7 +110,6 @@ export interface Database {
           description?: string | null
           status?: 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
           project_type?: 'saas' | 'workplace' | 'client' | 'internal'
-          budget_limit?: number | null
           repo_url?: string | null
           live_url?: string | null
           created_at?: string
@@ -125,7 +123,6 @@ export interface Database {
           description?: string | null
           status?: 'Planlama' | 'Geliştirmede' | 'Canlı' | 'Arşiv'
           project_type?: 'saas' | 'workplace' | 'client' | 'internal'
-          budget_limit?: number | null
           repo_url?: string | null
           live_url?: string | null
           updated_at?: string
@@ -251,8 +248,6 @@ export interface Database {
           past_payments: number
           remaining: number
           status: 'Açık' | 'Kapatıldı'
-          linked_account_id: string | null
-          project_id: string | null
           created_at: string
           updated_at: string
         }
@@ -267,8 +262,6 @@ export interface Database {
           past_payments?: number
           remaining?: number
           status?: 'Açık' | 'Kapatıldı'
-          linked_account_id?: string | null
-          project_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -283,8 +276,6 @@ export interface Database {
           past_payments?: number
           remaining?: number
           status?: 'Açık' | 'Kapatıldı'
-          linked_account_id?: string | null
-          project_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -351,8 +342,6 @@ export interface Database {
           decision: 'Devam' | 'İptal Et' | 'Kararsız'
           payment_method: string | null
           status: 'Aktif' | 'İptal' | 'Donduruldu'
-          project_id: string | null
-          payment_card_id: string | null
           strategic_tag: 'Vazgeçilmez' | 'Esnek' | 'Tek Seferlik' | 'İptal' | null
           created_at: string
           updated_at: string
@@ -370,8 +359,6 @@ export interface Database {
           decision?: 'Devam' | 'İptal Et' | 'Kararsız'
           payment_method?: string | null
           status?: 'Aktif' | 'İptal' | 'Donduruldu'
-          project_id?: string | null
-          payment_card_id?: string | null
           strategic_tag?: 'Vazgeçilmez' | 'Esnek' | 'Tek Seferlik' | 'İptal' | null
           created_at?: string
           updated_at?: string
@@ -389,8 +376,6 @@ export interface Database {
           decision?: 'Devam' | 'İptal Et' | 'Kararsız'
           payment_method?: string | null
           status?: 'Aktif' | 'İptal' | 'Donduruldu'
-          project_id?: string | null
-          payment_card_id?: string | null
           strategic_tag?: 'Vazgeçilmez' | 'Esnek' | 'Tek Seferlik' | 'İptal' | null
           updated_at?: string
         }
@@ -482,13 +467,6 @@ export interface Database {
           statement_date: string | null
           card_id: string | null
           account_id: string | null
-          project_id: string | null
-          source_account_id: string | null
-          target_account_id: string | null
-          related_debt_id: string | null
-          related_investment_id: string | null
-          investment_quantity_delta: number | null
-          investment_unit_price: number | null
           import_id: string | null
           source_bank: string | null
           source_account_ref: string | null
@@ -517,13 +495,6 @@ export interface Database {
           statement_date?: string | null
           card_id?: string | null
           account_id?: string | null
-          project_id?: string | null
-          source_account_id?: string | null
-          target_account_id?: string | null
-          related_debt_id?: string | null
-          related_investment_id?: string | null
-          investment_quantity_delta?: number | null
-          investment_unit_price?: number | null
           import_id?: string | null
           source_bank?: string | null
           source_account_ref?: string | null
@@ -552,13 +523,6 @@ export interface Database {
           statement_date?: string | null
           card_id?: string | null
           account_id?: string | null
-          project_id?: string | null
-          source_account_id?: string | null
-          target_account_id?: string | null
-          related_debt_id?: string | null
-          related_investment_id?: string | null
-          investment_quantity_delta?: number | null
-          investment_unit_price?: number | null
           import_id?: string | null
           source_bank?: string | null
           source_account_ref?: string | null
@@ -619,7 +583,6 @@ export interface Database {
           raw_pattern: string
           merchant_name: string
           default_group: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç'
-          default_project_id: string | null
           created_at: string
         }
         Insert: {
@@ -628,7 +591,6 @@ export interface Database {
           raw_pattern: string
           merchant_name: string
           default_group?: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç'
-          default_project_id?: string | null
           created_at?: string
         }
         Update: {
@@ -637,7 +599,6 @@ export interface Database {
           raw_pattern?: string
           merchant_name?: string
           default_group?: 'Kişisel' | 'İş' | 'Finansman' | 'Hariç'
-          default_project_id?: string | null
         }
         Relationships: []
       }
@@ -1033,7 +994,6 @@ export interface Database {
           period: string
           payday: number | null
           status: 'Aktif' | 'Pasif'
-          project_id: string | null
           note: string | null
           created_at: string
           updated_at: string
@@ -1049,7 +1009,6 @@ export interface Database {
           period?: string
           payday?: number | null
           status?: 'Aktif' | 'Pasif'
-          project_id?: string | null
           note?: string | null
           created_at?: string
           updated_at?: string
@@ -1065,7 +1024,6 @@ export interface Database {
           period?: string
           payday?: number | null
           status?: 'Aktif' | 'Pasif'
-          project_id?: string | null
           note?: string | null
           updated_at?: string
         }
@@ -1143,7 +1101,6 @@ export interface Database {
           p_description: string
           p_account_id?: string | null
           p_card_id?: string | null
-          p_project_id?: string | null
           p_merchant?: string | null
           p_analysis_group?: string | null
           p_recurrence?: string | null
@@ -1159,7 +1116,6 @@ export interface Database {
           p_amount: number
           p_description: string
           p_account_id: string
-          p_project_id?: string | null
           p_merchant?: string | null
           p_analysis_group?: string | null
         }
@@ -1195,34 +1151,8 @@ export interface Database {
         }
         Returns: Json
       }
-      fn_link_transaction_to_debt_atomic: {
-        Args: {
-          p_transaction_id: string
-          p_debt_id: string
-          p_user_id?: string
-        }
-        Returns: Json
-      }
-      fn_unlink_transaction_from_debt_atomic: {
-        Args: { p_user_id: string; p_transaction_id: string }
-        Returns: Json
-      }
-      fn_link_transaction_to_investment_atomic: {
-        Args: {
-          p_user_id: string
-          p_transaction_id: string
-          p_investment_id: string
-          p_added_qty?: number | null
-          p_unit_price?: number | null
-        }
-        Returns: Json
-      }
-      fn_unlink_transaction_from_investment_atomic: {
-        Args: { p_user_id: string; p_transaction_id: string }
-        Returns: Json
-      }
       fn_promote_idea_to_project_atomic: {
-        Args: { p_user_id: string; p_idea_id: string; p_slug: string; p_budget_limit?: number | null }
+        Args: { p_user_id: string; p_idea_id: string; p_slug: string }
         Returns: Json
       }
       fn_restore_vault_replace_atomic: {

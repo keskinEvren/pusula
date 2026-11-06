@@ -5,12 +5,7 @@ import {
   calculateStatementChange,
   calculateCardStatementRemaining,
   calculateSpendingBreakdown,
-  calculateProjectTotalCost,
-  evaluateProjectBudget,
   projectSixMonthCashLoad,
-  calculateFounderRunway,
-  collectReceivable,
-  payDebt,
   calculateDcaAverageCost,
   calculateMonthlyCashFlow,
   calculatePortfolioMetrics,
@@ -233,60 +228,6 @@ describe('finance-engine', () => {
       expect(result.financing).toBe(0)
       expect(result.excluded).toBe(0)
       expect(result.totalConsumption).toBe(0)
-    })
-  })
-
-  describe('calculateProjectTotalCost', () => {
-    it('direkt harcamalar ve aktif abonelikleri toplar', () => {
-      const transactions = [
-        { project_id: 'p1', amount: 100 },
-        { project_id: 'p2', amount: 50 }
-      ]
-      const subscriptions = [
-        { project_id: 'p1', amount: 20, status: 'Aktif' }
-      ]
-      const result = calculateProjectTotalCost('p1', transactions, subscriptions)
-      expect(result).toBe(120)
-    })
-
-    it('iptal edilmiş veya kararı İptal Et olan abonelikleri hariç tutar', () => {
-      const subscriptions = [
-        { project_id: 'p1', amount: 20, status: 'İptal' },
-        { project_id: 'p1', amount: 30, status: 'Aktif', decision: 'İptal Et' }
-      ]
-      const result = calculateProjectTotalCost('p1', [], subscriptions)
-      expect(result).toBe(0)
-    })
-
-    it('boş/tanımsız diziler, null ve geçersiz metin girdileri için güvenli çalışır', () => {
-      expect(calculateProjectTotalCost('p1', undefined as any, undefined as any)).toBe(0)
-      expect(calculateProjectTotalCost('p1', [null as any], [null as any])).toBe(0)
-      expect(calculateProjectTotalCost('p1', [{ project_id: 'p1', amount: 'abc' as any }], [{ project_id: 'p1', amount: 'def' as any }])).toBe(0)
-      expect(calculateProjectTotalCost('p1', [{ project_id: 'p1', amount: '150,50' as any }], [{ project_id: 'p1', amount: '50' as any }])).toBe(200.5)
-    })
-  })
-
-  describe('evaluateProjectBudget', () => {
-    it('limite ulaşılmadıysa GREEN döner', () => {
-      const result = evaluateProjectBudget(50, 100)
-      expect(result.status).toBe('GREEN')
-    })
-
-    it('limitin %85 ine ulaşıldıysa YELLOW döner', () => {
-      const result = evaluateProjectBudget(85, 100)
-      expect(result.status).toBe('YELLOW')
-      expect(result.isWarning).toBe(true)
-    })
-
-    it('limit aşıldıysa RED döner', () => {
-      const result = evaluateProjectBudget(101, 100)
-      expect(result.status).toBe('RED')
-      expect(result.isExceeded).toBe(true)
-    })
-
-    it('limit yoksa veya sıfırsa NO_BUDGET döner', () => {
-      const result = evaluateProjectBudget(50, 0)
-      expect(result.status).toBe('NO_BUDGET')
     })
   })
 
@@ -567,53 +508,6 @@ describe('finance-engine', () => {
     })
   })
 
-  describe('calculateFounderRunway', () => {
-    it('standart giderle aylık hesaplama yapar', () => {
-      const result = calculateFounderRunway(10000, 2000, 500)
-      expect(result.runwayMonths).toBe(4)
-    })
-
-    it('gider yoksa infinite döner', () => {
-      const result = calculateFounderRunway(10000, 0, 0)
-      expect(result.runwayMonths).toBe('infinite')
-    })
-
-    it('negatif nakit veya sıfır nakit durumunu işler', () => {
-      const result = calculateFounderRunway(-2500, 2000, 500)
-      expect(result.runwayMonths).toBe(-1)
-    })
-  })
-
-  describe('collectReceivable & payDebt', () => {
-    it('alacak tam tahsil edildiğinde kapatıldı flagi döner', () => {
-      const result = collectReceivable(1000, 500, 500)
-      expect(result.newAccountBalance).toBe(1500)
-      expect(result.newReceivableRemaining).toBe(0)
-      expect(result.isClosed).toBe(true)
-    })
-
-    it('alacak kısmi tahsil edildiğinde kapanmaz', () => {
-      const result = collectReceivable(1000, 500, 200)
-      expect(result.newAccountBalance).toBe(1200)
-      expect(result.newReceivableRemaining).toBe(300)
-      expect(result.isClosed).toBe(false)
-    })
-
-    it('borç tam ödendiğinde kapatıldı flagi döner', () => {
-      const result = payDebt(1000, 500, 500)
-      expect(result.newAccountBalance).toBe(500)
-      expect(result.newDebtRemaining).toBe(0)
-      expect(result.isClosed).toBe(true)
-    })
-
-    it('borç kısmi ödendiğinde kapanmaz', () => {
-      const result = payDebt(1000, 500, 200)
-      expect(result.newAccountBalance).toBe(800)
-      expect(result.newDebtRemaining).toBe(300)
-      expect(result.isClosed).toBe(false)
-    })
-  })
-
   describe('calculateDcaAverageCost', () => {
     it('ağırlıklı ortalama maliyeti doğru hesaplar', () => {
       const result = calculateDcaAverageCost(10, 100, 5, 130)
@@ -740,16 +634,6 @@ describe('finance-engine', () => {
       const eq = calculateSubscriptionEquivalent(20, 'Aylık', 'USD', 35)
       expect(eq.monthly).toBe(700)
       expect(eq.yearly).toBe(8400)
-    })
-
-    it('calculateProjectTotalCost dövizli abonelikleri kur haritasıyla toplar', () => {
-      const transactions = [{ project_id: 'p1', amount: 500 }]
-      const subscriptions = [
-        { project_id: 'p1', amount: 20, currency: 'USD', status: 'Aktif' }, // 20 * 35 = 700
-        { project_id: 'p1', amount: 100, currency: 'TRY', status: 'Aktif' },
-      ]
-      const totalCost = calculateProjectTotalCost('p1', transactions, subscriptions, { USD: 35 })
-      expect(totalCost).toBe(1300) // 500 + 700 + 100
     })
 
     it('projectSixMonthCashLoad dövizli abonelikleri kur haritasıyla projekte eder', () => {

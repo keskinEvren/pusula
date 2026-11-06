@@ -394,7 +394,6 @@ export function generateLifeMarkdown(
   const dreamMap = new Map((data.dreams || []).map((d) => [d.id, d]))
   const debtMap = new Map((data.debts || []).map((d) => [d.id, d]))
   const routineMap = new Map((data.routines || []).map((r) => [r.id, r]))
-  const investmentMap = new Map((data.investments || []).map((i) => [i.id, i]))
 
   const resolveProject = (id?: string | null) => (id ? projectMap.get(id)?.name || '-' : '-')
   const resolveAccount = (id?: string | null) => (id ? accountMap.get(id)?.name || '-' : '-')
@@ -416,12 +415,6 @@ export function generateLifeMarkdown(
     return `${d.person_or_entity} (${d.type})`
   }
   const resolveRoutine = (id?: string | null) => (id ? routineMap.get(id)?.title || '-' : '-')
-  const resolveInvestment = (id?: string | null) => {
-    if (!id) return '-'
-    const inv = investmentMap.get(id)
-    if (!inv) return '-'
-    return `${inv.name} (${inv.symbol})`
-  }
 
   const lines: string[] = []
   const sectionCounts: Record<string, number> = {}
@@ -638,47 +631,10 @@ export function generateLifeMarkdown(
     if (projects.length === 0) {
       lines.push('*Kayıtlı proje bulunmuyor.*')
     } else {
-      lines.push('| Proje | Tür | Durum | Bütçe Limiti | Harcama | Gelir / Ay | Abonelik / Ay | Borç / Alacak | URL / Repo | Açıklama |')
-      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+      lines.push('| Proje | Tür | Durum | URL / Repo | Açıklama |')
+      lines.push('| :--- | :--- | :--- | :--- | :--- |')
       for (const p of projects) {
         const pType = PROJECT_TYPE_MAP[p.project_type] || p.project_type
-        const budget = p.budget_limit ? formatCurrency(p.budget_limit) : '-'
-
-        // Projeye bağlı ilişkisel finansal toplamlar
-        const spent = (data.transactions || [])
-          .filter((t) => t.project_id === p.id && (t.type === 'Harcama' || t.type === 'Finansman/Masraf'))
-          .reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0)
-
-        const incomeMonthly = (data.incomes || [])
-          .filter((i) => i.project_id === p.id && i.status === 'Aktif')
-          .reduce((sum, i) => {
-            const eq = calculateSubscriptionEquivalent(i.amount, i.period, i.currency)
-            return sum + eq.monthly
-          }, 0)
-
-        const subsMonthly = (data.subscriptions || [])
-          .filter((s) => s.project_id === p.id && s.status === 'Aktif' && s.decision !== 'İptal Et')
-          .reduce((sum, s) => {
-            const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency)
-            return sum + eq.monthly
-          }, 0)
-
-        const projectDebts = (data.debts || [])
-          .filter((d) => d.project_id === p.id && d.status === 'Açık' && d.type === 'Borç')
-          .reduce((sum, d) => sum + (Number(d.remaining) || 0), 0)
-
-        const projectReceivables = (data.debts || [])
-          .filter((d) => d.project_id === p.id && d.status === 'Açık' && d.type === 'Alacak')
-          .reduce((sum, d) => sum + (Number(d.remaining) || 0), 0)
-
-        let debtReceivableStr = '-'
-        if (projectDebts > 0 && projectReceivables > 0) {
-          debtReceivableStr = `Borç: ${formatCurrency(projectDebts)} | Alacak: ${formatCurrency(projectReceivables)}`
-        } else if (projectDebts > 0) {
-          debtReceivableStr = `Borç: ${formatCurrency(projectDebts)}`
-        } else if (projectReceivables > 0) {
-          debtReceivableStr = `Alacak: ${formatCurrency(projectReceivables)}`
-        }
 
         const links = [
           p.live_url ? `[Canlı](${p.live_url})` : '',
@@ -686,7 +642,7 @@ export function generateLifeMarkdown(
         ].filter(Boolean).join(' ') || '-'
 
         lines.push(
-          `| ${cleanCell(p.name)} | ${cleanCell(pType)} | ${cleanCell(p.status)} | ${cleanCell(budget)} | ${cleanCell(formatCurrency(spent))} | ${cleanCell(formatCurrency(incomeMonthly))} | ${cleanCell(formatCurrency(subsMonthly))} | ${cleanCell(debtReceivableStr)} | ${cleanCell(links)} | ${summarizeInline(p.description)} |`
+          `| ${cleanCell(p.name)} | ${cleanCell(pType)} | ${cleanCell(p.status)} | ${cleanCell(links)} | ${summarizeInline(p.description)} |`
         )
       }
 
@@ -971,13 +927,11 @@ export function generateLifeMarkdown(
     if (debts.length === 0) {
       lines.push('*Kayıtlı borç veya alacak bulunmuyor.*')
     } else {
-      lines.push('| Tür | Kişi / Kurum | Kategori | Anapara | Ödenen | Kalan | Durum | Proje | Bağlı Hesap | Açıklama |')
-      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+      lines.push('| Tür | Kişi / Kurum | Kategori | Anapara | Ödenen | Kalan | Durum | Açıklama |')
+      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
       for (const d of debts) {
-        const proj = resolveProject(d.project_id)
-        const acc = resolveAccount(d.linked_account_id)
         lines.push(
-          `| ${cleanCell(d.type)} | ${cleanCell(d.person_or_entity)} | ${cleanCell(d.category)} | ${cleanCell(formatCurrency(d.principal))} | ${cleanCell(formatCurrency(d.past_payments))} | ${cleanCell(formatCurrency(d.remaining))} | ${cleanCell(d.status)} | ${cleanCell(proj)} | ${cleanCell(acc)} | ${cleanCell(d.description)} |`
+          `| ${cleanCell(d.type)} | ${cleanCell(d.person_or_entity)} | ${cleanCell(d.category)} | ${cleanCell(formatCurrency(d.principal))} | ${cleanCell(formatCurrency(d.past_payments))} | ${cleanCell(formatCurrency(d.remaining))} | ${cleanCell(d.status)} | ${cleanCell(d.description)} |`
         )
       }
     }
@@ -1002,13 +956,12 @@ export function generateLifeMarkdown(
     if (incomes.length === 0) {
       lines.push('*Kayıtlı gelir kaynağı bulunmuyor.*')
     } else {
-      lines.push('| Gelir Başlığı | Kategori | Tür | Tutar | Periyot | Ödeme Günü | Durum | Proje | Not |')
-      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+      lines.push('| Gelir Başlığı | Kategori | Tür | Tutar | Periyot | Ödeme Günü | Durum | Not |')
+      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
       for (const inc of incomes) {
-        const proj = resolveProject(inc.project_id)
         const payday = inc.payday ? `Ayın ${inc.payday}. günü` : '-'
         lines.push(
-          `| ${cleanCell(inc.title)} | ${cleanCell(inc.category)} | ${cleanCell(inc.income_type)} | ${cleanCell(formatCurrency(inc.amount, inc.currency))} | ${cleanCell(inc.period)} | ${cleanCell(payday)} | ${cleanCell(inc.status)} | ${cleanCell(proj)} | ${cleanCell(inc.note)} |`
+          `| ${cleanCell(inc.title)} | ${cleanCell(inc.category)} | ${cleanCell(inc.income_type)} | ${cleanCell(formatCurrency(inc.amount, inc.currency))} | ${cleanCell(inc.period)} | ${cleanCell(payday)} | ${cleanCell(inc.status)} | ${cleanCell(inc.note)} |`
         )
       }
     }
@@ -1019,14 +972,13 @@ export function generateLifeMarkdown(
     if (subs.length === 0) {
       lines.push('*Kayıtlı abonelik bulunmuyor.*')
     } else {
-      lines.push('| Servis | Grup | Model | Tutar | Periyot | Aylık Eşdeğer | Bitiş / Yenilenme | Stratejik Etiket | Karar | Durum | Ödeme Yöntemi / Kart | Proje |')
-      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+      lines.push('| Servis | Grup | Model | Tutar | Periyot | Aylık Eşdeğer | Bitiş / Yenilenme | Stratejik Etiket | Karar | Durum | Ödeme Yöntemi / Kart |')
+      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
       for (const sub of subs) {
-        const proj = resolveProject(sub.project_id)
-        const cardOrMethod = sub.payment_card_id ? resolveCard(sub.payment_card_id) : (sub.payment_method || '-')
+        const cardOrMethod = sub.payment_method || '-'
         const eq = calculateSubscriptionEquivalent(sub.amount, sub.period, sub.currency)
         lines.push(
-          `| ${cleanCell(sub.service)} | ${cleanCell(sub.group_type)} | ${cleanCell(sub.model)} | ${cleanCell(formatCurrency(sub.amount, sub.currency))} | ${cleanCell(sub.period)} | ${cleanCell(formatCurrency(eq.monthly, sub.currency))} | ${cleanCell(sub.end_date)} | ${cleanCell(sub.strategic_tag)} | ${cleanCell(sub.decision)} | ${cleanCell(sub.status)} | ${cleanCell(cardOrMethod)} | ${cleanCell(proj)} |`
+          `| ${cleanCell(sub.service)} | ${cleanCell(sub.group_type)} | ${cleanCell(sub.model)} | ${cleanCell(formatCurrency(sub.amount, sub.currency))} | ${cleanCell(sub.period)} | ${cleanCell(formatCurrency(eq.monthly, sub.currency))} | ${cleanCell(sub.end_date)} | ${cleanCell(sub.strategic_tag)} | ${cleanCell(sub.decision)} | ${cleanCell(sub.status)} | ${cleanCell(cardOrMethod)} |`
         )
       }
     }
@@ -1035,12 +987,11 @@ export function generateLifeMarkdown(
     // 6.7 İşyeri Eşleştirme Kuralları
     if (mappings.length > 0) {
       lines.push('### 🏷️ İşyeri Eşleştirme Kuralları')
-      lines.push('| Ham Desen | İşyeri Adı | Varsayılan Grup | Varsayılan Proje |')
-      lines.push('| :--- | :--- | :--- | :--- |')
+      lines.push('| Ham Desen | İşyeri Adı | Varsayılan Grup |')
+      lines.push('| :--- | :--- | :--- |')
       for (const m of mappings) {
-        const defProj = resolveProject(m.default_project_id)
         lines.push(
-          `| ${cleanCell(m.raw_pattern)} | ${cleanCell(m.merchant_name)} | ${cleanCell(m.default_group)} | ${cleanCell(defProj)} |`
+          `| ${cleanCell(m.raw_pattern)} | ${cleanCell(m.merchant_name)} | ${cleanCell(m.default_group)} |`
         )
       }
       lines.push('')
@@ -1082,8 +1033,8 @@ export function generateLifeMarkdown(
           .reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0)
 
         lines.push(`### 🗓️ ${monthKey} (Harcama: ${formatCurrency(monthExpense)} | Gelir: ${formatCurrency(monthIncome)})`)
-        lines.push('| Tarih | Tür | Açıklama / İşyeri | Tutar | Grup | Hesap / Kart | Proje | İlişkili Bağlantı |')
-        lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+        lines.push('| Tarih | Tür | Açıklama / İşyeri | Tutar | Grup | Hesap / Kart |')
+        lines.push('| :--- | :--- | :--- | :--- | :--- | :--- |')
 
         for (const tx of monthTxs) {
           let desc = tx.description ? String(tx.description).trim() : ''
@@ -1098,37 +1049,13 @@ export function generateLifeMarkdown(
           if (!desc) desc = '-'
 
           let source = '-'
-          if (tx.source_account_id) {
-            const src = resolveAccount(tx.source_account_id)
-            const tgt = tx.target_account_id ? resolveAccount(tx.target_account_id) : ''
-            source = tgt && tgt !== '-' ? `${src} → ${tgt}` : src
-          } else if (tx.card_id) {
+          if (tx.card_id) {
             source = resolveCard(tx.card_id)
           } else if (tx.account_id) {
             source = resolveAccount(tx.account_id)
           } else if (tx.account_or_card) {
             source = tx.account_or_card
           }
-
-          const proj = resolveProject(tx.project_id)
-
-          const relatedParts: string[] = []
-          if (tx.related_debt_id) {
-            relatedParts.push(`Borç/Alacak: ${resolveDebt(tx.related_debt_id)}`)
-          }
-          if (tx.related_investment_id) {
-            let invDetails = resolveInvestment(tx.related_investment_id)
-            if (tx.investment_quantity_delta !== null && tx.investment_quantity_delta !== undefined) {
-              const sign = tx.investment_quantity_delta > 0 ? '+' : ''
-              invDetails += ` (${sign}${tx.investment_quantity_delta} adet`
-              if (tx.investment_unit_price) {
-                invDetails += ` @ ${formatCurrency(tx.investment_unit_price)}`
-              }
-              invDetails += ')'
-            }
-            relatedParts.push(`Yatırım: ${invDetails}`)
-          }
-          const related = relatedParts.join(', ') || '-'
 
           const numAmount = Math.abs(Number(tx.amount) || 0)
           const amountFormatted = (tx.type === 'Harcama' || tx.type === 'Finansman/Masraf' || tx.type === 'Borç Ödemesi')
@@ -1141,7 +1068,7 @@ export function generateLifeMarkdown(
           const typeWithRecurrence = `${tx.type || '-'}${recurrencePart}`
 
           lines.push(
-            `| ${cleanCell(tx.date)} | ${cleanCell(typeWithRecurrence)} | ${cleanCell(desc)} | ${cleanCell(amountFormatted)} | ${cleanCell(tx.analysis_group)} | ${cleanCell(source)} | ${cleanCell(proj)} | ${cleanCell(related)} |`
+            `| ${cleanCell(tx.date)} | ${cleanCell(typeWithRecurrence)} | ${cleanCell(desc)} | ${cleanCell(amountFormatted)} | ${cleanCell(tx.analysis_group)} | ${cleanCell(source)} |`
           )
         }
         lines.push('')

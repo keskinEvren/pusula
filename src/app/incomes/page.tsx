@@ -97,17 +97,11 @@ function IncomesContent() {
 
   useEffect(() => {
     loadData()
-    fetch('/api/market-prices?symbols=USD,EUR')
+    fetch('/api/market-prices')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.prices && Array.isArray(data.prices)) {
-          const newRates: Record<string, number> = {}
-          data.prices.forEach((p: any) => {
-            if (p.symbol && p.price) newRates[p.symbol] = p.price
-          })
-          if (Object.keys(newRates).length > 0) {
-            setMarketRates((prev) => ({ ...prev, ...newRates }))
-          }
+        if (data?.baseRates && typeof data.baseRates === 'object') {
+          setMarketRates((prev) => ({ ...prev, ...data.baseRates }))
         }
       })
       .catch(() => {})
@@ -230,7 +224,6 @@ function IncomesContent() {
         period: normalizeSubscriptionPeriod(form.period),
         payday: validPayday,
         status: form.status,
-        project_id: null,
         note: form.note.trim() || null,
       }
 

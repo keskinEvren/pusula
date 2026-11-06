@@ -44,7 +44,6 @@ describe('Merchant Matcher Tests', () => {
         raw_pattern: 'MIGROS',
         merchant_name: 'Özel Migros',
         default_group: 'İş' as any,
-        default_project_id: null,
         created_at: '2023-01-01'
       }]
       const result = matchMerchant('MIGROS SANAL MARKET', userMappings)
