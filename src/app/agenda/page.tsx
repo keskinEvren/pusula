@@ -858,7 +858,7 @@ function AgendaContent() {
 
                   {activeTimer.projectName && (
                     <Badge variant="outline" className="text-[11px] border-primary/25 text-primary">
-                      🚀 {activeTimer.projectName}
+                      <span className="inline-flex items-center gap-1"><Rocket className="h-3 w-3" /> {activeTimer.projectName}</span>
                     </Badge>
                   )}
 
@@ -1615,13 +1615,13 @@ function AgendaContent() {
                     <div className="font-semibold text-foreground text-xs">Nasıl Kullanılır?</div>
                     <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
                       <li>
-                        <strong className="text-foreground">⚡ Bugüne Planla:</strong> Maddeyi anında bugünün ajandasına aktarır.
+                        <strong className="text-foreground">Bugüne Planla:</strong> Maddeyi anında bugünün ajandasına aktarır.
                       </li>
                       <li>
-                        <strong className="text-foreground">📅 Tarih Ata:</strong> İleri bir tarihe randevu veya planlama yapar.
+                        <strong className="text-foreground">Tarih Ata:</strong> İleri bir tarihe randevu veya planlama yapar.
                       </li>
                       <li>
-                        <strong className="text-foreground">⏱️ Doğrudan Başlat:</strong> Tarih atamadan da sayaç başlatıp efor sarf edebilirsiniz.
+                        <strong className="text-foreground">Doğrudan Başlat:</strong> Tarih atamadan da sayaç başlatıp efor sarf edebilirsiniz.
                       </li>
                     </ul>
                   </div>

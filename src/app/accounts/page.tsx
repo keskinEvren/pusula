@@ -32,7 +32,6 @@ import {
   calculateAccountsYieldSummary,
   round2,
 } from '@/lib/finance-engine'
-import { financialBridge } from '@/lib/financial-bridge'
 import type { Account } from '@/types/database'
 
 type AccountType = 'vadesiz' | 'gunluk_birikim' | 'vadeli' | 'doviz' | 'kasa' | 'diger'
@@ -207,17 +206,18 @@ export default function AccountsPage() {
       const periodLabel = yieldInfo.pendingDays > 1 ? `${yieldInfo.pendingDays} Günlük` : 'Günlük'
 
       // Atomik gelir kaydı ile hem hareket tablosuna işlenir hem bakiye güncellenir
-      const res = await financialBridge.recordIncome({
-        userId: user.id,
-        date: todayStr,
-        amount: yieldInfo.pendingNetYield,
-        description: `${acc.name} — ${periodLabel} Birikim Getirisi (Damla)`,
-        accountId: acc.id,
-        merchant: 'Mevduat / Faiz Getirisi',
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('fn_record_income_atomic', {
+        p_user_id: user.id,
+        p_date: todayStr,
+        p_amount: yieldInfo.pendingNetYield,
+        p_description: `${acc.name} — ${periodLabel} Birikim Getirisi (Damla)`,
+        p_analysis_group: 'Kişisel',
+        p_merchant: 'Mevduat / Faiz Getirisi',
+        p_account_id: acc.id,
       })
 
-      if (!res.success) {
-        throw new Error(res.error || 'Getiri kaydedilemedi.')
+      if (rpcErr || !(rpcRes as any)?.success) {
+        throw new Error(rpcErr?.message || (rpcRes as any)?.error || 'Getiri kaydedilemedi.')
       }
 
       // Son getiri işleme tarihini güncelle
@@ -231,7 +231,7 @@ export default function AccountsPage() {
       if (updateAccError) throw updateAccError
 
       window.dispatchEvent(new Event('pusula:transaction-created'))
-      toast.success(`💧 ${formatCurrency(yieldInfo.pendingNetYield)} getiri ${acc.name} hesabına işlendi!`)
+      toast.success(`${formatCurrency(yieldInfo.pendingNetYield)} getiri ${acc.name} hesabına işlendi!`)
       loadData()
     } catch (err: any) {
       toast.error(err?.message || 'Getiri işlenirken bir hata oluştu.')
@@ -621,8 +621,8 @@ export default function AccountsPage() {
                 onChange={(e) => setType(e.target.value as AccountType)}
               >
                 <option value="vadesiz">Vadesiz TL</option>
-                <option value="gunluk_birikim">💧 Günlük Birikim / Kırık Vadeli (ARI vb.)</option>
-                <option value="vadeli">📈 Vadeli Mevduat</option>
+                <option value="gunluk_birikim">Günlük Birikim / Kırık Vadeli (ARI vb.)</option>
+                <option value="vadeli">Vadeli Mevduat</option>
                 <option value="doviz">Döviz / Altın</option>
                 <option value="kasa">Fiziki Nakit Kasa</option>
                 <option value="diger">Diğer</option>

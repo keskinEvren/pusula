@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { X, Coffee, ShoppingBag, Utensils, Car, Pill, Laptop, Check, CreditCard as CardIcon, Building2 } from 'lucide-react'
+import { X, Coffee, ShoppingBag, Utensils, Car, Pill, Laptop, Check, CreditCard as CardIcon, Building2, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -137,7 +137,6 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
         p_merchant: description.trim() || null,
         p_account_id: sourceType === 'account' ? selectedSourceId : null,
         p_card_id: sourceType === 'card' ? selectedSourceId : null,
-        p_project_id: null,
       })
 
       if (error) {
@@ -193,7 +192,8 @@ export function QuickCaptureSheet({ isOpen, onClose }: QuickCaptureSheetProps) {
         <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
           <div>
             <h2 id="quick-capture-title" className="text-base font-bold text-foreground flex items-center gap-2">
-              <span>⚡ Hızlı Harcama</span>
+              <Zap className="h-4 w-4 text-primary" />
+              <span>Hızlı Harcama</span>
             </h2>
             <p className="text-xs text-muted-foreground">3 saniyede nakit veya kart harcaması kaydet</p>
           </div>

@@ -27,6 +27,10 @@ import {
   Copy,
   Eye,
   Settings2,
+  Compass,
+  Landmark,
+  Rocket,
+  Zap,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -58,25 +62,29 @@ import { exportMarkdownFile, copyMarkdownToClipboard } from '@/lib/markdown-util
 const AI_PREAMBLE_PRESETS = [
   {
     id: 'general',
-    label: '🧭 Genel Durum Analizi',
+    label: 'Genel Durum Analizi',
+    icon: Compass,
     prompt:
       'Sen benim stratejik yaşam ve finans danışmanımsın. Bu belgedeki tüm verilerimi (finansal durum, projelerim, vizyon hedeflerim ve günlük rutinlerim) bütüncül bir gözle analiz et. Güçlü yönlerimi, tıkanıklık noktalarımı ve önümüzdeki çeyrek için en yüksek kaldıraçlı 3 odak noktamı belirle.',
   },
   {
     id: 'cfo',
-    label: "🏦 Nakit Akışı & Borç CFO'su",
+    label: "Nakit Akışı & Borç CFO'su",
+    icon: Landmark,
     prompt:
       "Sen deneyimli bir kişisel finans CFO'susun. Kredi kartı borçlarımı, aktif taksit yükümü, faiz/komisyon sızıntılarımı ve aylık düzenli aboneliklerimi incele. Likit net durumumu pozitife geçirmek ve borç yükünü en hızlı şekilde eritmek için adım adım somut bir nakit akışı optimizasyon planı hazırla.",
   },
   {
     id: 'founder',
-    label: '🚀 Solo Founder Ürün Danışmanı',
+    label: 'Solo Founder Ürün Danışmanı',
+    icon: Rocket,
     prompt:
       'Sen solo founder ve mikro-SaaS ürün danışmanımsın. Projelerimi, bütçe/harcama oranlarını, fikir havuzumu ve gelir potansiyellerini değerlendir. Hangi projenin lansmanına öncelik vermem gerektiğini, hangisini dondurmam veya rafa kaldırmam gerektiğini ve ilk gelir akışını hızlandırmak için yapılması gerekenleri analiz et.',
   },
   {
     id: 'coach',
-    label: '⚡ Rutin & Disiplin Koçu',
+    label: 'Rutin & Disiplin Koçu',
+    icon: Zap,
     prompt:
       "Sen benim yüksek performans ve alışkanlık koçumsun. 'Fit Evren', 'Cash Maker Evren' gibi kimlik personalarımı, bu personalara bağlı hedeflerimi ve günlük rutinlerimi değerlendir. Minimum efektif doz prensibiyle rutinlerimi nasıl optimize edebileceğimi, tutarlılığı nasıl artırabileceğimi ve günlük enerjimi maksimize etme yöntemlerini anlat.",
   },
@@ -1175,9 +1183,10 @@ function VaultPageContent() {
                         key={preset.id}
                         type="button"
                         onClick={() => handlePreambleChange(preset.prompt)}
-                        className="text-[11px] px-2.5 py-1 rounded-full border border-border/80 bg-muted/40 hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all cursor-pointer font-medium"
+                        className="text-[11px] px-2.5 py-1 rounded-full border border-border/80 bg-muted/40 hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all cursor-pointer font-medium inline-flex items-center gap-1.5"
                       >
-                        {preset.label}
+                        <preset.icon className="h-3 w-3" />
+                        <span>{preset.label}</span>
                       </button>
                     ))}
                   </div>

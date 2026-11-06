@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Layers,
+  Zap,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { isMissingRelationError, requireMutationData, throwOnSupabaseError } from '@/lib/supabase/mutation'
@@ -1184,7 +1185,7 @@ function InvestmentsContent() {
                   disabled={fetchingPrice || (!formSymbol && !formName)}
                   className="text-[11px] text-primary font-semibold hover:underline"
                 >
-                  {fetchingPrice ? 'Çekiliyor...' : '⚡ Canlı Çek'}
+                  {fetchingPrice ? 'Çekiliyor...' : <span className="inline-flex items-center gap-1"><Zap className="h-3 w-3" /> Canlı Çek</span>}
                 </button>
               </div>
               <Input

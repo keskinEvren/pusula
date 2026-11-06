@@ -60,7 +60,6 @@ export default function ProjectDetailPage({
     slug: '',
     project_type: 'saas' as NonNullable<Project['project_type']>,
     status: 'Planlama' as Project['status'],
-    budget_limit: '',
     repo_url: '',
     live_url: '',
   })
@@ -164,7 +163,6 @@ export default function ProjectDetailPage({
       slug: project.slug,
       project_type: pType,
       status: project.status,
-      budget_limit: project.budget_limit ? String(project.budget_limit) : '',
       repo_url: project.repo_url || '',
       live_url: project.live_url || '',
     })
@@ -187,7 +185,6 @@ export default function ProjectDetailPage({
           slug: finalSlug,
           project_type: projectEditForm.project_type,
           status: projectEditForm.status,
-          budget_limit: projectEditForm.budget_limit ? parseFloat(projectEditForm.budget_limit) : null,
           repo_url: projectEditForm.repo_url || null,
           live_url: projectEditForm.live_url || null,
         })
@@ -380,7 +377,7 @@ export default function ProjectDetailPage({
       />
 
       {/* Project Overview Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         <div className="p-4 space-y-1">
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
             Aktif Çalışma Süresi
@@ -393,19 +390,7 @@ export default function ProjectDetailPage({
           </p>
         </div>
 
-        <div className="p-4 space-y-1">
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Hedef Bütçe Sınırı
-          </p>
-          <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
-            {project.budget_limit && project.budget_limit > 0
-              ? formatCurrency(project.budget_limit)
-              : 'Belirtilmedi'}
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            {project.budget_limit ? 'Tavan bütçe beyanı' : 'Serbest bütçe'}
-          </p>
-        </div>
+
 
         <div className="p-4 space-y-1">
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -600,10 +585,10 @@ export default function ProjectDetailPage({
                   }
                   className="text-xs"
                 >
-                  <option value="saas">🚀 Kendi Girişimim / SaaS</option>
-                  <option value="workplace">🏢 Çalıştığım Firma / İşyerim</option>
-                  <option value="client">💼 Müşteri / Kurumsal Web</option>
-                  <option value="internal">🛠️ Dahili Araç / Altyapı</option>
+                  <option value="saas">Kendi Girişimim / SaaS</option>
+                  <option value="workplace">Çalıştığım Firma / İşyerim</option>
+                  <option value="client">Müşteri / Kurumsal Web</option>
+                  <option value="internal">Dahili Araç / Altyapı</option>
                 </Select>
               </div>
 
@@ -620,29 +605,15 @@ export default function ProjectDetailPage({
                   }
                   className="text-xs"
                 >
-                  <option value="Planlama">📐 Planlama</option>
-                  <option value="Geliştirmede">🚧 Geliştirmede</option>
-                  <option value="Canlı">🚀 Canlı</option>
-                  <option value="Arşiv">📦 Arşiv</option>
+                  <option value="Planlama">Planlama</option>
+                  <option value="Geliştirmede">Geliştirmede</option>
+                  <option value="Canlı">Canlı</option>
+                  <option value="Arşiv">Arşiv</option>
                 </Select>
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label htmlFor="proj-edit-budget" className="text-xs font-semibold text-muted-foreground">
-                Bütçe Tavanı (Opsiyonel)
-              </label>
-              <Input
-                id="proj-edit-budget"
-                type="number"
-                step="0.01"
-                placeholder="20000.00"
-                prefix="₺"
-                value={projectEditForm.budget_limit}
-                onChange={(e) => setProjectEditForm({ ...projectEditForm, budget_limit: e.target.value })}
-                className="text-xs font-mono"
-              />
-            </div>
+
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">

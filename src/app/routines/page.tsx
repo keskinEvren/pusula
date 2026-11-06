@@ -39,6 +39,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DynamicIcon, IconPicker } from '@/components/ui/icon-picker'
 import { PageHeader } from '@/components/layout/page-header'
 import { useToast } from '@/lib/toast-context'
 import { isUUID } from '@/lib/utils'
@@ -102,7 +103,7 @@ function RoutinesPageContent() {
   // Form State
   const [formData, setFormData] = useState({
     title: '',
-    icon: '☀️',
+    icon: 'sun',
     time_block: 'morning' as TimeBlock,
     frequency: 'daily',
     target_duration_minutes: 15,
@@ -155,7 +156,7 @@ function RoutinesPageContent() {
           const seedPayload = realLocalRoutines.map((item, idx) => ({
             user_id: user.id,
             title: item.title,
-            icon: item.icon || '✨',
+            icon: item.icon || 'sparkles',
             time_block: item.time_block || 'morning',
             frequency: item.frequency || 'daily',
             target_days: Array.isArray(item.target_days) ? item.target_days : [1, 2, 3, 4, 5, 6, 7],
@@ -422,7 +423,7 @@ function RoutinesPageContent() {
     setEditingRoutine(null)
     setFormData({
       title: '',
-      icon: '☀️',
+      icon: 'sun',
       time_block: getCurrentTimeBlock(),
       frequency: 'daily',
       target_duration_minutes: 15,
@@ -469,7 +470,7 @@ function RoutinesPageContent() {
         id: localId,
         user_id: 'local',
         title: formData.title.trim(),
-        icon: formData.icon || '✨',
+        icon: formData.icon || 'sparkles',
         time_block: formData.time_block,
         frequency: formData.frequency as any,
         target_days: [1, 2, 3, 4, 5, 6, 7],
@@ -495,7 +496,7 @@ function RoutinesPageContent() {
     const routinePayload = {
       user_id: user.id,
       title: formData.title.trim(),
-      icon: formData.icon || '✨',
+      icon: formData.icon || 'sparkles',
       time_block: formData.time_block,
       frequency: formData.frequency as any,
       target_days: editingRoutine?.target_days || [1, 2, 3, 4, 5, 6, 7],
@@ -881,7 +882,9 @@ function RoutinesPageContent() {
               <div key={block} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">{blockMeta.icon}</span>
+                    <span className="p-1 rounded-md bg-muted/70 text-foreground border border-border/50">
+                      <DynamicIcon name={blockMeta.icon} className="h-4 w-4" />
+                    </span>
                     <h3 className="text-sm font-semibold text-foreground tracking-wide">
                       {blockMeta.label}
                     </h3>
@@ -948,7 +951,9 @@ function RoutinesPageContent() {
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm">{routine.icon}</span>
+                              <span className="p-1 rounded-md bg-muted/60 text-foreground border border-border/40 shrink-0">
+                                <DynamicIcon name={routine.icon} className="h-3.5 w-3.5" />
+                              </span>
                               <span
                                 className={`text-sm font-semibold truncate ${
                                   isFrozen
@@ -1000,7 +1005,7 @@ function RoutinesPageContent() {
                                   className="text-[11px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-300 gap-0.5"
                                   title="Altın dikişle onarıldı (Kintsugi). Asla iki kez kaçırmadın!"
                                 >
-                                  ✨ Onarıldı
+                                  <Sparkles className="h-3 w-3" /> Onarıldı
                                 </Badge>
                               )}
                             </div>
@@ -1008,8 +1013,8 @@ function RoutinesPageContent() {
                             {/* Açıklama / Hedef / Minimum Doz */}
                             <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                               {isLowBattery && routine.minimum_effective_dose ? (
-                                <span className="text-amber-400/90 font-medium">
-                                  🎯 Mikro: {routine.minimum_effective_dose}
+                                <span className="text-amber-400/90 font-medium inline-flex items-center gap-1">
+                                  <Target className="h-3 w-3" /> Mikro: {routine.minimum_effective_dose}
                                 </span>
                               ) : (
                                 <span>{routine.target_duration_minutes || 15} dk</span>
@@ -1131,7 +1136,9 @@ function RoutinesPageContent() {
                         className="group flex items-center justify-between p-3 rounded-xl border border-dashed border-border/80 bg-muted/10 opacity-75 hover:opacity-100 transition-all"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-base">{routine.icon}</span>
+                          <span className="p-1 rounded-md bg-muted/60 text-foreground border border-border/40 shrink-0">
+                            <DynamicIcon name={routine.icon} className="h-4 w-4" />
+                          </span>
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-foreground/90">{routine.title}</span>
@@ -1299,14 +1306,14 @@ function RoutinesPageContent() {
                         className="transition-all duration-500 group-hover/star:scale-125"
                       />
 
-                      {/* Emoji / İkon Etiketi */}
+                      {/* İsim Etiketi */}
                       <text
                         x={node.x}
                         y={node.y - 6}
                         textAnchor="middle"
                         className="text-[4.5px] fill-slate-300 font-sans pointer-events-none select-none"
                       >
-                        {node.icon} {node.title.slice(0, 10)}
+                        {node.title.slice(0, 12)}
                       </text>
                     </g>
                   )
@@ -1458,16 +1465,11 @@ function RoutinesPageContent() {
       >
         <form onSubmit={handleSaveRoutine} className="space-y-3">
           <div className="flex gap-3">
-            <div className="w-14 shrink-0">
-              <label htmlFor="routine-form-icon" className="text-xs font-semibold block mb-1 text-muted-foreground">İkon</label>
-              <Input
-                id="routine-form-icon"
+            <div className="w-36 shrink-0">
+              <label className="text-xs font-semibold block mb-1 text-muted-foreground">İkon</label>
+              <IconPicker
                 value={formData.icon}
-                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                className="text-center text-xl p-0 h-9"
-                placeholder="☀️"
-                maxLength={4}
-                required
+                onChange={(iconKey) => setFormData({ ...formData, icon: iconKey })}
               />
             </div>
             <div className="flex-1">
@@ -1492,10 +1494,10 @@ function RoutinesPageContent() {
                   setFormData({ ...formData, time_block: e.target.value as TimeBlock })
                 }
               >
-                <option value="morning">🌅 Sabah (06:00 - 12:00)</option>
-                <option value="afternoon">☀️ Gün İçi (12:00 - 18:00)</option>
-                <option value="evening">🌙 Akşam (18:00 - 00:00)</option>
-                <option value="night">🌌 Gece (00:00 - 06:00)</option>
+                <option value="morning">Sabah (06:00 - 12:00)</option>
+                <option value="afternoon">Gün İçi (12:00 - 18:00)</option>
+                <option value="evening">Akşam (18:00 - 00:00)</option>
+                <option value="night">Gece (00:00 - 06:00)</option>
               </Select>
             </div>
 

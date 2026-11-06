@@ -68,6 +68,7 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [investments, setInvestments] = useState<Investment[]>([])
   const [incomes, setIncomes] = useState<Income[]>([])
+  const [marketRates, setMarketRates] = useState<Record<string, number>>({ USD: 35.0, EUR: 38.0 })
   const [loading, setLoading] = useState(true)
 
   // Kasa Acil Durum Sıfırlama Karantinası State
@@ -119,9 +120,25 @@ export default function DashboardPage() {
     }
 
     loadDashboardData()
+    fetch('/api/market-prices')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.baseRates && typeof data.baseRates === 'object') {
+          setMarketRates((prev) => ({ ...prev, ...data.baseRates }))
+        }
+      })
+      .catch(() => {})
 
     const handleRefresh = () => {
       loadDashboardData()
+      fetch('/api/market-prices')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.baseRates && typeof data.baseRates === 'object') {
+            setMarketRates((prev) => ({ ...prev, ...data.baseRates }))
+          }
+        })
+        .catch(() => {})
     }
     window.addEventListener('pusula:transaction-created', handleRefresh)
     window.addEventListener('pusula:incomes-changed', handleRefresh)
@@ -172,22 +189,24 @@ export default function DashboardPage() {
   }, [debtInstallments, debts])
 
   const cashForecast = useMemo(
-    () => projectSixMonthCashLoad(activeSubs, pendingDebtInstallments, 6),
-    [activeSubs, pendingDebtInstallments]
+    () => projectSixMonthCashLoad(activeSubs, pendingDebtInstallments, 6, marketRates),
+    [activeSubs, pendingDebtInstallments, marketRates]
   )
 
   // 3. Monthly Income & Budget Balance (Clean Separation & Double-Counting Guard)
-  const incomeMetrics = useMemo(() => calculateIncomeMetrics(incomes), [incomes])
+  const incomeMetrics = useMemo(() => calculateIncomeMetrics(incomes, marketRates), [incomes, marketRates])
 
   // Declared recurring subscriptions load
   const fixedMonthlyExpenses = useMemo(() => {
     return round2(
       activeSubs.reduce((sum, s) => {
-        const eq = calculateSubscriptionEquivalent(s.amount, s.period)
+        const cur = (s.currency || 'TRY').toUpperCase()
+        const rate = marketRates[cur] || 1
+        const eq = calculateSubscriptionEquivalent(s.amount, s.period, cur, rate)
         return sum + eq.monthly
       }, 0)
     )
-  }, [activeSubs])
+  }, [activeSubs, marketRates])
 
   // Current month's pending debt installments load
   const currentMonthDebtLoad = useMemo(() => {
@@ -232,10 +251,14 @@ export default function DashboardPage() {
   const cardSubsEquivalent = useMemo(() => {
     return round2(
       activeSubs
-        .filter((s) => s.payment_method?.toLowerCase().includes('kart') || s.payment_card_id)
-        .reduce((sum, s) => sum + calculateSubscriptionEquivalent(s.amount, s.period).monthly, 0)
+        .filter((s) => s.payment_method?.toLowerCase().includes('kart'))
+        .reduce((sum, s) => {
+          const cur = (s.currency || 'TRY').toUpperCase()
+          const rate = marketRates[cur] || 1
+          return sum + calculateSubscriptionEquivalent(s.amount, s.period, cur, rate).monthly
+        }, 0)
     )
-  }, [activeSubs])
+  }, [activeSubs, marketRates])
 
   const adjustedCardDebt = useMemo(
     () => round2(Math.max(0, totalCardDebt - cardSubsEquivalent)),
@@ -318,7 +341,7 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-0.5">
               <div className="font-semibold text-sm text-foreground flex items-center gap-2 flex-wrap">
-                <span className="text-rose-600 dark:text-rose-400 font-bold">⚠️ Kimlikler & Şifreler Kasası Karantinada</span>
+                <span className="text-rose-600 dark:text-rose-400 font-bold">Kimlikler & Şifreler Kasası Karantinada</span>
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300 font-bold">
                   {remainingTimeDisplay}
                 </span>
@@ -736,7 +759,7 @@ export default function DashboardPage() {
                       <div>
                         <div className="text-xs font-semibold text-foreground">{prj.name}</div>
                         <div className="text-[11px] text-muted-foreground capitalize mt-0.5">
-                          {prj.status} • Bütçe: {formatCurrency(prj.budget_limit || 0)}
+                          {prj.status} • {prj.project_type || 'Proje'}
                         </div>
                       </div>
                       <Badge variant="outline" className="text-[11px] font-mono">
