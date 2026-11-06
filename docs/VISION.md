@@ -1,66 +1,69 @@
 # 🧭 Pusula — Vizyon ve Zihinsel Model
 
-> **"Kişisel finansını bilmeyen kurucu, projesini yönetemez. Projesinin gerçek maliyetini bilmeyen kurucu, yarınını planlayamaz."**
+> **"Karmaşık otomatik köprüler değil; öngörülebilir, modüler ve tam kontrol sunan kişisel yaşam ve finans işletim sistemi."**
 
 ---
 
-## 1. Problem: Solo Kurucunun Çok Katmanlı Kaosu
+## 1. Problem: Solo Kurucunun ve Bağımsız Geliştiricinin Bilgi Dağınıklığı
 
-Tek başına veya mikro bir ekiple dijital ürünler geliştiren solo kurucular (Indie Hackers) iki ayrı dünyanın baskısı altındadır:
+Tek başına veya mikro ölçekte çalışan geliştiriciler ve üreticiler günlük hayatta üç temel katmanı aynı anda yönetmeye çalışır:
 
-1. **Kişisel Hayat & Finansal Gerçeklik:**
-   - Kredi kartları, ekstre kesim tarihleri, asgari ödemeler, faiz/masraf yükleri.
-   - Şahsi borçlar (artı para, aile/şahıs borçları) ve kesin alacaklar (maaş hakedişleri, freelance ödemeler).
-   - Abonelikler (Cursor, OpenAI, Hosting, eğlence, faturalar).
-   - "Bu ay cebimde ne kaldı, ne kadar borcum var, net varlığım nedir?" sorusu.
+1. **Kişisel Finans & Nakit Dengesi:**
+   - Vadesiz hesaplar, nakit kasalar ve günlük/aylık getiri sağlayan birikim hesapları ("Damla" getiri motoru).
+   - Kredi kartları, ekstre kesim tarihleri, asgari ödemeler, dönemsel borç değişim trendleri (▲/▼).
+   - Şahsi/kurumsal borçlar, taksitli geri ödeme planları (`debt_installments`) ve kesin alacaklar.
+   - Beyan edilen düzenli ve tek seferlik gelirler (`incomes`) ile abonelik yükleri (`subscriptions`).
+   - *"Bu ayki net gelirim, sabit taahhütlerimi (abonelik + taksit) ve değişken harcamalarımı karşıladıktan sonra ne kadar serbest bütçe bırakıyor?"* sorusu.
 
-2. **Proje Portföyü & Üretim Gerçekliği:**
-   - Aklına gelen onlarca fikir arasından odaklanılması gerekenler.
-   - Kanban üzerinde ilerleyen geliştirme süreçleri, epics ve görevler.
-   - Odak dağılması (aynı anda 4 projeye başlayıp hiçbirini bitirememe sendromu).
+2. **Proje Portföyü & Odak Yönetimi:**
+   - Onlarca fikir (`ideas`) arasından gerçekten hayata geçirileceklerin seçilmesi.
+   - Aynı anda çok fazla projeye başlayıp hiçbirini bitirememe sendromuna karşı **Çalışma Masası Kapasite Sınırı (Focus Gate: Maksimum 2 Aktif Proje)**.
+   - Projelerin karmaşık muhasebe kalemlerine boğulmadan kendi teknik şartnamesi (Markdown Spec), çalışma bağlantıları (Repo/Canlı URL) ve ajanda odak seanslarıyla yürütülmesi.
 
-3. **Kritik Kesişim (The Missing Bridge — Eksik Halka):**
-   - Piyasadaki mevcut araçlar (Notion, Trello, Jira) sadece görevleri takip eder; paranın nereden geldiğini bilmez.
-   - Finans uygulamaları (Mint, YNAB, Excel bütçeleri) sadece harcamaları listeler; paranın hangi projeyi beslediğini veya tükettiğini bilmez.
-   - Kurucu şu 3 temel sorunun cevabını **tek ekranda** göremez:
-     - *"Bu projeye bugüne kadar cebimden kuruşu kuruşuna ne kadar harcadım?"*
-     - *"Projelerimin aylık nakit yakma hızı (burn rate) kişisel runway'imi kaç ay kısaltıyor?"*
-     - *"Maaşım veya hakedişim geldiğinde kart borçlarımı ve proje giderlerimi nasıl kapatacağım?"*
+3. **Kişisel Yaşam, Disiplin ve Yapay Zekâ Bağlamı:**
+   - Günlük ajanda & Pomodoro odak seansları (`agenda_items`), alışkanlık/rutin zincirleri (`routines`), seyir defteri (`journal_entries`), hayaller (`dreams`) ve istemci taraflı şifrelenmiş parola kasası (`credentials`).
+   - Tüm bu verilerin yapay zekâ asistanlarına (LLM) tek tıkla aktarılabilecek yapılandırılmış bir **`life.md` (AI Bağlam Dokümanı)** çıktısına dönüştürülmesi.
 
 ---
 
-## 2. Pusula'nın Zihinsel Modeli (Core Mental Model)
+## 2. Mimari Evrim: Neden "Bağımsız ve Kontrollü Modüller" (Decoupled Architecture)?
 
-Pusula, izole ekranlar ve bağımsız CRUD listeleri bütünü **değildir**. 
-Pusula, kurucunun hayatındaki **tüm finansal ve operasyonel olayların tek bir canlı organizma gibi birbirini tetiklediği reaktif bir sistem dinamiğidir.**
+Pusula'nın ilk tasarım aşamasında *"Sıfır İzolasyon (Zero Silos)"* yaklaşımıyla her işlemin otomatik olarak banka bakiyesini, kredi kartı borcunu, proje maliyetini ve alacak kayıtlarını zincirleme değiştirdiği sıkı bağlı (tightly-coupled) bir köprü kurgulanmıştı.
+
+Ancak gerçek kullanım deneyimi gösterdi ki:
+- Otomatik yan etkiler (bir hareket veya borç kaydının arka planda başka bir hesabın bakiyesini değiştirmesi) zamanla **kontrol edilemez bakiye sapmalarına** ve takip karmaşasına yol açmaktadır.
+- Kullanıcının her modülü kendi gerçekliğiyle, **şeffaf ve manuel kontrol** altında yönetmesi çok daha güvenilir ve öngörülebilirdir.
+
+Bu doğrultuda Pusula'nın güncel vizyonu **Bağımsız, İzole ve Manuel Kontrollü Modüller** ilkesine dayanır:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           PUSULA EKOSİSTEMİ                             │
-├───────────────────────────┬─────────────────────────┬───────────────────┤
-│    KİŞİSEL FİNANS         │        KÖPRÜ            │   PROJE PORTFÖYÜ  │
-│                           │                         │                   │
-│  • Hazır Para (Nakit)     │  • Proje Maliyeti       │  • Fikir Havuzu   │
-│  • Kredi Kartları         │  • Kurucu Runway'i      │  • Odak Kapasitesi│
-│  • Ekstre Trendi (▲▼)     │  • Harcama İlişkilendirme│ • Kanban & Epics │
-│  • Borç & Kesin Alacak    │  • 6 Aylık Yük Tahmini  │  • Canlı Durum    │
-└───────────────────────────┴─────────────────────────┴───────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        PUSULA BAĞIMSIZ MODÜL EKOSİSTEMİ                     │
+├───────────────────────────┬─────────────────────────┬───────────────────────┤
+│   FİNANS & VARLIK         │   ÜRETİM & ODAK         │   YAŞAM & GÜVENLİK    │
+│                           │                         │                       │
+│ • Hesaplar & Birikim      │ • Proje Çalışma Masası  │ • Rutinler & Streak   │
+│ • Kredi Kartları & Ekstre │   (Maks. 2 Aktif Odak)  │ • Seyir Defteri       │
+│ • Borç / Alacak & Taksit  │ • Markdown Şartname     │ • Hayaller & Vizyon   │
+│ • Gelirler & Abonelikler  │ • Fikir Havuzu          │ • Şifreli Kasa (AES)  │
+│ • Yatırımlar & Hareketler │ • Ajanda & Zamanlayıcı  │ • AI Bağlamı (life.md)│
+└───────────────────────────┴─────────────────────────┴───────────────────────┘
 ```
 
 ---
 
 ## 3. Temel Tasarım İlkeleri
 
-1. **Sıfır İzolasyon (Zero Silos):**
-   Hiçbir hareket sadece "bir hareket" değildir. Bir harcama; bir hesabı düşürür, bir kartın ekstre borcunu artırır, potansiyel olarak bir projeye maliyet yazar ve net varlığı anında değiştirir.
+1. **Modüler Bağımsızlık (Decoupled Modules):**
+   Modüller birbirinin verisini gizli yan etkilerle bozmaz. Hesap bakiyeleri (`accounts`), kredi kartı borçları (`credit_cards`), borç/alacak planları (`debts`) ve projeler (`projects`) kendi sınırları içinde bağımsız olarak güncellenir.
 
-2. **Gerçekçi ve Dürüst Metrikler (No Vanity Metrics):**
-   - Kategori enflasyonu yoktur (Kişisel, İş, Finansman, Hariç şeklinde 4 net analiz grubu).
-   - Borç ödemeleri (tahsilat / transfer) harcama gibi çift sayılmaz (`Hariç`).
-   - Taksitli işlemlerde tüm ana tutar değil, o döneme yansıyan gerçek taksit tutarı döneme işlenir.
+2. **Manuel Kontrol ve Beyan Odaklılık:**
+   - Hesap bakiyeleri ve kart borçları kullanıcının doğrudan kontrolündedir; kullanıcı dilediğinde bakiyesini günceller veya sadece özet ekstre (`summary_only`) ya da tam hareket listesi yükleyebilir.
+   - Aylık bütçe dengesi, karmaşık "Runway" varsayımları yerine doğrudan **Beyan Edilen Aylık Gelir − Sabit Taahhütler (Abonelik + Bu Ayın Taksitleri) − Değişken Harcamalar** formülüyle şeffaf biçimde hesaplanır.
 
-3. **Odak Kapasitesi Kapısı (Focus Gate):**
-   Kurucunun aynı anda 2'den fazla projede aktif planlama/geliştirme yapmasını engelleyen disiplin mekanizması.
+3. **Kuruş Hassasiyeti ve Çift Sayım Koruması (No Double-Counting):**
+   - Tüm finansal hesaplamalar IEEE-754 kayan nokta hatalarını önlemek için kuruş (`integer cents`) tabanlı yürütülür.
+   - Kredi kartı borç ödemeleri ve hesaplar arası transferler `Hariç` grubunda tutularak harcama olarak ikinci kez sayılmaz.
 
-4. **Kullanıcı Eforunu Sıfıra Yaklaştırma (Frictionless Ingestion):**
-   Banka ekstre PDF'leri tek tıkla yüklenir; sistem bankayı tanır, Türkçe harf hatalarını onarır, işyerlerini normalize eder ve sadece onay bekler.
+4. **Odak Kapasitesi Kapısı (Focus Gate):**
+   Üreticinin aynı anda 2'den fazla projede aktif geliştirme/planlama yapmasını engelleyen çalışma masası disiplini korunur.

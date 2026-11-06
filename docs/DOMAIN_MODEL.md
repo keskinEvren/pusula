@@ -1,6 +1,6 @@
 # 🏛️ Pusula — Domain Model & Varlık İlişkileri
 
-Bu döküman, Pusula sistemindeki temel varlıkları (Entities), bu varlıkların ilişkilerini ve verilerin nasıl depolanıp nasıl türetildiğini (Stored vs. Derived) tanımlar.
+Bu döküman, Pusula sistemindeki temel varlıkları (Entities), bu varlıkların birbirleriyle olan kontrollü ilişkilerini ve verilerin nasıl depolanıp nasıl türetildiğini (Stored vs. Derived) tanımlar.
 
 ---
 
@@ -12,139 +12,92 @@ erDiagram
     PROFILES ||--o{ CREDIT_CARDS : "sahiptir"
     PROFILES ||--o{ TRANSACTIONS : "kaydeder"
     PROFILES ||--o{ DEBTS : "takip eder"
+    PROFILES ||--o{ INCOMES : "beyan eder"
     PROFILES ||--o{ SUBSCRIPTIONS : "yönetir"
-    PROFILES ||--o{ PROJECTS : "sahiptir"
+    PROFILES ||--o{ INVESTMENTS : "portföy tutar"
+    PROFILES ||--o{ PROJECTS : "geliştirir"
     PROFILES ||--o{ IDEAS : "toplar"
+    PROFILES ||--o{ AGENDA_ITEMS : "planlar"
+    PROFILES ||--o{ ROUTINES : "alışkanlık kurar"
+    PROFILES ||--o{ JOURNAL_ENTRIES : "not alır"
+    PROFILES ||--o{ DREAMS : "hedefler"
+    PROFILES ||--o{ CREDENTIALS : "şifreler"
     PROFILES ||--o{ STATEMENT_IMPORTS : "yükler"
     PROFILES ||--o{ MERCHANT_MAPPINGS : "öğretir"
 
-    CREDIT_CARDS ||--o{ CARD_STATEMENTS : "geçmişi barındırır"
-    PROJECTS ||--o{ PROJECT_TASKS : "görevleri içerir"
-
-    TRANSACTIONS }o--o| PROJECTS : "opsiyonel proje bağı (Köprü)"
-    TRANSACTIONS }o--o| STATEMENT_IMPORTS : "kaynak ekstre"
-    SUBSCRIPTIONS }o--o| PROJECTS : "opsiyonel proje bağı (Köprü)"
-    IDEAS }o--o| PROJECTS : "dönüşen proje"
+    CREDIT_CARDS ||--o{ CARD_STATEMENTS : "ekstre geçmişi"
+    DEBTS ||--o{ DEBT_INSTALLMENTS : "taksit planı"
+    ROUTINES ||--o{ ROUTINE_LOGS : "günlük kayıt"
+    PROJECTS ||--o{ AGENDA_ITEMS : "odak seansı"
+    STATEMENT_IMPORTS ||--o{ TRANSACTIONS : "kaynak ekstre"
 ```
 
 ---
 
 ## 2. Temel Varlıklar ve Alan Tanımları
 
-### 1. `Accounts` (Hazır Para / Nakit / Vadesiz Hesaplar)
-- **Amaç:** Kurucunun elindeki likit nakit mevcudunu tutar.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `user_id`: UUID (FK ➔ Profiles)
-  - `name`: Text (Örn: "Garanti Vadesiz", "Enpara Vadesiz", "Nakit Cüzdan")
-  - `type`: Text (`vadesiz`, `nakit`, `yatırım`)
-  - `balance`: Numeric(12,2) (Güncel kullanılabilir bakiye)
-  - `note`: Text
+### 1. `Accounts` (Hesaplar & Birikim / Damla Getiri)
+- **Amaç:** Kullanıcının vadesiz banka, nakit kasa ve günlük/aylık getiri üreten birikim hesaplarını tutar. Bakiyeler manuel olarak veya birikim motoru üzerinden kontrol edilir.
+- **Temel Alanlar:**
+  - `id`: UUID (PK), `user_id`: UUID (FK)
+  - `name`: Text ("Enpara Vadesiz", "Günlük Birikim")
+  - `type`: Enum (`Vadesiz`, `Nakit`, `Yatırım`, `Birikim`)
+  - `balance`: Numeric(12,2) (Güncel bakiye)
+  - `currency`: Enum (`TRY`, `USD`, `EUR`, `GBP`)
+  - `savings_principal`, `annual_yield_rate`, `yield_type`, `yield_start_date`: Birikim ("Damla") getiri motoru parametreleri.
 
-### 2. `CreditCards` (Kredi Kartları)
-- **Amaç:** Aktif kredi kartı limitlerini, güncel borçlarını ve ödeme tarihlerini tutar.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `user_id`: UUID (FK ➔ Profiles)
-  - `bank`: Text ("Akbank", "Enpara", "Ziraat", "Garanti")
-  - `card_name`: Text ("Platinum • 1697", "Bankkart • 0887")
-  - `last_four`: Text ("1697")
-  - `current_debt`: Numeric(12,2) (Anlık toplam kart borcu)
-  - `statement_debt`: Numeric(12,2) (Son kesilen ekstre dönem borcu)
-  - `minimum_payment`: Numeric(12,2) (Asgari ödeme tutarı)
-  - `statement_date`: Date (Son ekstre kesim tarihi)
-  - `due_date`: Date (Son ödeme tarihi)
-  - `status_note`: Text
+### 2. `CreditCards` & `CardStatements` (Kredi Kartları ve Ekstre Geçmişi)
+- **Amaç:** Aktif kredi kartı limitlerini, güncel/dönem borçlarını, kesim/son ödeme günlerini ve aylık ekstre değişim trendlerini (`prev_debt`, `change_amount`, `change_pct`) tutar.
 
-### 3. `CardStatements` (Ekstre Geçmişi)
-- **Amaç:** Her kartın aylık ekstre değişim trendini (borcun artış/azalışını) arşivler.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `card_id`: UUID (FK ➔ CreditCards)
-  - `statement_date`: Date
-  - `period_debt`: Numeric(12,2) (Dönem borcu)
-  - `minimum`: Numeric(12,2)
-  - `payments`: Numeric(12,2) (O dönem yapılan ödemeler)
-  - `spending`: Numeric(12,2) (O dönem yapılan harcama/taksit)
-  - `interest_fees`: Numeric(12,2) (Faiz/BSMV/KKDF yükü)
-  - `prev_debt`: Numeric(12,2) (Bir önceki dönem borcu)
-  - `change_amount`: Numeric(12,2) (`period_debt - prev_debt`)
-  - `change_pct`: Numeric(8,4) (`change_amount / prev_debt`)
-
-### 4. `Transactions` (Ana İşlem Defteri — Hareketler)
-- **Amaç:** Tüm finansal para giriş ve çıkışlarının tekil atomik kaydıdır.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `user_id`: UUID (FK ➔ Profiles)
-  - `date`: Date (İşlem tarihi)
-  - `account_or_card`: Text (Hangi hesaptan/karttan yapıldığı)
-  - `type`: Enum (`Harcama`, `Kart Ödemesi`, `Gelir`, `Tahsilat`, `Finansman/Masraf`, `İade`, `Borç Ödemesi`, `Nakit Avans`, `Transfer`)
-  - `description`: Text (Ham ekstre açıklaması)
-  - `amount`: Numeric(12,2) (Tutar)
+### 3. `Transactions` (İşlem Defteri — Hareketler)
+- **Amaç:** Banka/kart ekstrelerinden içe aktarılan veya manuel girilen finansal hareketlerin kaydıdır.
+- **Temel Alanlar:**
+  - `date`, `account_or_card`, `type` (`Harcama`, `Kart Ödemesi`, `Gelir`, `Tahsilat`, `Finansman/Masraf`, `İade`, `Borç Ödemesi`, `Nakit Avans`, `Transfer`)
+  - `amount`: Numeric(12,2)
   - `analysis_group`: Enum (`Kişisel`, `İş`, `Finansman`, `Hariç`)
-  - `merchant`: Text (Normalize işyeri adı: "ŞOK", "Hostinger", "Canva")
-  - `recurrence`: Text ("Düzenli", "Taksit (3/6)", null)
-  - `statement_date`: Date (Ait olduğu ekstre dönemi)
-  - `project_id`: UUID (FK ➔ Projects, **KÖPRÜ**)
-  - `import_id`: UUID (FK ➔ StatementImports)
+  - `merchant`: Normalize işyeri adı
+  - `recurrence`: Taksit veya düzenlilik bilgisi ("Taksit (3/6)")
+  - `import_id`: UUID (FK ➔ `statement_imports`)
 
-### 5. `Debts` (Borçlar & Kesin Alacaklar)
-- **Amaç:** Kredi kartı dışındaki şahıs/kurum borçları ile maaş ve freelance kesin hakedişlerini takip eder.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `user_id`: UUID (FK ➔ Profiles)
-  - `type`: Enum (`Borç`, `Alacak`)
-  - `category`: Text ("Maaş", "Kişisel Borç", "Artı Para", "Proje Hakedişi")
-  - `person_or_entity`: Text ("Hızır Global AŞ", "Ablam", "Akbank Artı Para")
-  - `description`: Text
-  - `principal`: Numeric(12,2) (Ana tutar)
-  - `past_payments`: Numeric(12,2) (Geçmişte tahsil edilen/ödenen)
-  - `remaining`: Numeric(12,2) (`principal - past_payments`)
-  - `status`: Enum (`Açık`, `Kapatıldı`)
-  - `linked_account_id`: UUID (FK ➔ Accounts, **Tahsilat/Ödemenin yansıyacağı hesap**)
+### 4. `Debts` & `DebtInstallments` (Borçlar, Alacaklar ve Taksit Planı)
+- **Amaç:** Şahıs/kurum borçlarını, kesin alacakları ve vadeli borç taksit planlarını (`debt_installments`) banka hesap bakiyelerinden bağımsız olarak takip eder.
+- **Temel Alanlar:**
+  - `debts`: `type` (`Borç`, `Alacak`), `category`, `person_or_entity`, `principal`, `past_payments`, `remaining`, `status` (`Açık`, `Kapatıldı`), `due_date`.
+  - `debt_installments`: `debt_id`, `installment_no`, `due_date`, `amount`, `status` (`Bekliyor`, `Ödendi`, `Gecikti`), `paid_at`.
 
-### 6. `Subscriptions` (Abonelikler & Planlı Yük)
-- **Amaç:** Aylık/yıllık tekrarlayan SaaS ve lisans maliyetlerini, bitiş tarihlerini ve kararları yönetir.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `user_id`: UUID (FK ➔ Profiles)
-  - `service`: Text ("Cursor Pro", "ChatGPT Plus", "Hostinger")
-  - `group`: Enum (`Kişisel`, `İş`)
-  - `model`: Text ("Tekrarlayan", "Promosyon", "Ücretsiz")
-  - `amount`: Numeric(12,2) (Sabit TL)
-  - `period`: Enum (`Aylık`, `Yıllık`, `Tek Sefer`, `18 Ay`)
-  - `end_date`: Date (Yenileme/bitiş tarihi)
-  - `decision`: Enum (`Devam`, `İptal Et`, `Kararsız`)
-  - `payment_method`: Text ("Bankkart • 0887")
-  - `project_id`: UUID (FK ➔ Projects, **KÖPRÜ**)
+### 5. `Incomes` (Beyan Edilen Gelirler)
+- **Amaç:** Maaş, freelance hakediş, kira veya temettü gibi düzenli (`Düzenli`) ve tek seferlik (`Tek Seferlik`) gelir kalemlerini çoklu döviz desteğiyle tutar.
 
-### 7. `Projects` (Proje Portföyü)
-- **Amaç:** Kurucunun geliştirdiği ürünlerin yaşam döngüsünü ve maliyetini yönetir.
-- **Alanlar:**
-  - `id`: UUID (PK)
-  - `user_id`: UUID (FK ➔ Profiles)
-  - `slug`: Text ("watchpath", "pusula")
-  - `name`: Text
-  - `description`: Text
-  - `status`: Enum (`Fikir`, `Planlama`, `Geliştirmede`, `Canlı`, `Arşiv`)
-  - `budget_limit`: Numeric(12,2) (Bütçe tavanı, örn: ₺20.000)
-  - `repo_url`: Text
-  - `live_url`: Text
+### 6. `Subscriptions` (Abonelikler & Sabit Yük)
+- **Amaç:** Aylık/yıllık tekrarlayan SaaS, fatura ve lisans ödemelerini (`TRY`, `USD`, `EUR`, `GBP`), ödeme günlerini ve devam/iptal kararlarını yönetir.
+
+### 7. `Investments` (Yatırım Portföyü)
+- **Amaç:** Altın, döviz, hisse senedi, fon ve kripto varlıklarının miktar, maliyet (`avg_cost`) ve güncel piyasa fiyatlarını (`current_price`) takip eder.
+
+### 8. `Projects` & `Ideas` (Proje Çalışma Masası ve Fikir Havuzu)
+- **Amaç:** Geliştirilen projelerin yaşam döngüsünü (`Fikir`, `Planlama`, `Geliştirmede`, `Canlı`, `Arşiv`), Markdown şartnamesini (`spec_markdown`) ve çalışma bağlantılarını finansal muhasebeden bağımsız, yalın bir odak masası olarak yönetir.
+
+### 9. Yaşam, Odak ve Güvenlik Varlıkları
+- **`AgendaItems`:** Günlük yapılacaklar, proje odak seansları ve Pomodoro/kronometre süre kayıtları (`duration_minutes`).
+- **`Routines` & `RoutineLogs`:** Günlük alışkanlıklar, 3 seviyeli tamamlama skoru, seri (streak) ve mola (`is_frozen`) durumu.
+- **`JournalEntries`:** Markdown destekli günlük seyir defteri.
+- **`Dreams`:** Kısa, orta ve uzun vadeli vizyon hedefleri.
+- **`Credentials`:** İstemci tarafında `PBKDF2 + AES-GCM 256-bit` ile şifrelenen kimlik ve parola kasası.
 
 ---
 
 ## 3. Depolanan Veri vs. Anlık Türetilen Metrikler (Calculated/Derived)
 
-Veri tutarsızlığını önlemek için bazı metrikler veritabanında statik tutulmaz, saf finans motoru tarafından anlık hesaplanır:
+Veri tutarsızlığını önlemek için özet metrikler saf motorlar (`finance-engine.ts`, `savings-engine.ts`, `life-md-engine.ts`) tarafından kuruş hassasiyetiyle anlık hesaplanır:
 
 1. **Net Varlık (Net Worth):**
-   $$\text{Net Varlık} = \sum \text{Accounts.balance} + \sum \text{Debts(Alacak).remaining} - \left( \sum \text{CreditCards.current\_debt} + \sum \text{Debts(Borç).remaining} \right)$$
+   $$\text{Net Varlık} = \sum \text{Accounts.balance} + \sum \text{Investments} + \sum \text{Debts(Alacak).remaining} - \left( \sum \text{CreditCards.current\_debt} + \sum \text{Debts(Borç).remaining} \right)$$
 
-2. **Proje Gerçek Maliyeti (Project Total Cost):**
-   $$\text{Proje Maliyeti} = \sum \text{Transactions(project\_id).amount} + \sum \text{Subscriptions(project\_id).amount}$$
+2. **Aylık Bütçe & Nakit Akışı Dengesi:**
+   $$\text{Kalan Serbest Bütçe} = \text{Aylık Beyan Edilen Gelir} - \text{Sabit Taahhütler (Abonelik + Bu Ayın Taksitleri)} - \text{Değişken Harcama Yükü}$$
 
-3. **Kurucu Runway (Aylık Hayatta Kalma Süresi):**
-   $$\text{Runway (Ay)} = \frac{\sum \text{Accounts.balance}}{\text{Aylık Kişisel Tüketim} + \text{Aylık Proje Yakma Hızı}}$$
+3. **6 Aylık Planlı Nakit Yükü:**
+   $$\text{Ay } N \text{ Yükü} = \sum \text{Aktif Abonelikler} + \sum \text{Kredi Kartı Taksitleri} + \sum \text{Borç Taksit Planı (`debt\_installments`)}$$
 
-4. **Kapasite Durumu:**
+4. **Çalışma Masası Kapasite Durumu (Focus Gate):**
    $$\text{Kapasite Dolu} \iff \text{Count}(\text{Projects.status} \in \{\text{'Planlama'}, \text{'Geliştirmede'}\}) \ge 2$$
