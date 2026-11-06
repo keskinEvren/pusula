@@ -1,10 +1,16 @@
 import type { PusulaVaultData } from '@/lib/vault-engine'
 import { formatCurrency } from '@/lib/utils'
+import {
+  calculateSubscriptionEquivalent,
+  calculateIncomeMetrics,
+  normalizeSubscriptionPeriod,
+} from '@/lib/finance-engine'
 
 export interface LifeMdSectionOptions {
   executiveSummary?: boolean
   dreamsAndGoals?: boolean
   projectsAndIdeas?: boolean
+  projectAndIdeaDocs?: boolean
   routinesAndAgenda?: boolean
   journal?: boolean
   financialOverview?: boolean
@@ -46,18 +52,242 @@ export function cleanCell(val: unknown): string {
 }
 
 // Çok satırlı içerik temizleyici ve başlık hiyerarşisi koruyucu (Günlük ve açıklamalar için)
-export function cleanMultiLine(val: unknown): string {
+// Kod blokları (``` veya ~~~) içindeki satırlar (# yorumları dahil) kesinlikle değiştirilmez
+export function cleanMultiLine(val: unknown, minLevel = 4): string {
   if (val === null || val === undefined) return ''
   const str = String(val).trim()
   if (!str) return ''
-  // Günlük içeriğinde # veya ## veya ### başlıkları varsa life.md'nin hiyerarşisini bozmaması için seviyelerini düşür
-  return str.replace(/^(#{1,3})\s+(.*)$/gm, '#### $2')
+
+  const lines = str.split(/\r?\n/)
+  let inCodeFence = false
+  const resultLines: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+      inCodeFence = !inCodeFence
+      resultLines.push(line)
+      continue
+    }
+
+    if (inCodeFence) {
+      resultLines.push(line)
+      continue
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/)
+    if (headingMatch) {
+      const hashes = headingMatch[1].length
+      if (hashes < minLevel) {
+        const demotedLevel = Math.min(6, minLevel + (hashes - 1))
+        resultLines.push(`${'#'.repeat(demotedLevel)} ${headingMatch[2]}`)
+      } else {
+        resultLines.push(line)
+      }
+    } else {
+      resultLines.push(line)
+    }
+  }
+
+  return resultLines.join('\n')
+}
+
+// Satır içi kısa özet üretici (tablo hücreleri için)
+export function summarizeInline(val: unknown, maxLen = 120): string {
+  if (val === null || val === undefined) return '-'
+  const str = String(val).trim()
+  if (!str) return '-'
+  // İlk anlamlı satırı bul (boş satırları atla)
+  const lines = str.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+  if (lines.length === 0) return '-'
+  const firstMeaningful = lines.find((l) => !l.startsWith('#')) || lines[0]
+  // Başlık işaretlerini (# vb.) ve blok alıntı işaretlerini temizle
+  const cleanLine = firstMeaningful.replace(/^[#>\s*_-]+/, '').trim() || firstMeaningful
+  const truncated = cleanLine.length > maxLen ? `${cleanLine.slice(0, maxLen - 3)}...` : cleanLine
+  return cleanCell(truncated)
+}
+
+// Detaylı dokümantasyon var mı kontrolü (çok satırlı veya 120 karakterden uzun)
+export function hasDetailedDoc(val: unknown): boolean {
+  if (val === null || val === undefined) return false
+  const str = String(val).trim()
+  if (!str) return false
+  return str.includes('\n') || str.length > 120
+}
+
+export interface ActiveCardInstallment {
+  cardName: string
+  description: string
+  installmentStatus: string
+  current: number
+  total: number
+  monthlyAmount: number
+  remainingMonths: number
+  remainingLoad: number
+}
+
+// Taksit bilgilerini açıklama veya periyottan ayrıştır
+export function parseInstallmentInfo(
+  desc?: string | null,
+  recurrence?: string | null
+): { current: number; total: number; cleanDesc?: string } | null {
+  const text = (desc || '').trim()
+  const rec = (recurrence || '').trim()
+
+  const cleanText = (matchedStr?: string) => {
+    if (!matchedStr) return text
+    return text
+      .replace(matchedStr, '')
+      .replace(/[\(\[\{]\s*[\)\]\}]/g, '')
+      .replace(/^[-–—:,\s/|(\[{]+|[-–—:,\s/|)\]}]+$/g, '')
+      .trim() || text
+  }
+
+  const validate = (cur: number, tot: number, matchedStr?: string) => {
+    if (isNaN(cur) || isNaN(tot)) return null
+    if (cur >= 1 && tot >= 2 && tot <= 60 && cur <= tot) {
+      return { current: cur, total: tot, cleanDesc: cleanText(matchedStr) }
+    }
+    return null
+  }
+
+  // 1. "İşlemin X/Y Taksidi" / "İşlemin X/Y Taksiti" / "İşlemin X/Y Taksit"
+  const m1 = text.match(/(?:[\(\[]\s*)?İşlemin\s+(\d{1,2})\/(\d{1,2})\s*(?:Taksit[iı]?|Taksid[iı]?|Taksit)[\)\]]?/i)
+  if (m1) {
+    const res = validate(parseInt(m1[1], 10), parseInt(m1[2], 10), m1[0])
+    if (res) return res
+  }
+
+  // 2. "X. Taksit ... X/Y" veya "X.Taksit (X/Y)"
+  const m2 = text.match(/(?:[\(\[]\s*)?(\d{1,2})\.\s*Taksit[^\d]*(\d{1,2})\/(\d{1,2})[\)\]]?/i)
+  if (m2) {
+    const res = validate(parseInt(m2[2], 10), parseInt(m2[3], 10), m2[0])
+    if (res) return res
+  }
+
+  // 3. "Taksit:? (X/Y)" veya "Taksit:? X/Y" veya "Tk:? (X/Y)" veya "Tk:? X/Y"
+  const m3 = text.match(/(?:[\(\[]\s*)?(?:Taksit|Tk\.?)[\s:]*\(?(\d{1,2})\/(\d{1,2})\)?[\)\]]?/i)
+  if (m3) {
+    const res = validate(parseInt(m3[1], 10), parseInt(m3[2], 10), m3[0])
+    if (res) return res
+  }
+
+  // 4. "X/Y Taksit" / "X/Y Taksiti" / "X/Y Taksidi" / "X/Y Tk"
+  const m4 = text.match(/[\(\[]?(\d{1,2})\/(\d{1,2})[\)\]]?\s*(?:Taksit[iı]?|Taksid[iı]?|Tk\.?)[\)\]]?/i)
+  if (m4) {
+    const res = validate(parseInt(m4[1], 10), parseInt(m4[2], 10), m4[0])
+    if (res) return res
+  }
+
+  // 5. English: "Installment (X/Y)", "Installment X/Y", "Installment X of Y", "X/Y Installment"
+  const mEng = text.match(/(?:[\(\[]\s*)?Installment[\s:]*\(?(\d{1,2})(?:\/|\s+of\s+)(\d{1,2})\)?[\)\]]?/i) ||
+               text.match(/[\(\[]?(\d{1,2})(?:\/|\s+of\s+)(\d{1,2})[\)\]]?\s*Installment[\)\]]?/i)
+  if (mEng) {
+    const res = validate(parseInt(mEng[1], 10), parseInt(mEng[2], 10), mEng[0])
+    if (res) return res
+  }
+
+  // 6. Parenthesized/Bracketed "(X/Y)" or "[X/Y]" in text (e.g. "KOTON (1/3)")
+  const m6 = text.match(/[\(\[](\d{1,2})\/(\d{1,2})[\)\]]/)
+  if (m6) {
+    const res = validate(parseInt(m6[1], 10), parseInt(m6[2], 10), m6[0])
+    if (res) return res
+  }
+
+  // 7. Check recurrence field if present
+  if (rec) {
+    const mRec1 = rec.match(/(?:Taksit|Tk\.?)?[\s:]*\(?(\d{1,2})\/(\d{1,2})\)?/i)
+    if (mRec1) {
+      const res = validate(parseInt(mRec1[1], 10), parseInt(mRec1[2], 10))
+      if (res) return res
+    }
+    const mRec2 = rec.match(/(\d{1,2})\s+of\s+(\d{1,2})/i)
+    if (mRec2) {
+      const res = validate(parseInt(mRec2[1], 10), parseInt(mRec2[2], 10))
+      if (res) return res
+    }
+  }
+
+  // 8. Trailing bare "X/Y" at the end of description (e.g. "KOTON 1/3")
+  const m8 = text.match(/(?:\s|^)(\d{1,2})\/(\d{1,2})$/)
+  if (m8) {
+    const res = validate(parseInt(m8[1], 10), parseInt(m8[2], 10), m8[0])
+    if (res) return res
+  }
+
+  return null
+}
+
+// İşlemlerden devam eden kredi kartı taksitlerini ayıkla
+export function extractActiveCardInstallments(
+  transactions: any[],
+  resolveCard: (id?: string | null) => string
+): ActiveCardInstallment[] {
+  const candidateMap = new Map<string, { tx: any; info: { current: number; total: number; cleanDesc?: string } }>()
+
+  for (const t of transactions) {
+    // Harcama dışı (ödeme, iade, gelir) işlemleri taksit borcu olarak sayma
+    if (t.type === 'İade' || t.type === 'Kart Ödemesi' || t.type === 'Gelir' || t.type === 'Tahsilat') {
+      continue
+    }
+
+    const numAmount = Math.abs(Number(t.amount) || 0)
+    if (numAmount <= 0) continue
+
+    const info = parseInstallmentInfo(t.description, t.recurrence)
+    if (!info) continue
+
+    const cardId = t.card_id || t.account_or_card || 'card'
+    const cleanDesc = info.cleanDesc && info.cleanDesc !== t.description ? info.cleanDesc : ''
+    const desc = cleanDesc || (t.merchant && t.merchant.trim()) || t.description || 'İşlem'
+    const groupKey = `${cardId}|${desc.toLowerCase().replace(/\s+/g, ' ')}|${info.total}|${numAmount}`
+
+    const existing = candidateMap.get(groupKey)
+    if (!existing) {
+      candidateMap.set(groupKey, { tx: t, info })
+    } else {
+      if (
+        info.current > existing.info.current ||
+        (info.current === existing.info.current && (t.date || '') > (existing.tx.date || ''))
+      ) {
+        candidateMap.set(groupKey, { tx: t, info })
+      }
+    }
+  }
+
+  const results: ActiveCardInstallment[] = []
+
+  for (const { tx, info } of candidateMap.values()) {
+    if (info.current < info.total) {
+      const remainingMonths = info.total - info.current
+      const monthlyAmount = Math.abs(Number(tx.amount) || 0)
+      const remainingLoad = monthlyAmount * remainingMonths
+      const resolved = resolveCard(tx.card_id || tx.account_or_card)
+      const cardName = resolved !== '-' ? resolved : (tx.account_or_card || 'Kredi Kartı')
+      const cleanDesc = info.cleanDesc && info.cleanDesc !== tx.description ? info.cleanDesc : ''
+      const desc = cleanDesc || (tx.merchant && tx.merchant.trim()) || tx.description || 'Taksitli İşlem'
+
+      results.push({
+        cardName,
+        description: desc,
+        installmentStatus: `${info.current}/${info.total}`,
+        current: info.current,
+        total: info.total,
+        monthlyAmount,
+        remainingMonths,
+        remainingLoad,
+      })
+    }
+  }
+
+  return results.sort((a, b) => b.remainingLoad - a.remainingLoad)
 }
 
 const DEFAULT_SECTIONS: Required<LifeMdSectionOptions> = {
   executiveSummary: true,
   dreamsAndGoals: true,
   projectsAndIdeas: true,
+  projectAndIdeaDocs: true,
   routinesAndAgenda: true,
   journal: true,
   financialOverview: true,
@@ -173,8 +403,10 @@ export function generateLifeMarkdown(
     const c = cardMap.get(id)
     if (!c) return '-'
     const bankPrefix = c.bank ? `${c.bank} - ` : ''
-    const lastFour = c.last_four ? ` (**** ${c.last_four})` : ''
-    return `${bankPrefix}${c.card_name}${lastFour}`
+    const cardName = c.card_name || 'Kart'
+    const alreadyHasLastFour = Boolean(c.last_four && cardName.includes(c.last_four))
+    const lastFour = c.last_four && !alreadyHasLastFour ? ` (**** ${c.last_four})` : ''
+    return `${bankPrefix}${cardName}${lastFour}`
   }
   const resolveDream = (id?: string | null) => (id ? dreamMap.get(id)?.title || '-' : '-')
   const resolveDebt = (id?: string | null) => {
@@ -235,15 +467,44 @@ export function generateLifeMarkdown(
       .filter((d) => d.type === 'Alacak' && d.status === 'Açık')
       .reduce((sum, d) => sum + (Number(d.remaining) || 0), 0)
 
-    const netWorth = totalBankBalance + totalInvestmentValue + openReceivables - (totalCardDebt + openDebts)
+    const liquidNetWorth = totalBankBalance + totalInvestmentValue - (totalCardDebt + openDebts)
+    const netWorth = liquidNetWorth + openReceivables
 
-    const activeMonthlyIncome = (data.incomes || [])
-      .filter((i) => i.status === 'Aktif')
-      .reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+    // Finansman & Faiz Kaybı (Faiz, KKDF, BSMV vb.)
+    const financingTxs = (data.transactions || []).filter(
+      (t) => t.type === 'Finansman/Masraf' || (t.type as string) === 'Finansman' || t.analysis_group === 'Finansman'
+    )
+    const totalFinancingLoss = financingTxs.reduce(
+      (sum, t) => sum + Math.abs(Number(t.amount) || 0),
+      0
+    )
 
-    const activeMonthlySubs = (data.subscriptions || [])
-      .filter((s) => s.status === 'Aktif')
-      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+    // Normalleştirilmiş Gelir ve Abonelik Metrikleri
+    const incomeMetrics = calculateIncomeMetrics(data.incomes || [])
+    const activeMonthlyIncome = incomeMetrics.totalMonthlyIncome
+
+    const activeSubs = (data.subscriptions || []).filter(
+      (s) => s.status === 'Aktif' && s.decision !== 'İptal Et'
+    )
+    let activeMonthlySubs = 0
+    let activeOneTimeSubs = 0
+    for (const sub of activeSubs) {
+      const eq = calculateSubscriptionEquivalent(sub.amount, sub.period, sub.currency)
+      activeMonthlySubs += eq.monthly
+      if (normalizeSubscriptionPeriod(sub.period) === 'Tek Seferlik') {
+        activeOneTimeSubs += Number(sub.amount || 0)
+      }
+    }
+    const subsDetail = activeOneTimeSubs > 0
+      ? `${activeSubs.length} aktif abonelik (+ ${formatCurrency(activeOneTimeSubs)} tek seferlik)`
+      : `${activeSubs.length} aktif abonelik`
+
+    // Devam Eden Kart Taksitleri Gelecek Ay Yükü
+    const activeCardInstallments = extractActiveCardInstallments(data.transactions || [], resolveCard)
+    const activeInstallmentsMonthlyLoad = activeCardInstallments.reduce(
+      (sum, inst) => sum + inst.monthlyAmount,
+      0
+    )
 
     const activeProjectsCount = (data.projects || []).filter(
       (p) => p.status === 'Canlı' || p.status === 'Geliştirmede'
@@ -261,9 +522,14 @@ export function generateLifeMarkdown(
     lines.push(`| **Açık Alacaklar** | ${formatCurrency(openReceivables)} | Tahsil bekleyen alacaklar |`)
     lines.push(`| **Kredi Kartı Toplam Borcu** | ${formatCurrency(totalCardDebt)} | ${(data.credit_cards || []).length} kart |`)
     lines.push(`| **Açık Borçlar (Kişi/Kurum)** | ${formatCurrency(openDebts)} | Ödenmesi gereken borçlar |`)
-    lines.push(`| **Net Finansal Varlık** | **${formatCurrency(netWorth)}** | *(Nakit + Yatırım + Alacaklar) - (Kart + Borçlar)* |`)
-    lines.push(`| **Aylık Aktif Gelirler** | ${formatCurrency(activeMonthlyIncome)} | ${(data.incomes || []).filter((i) => i.status === 'Aktif').length} aktif gelir |`)
-    lines.push(`| **Aylık Aktif Abonelikler** | ${formatCurrency(activeMonthlySubs)} | ${(data.subscriptions || []).filter((s) => s.status === 'Aktif').length} aktif abonelik |`)
+    lines.push(`| **Anlık Likit Net Durum (Alacaklar Hariç)** | **${formatCurrency(liquidNetWorth)}** | *(Nakit + Yatırım) - (Kart Borcu + Borçlar)* |`)
+    lines.push(`| **Toplam Net Varlık (Alacaklar Dahil)** | **${formatCurrency(netWorth)}** | *(Likit Net Durum + Açık Alacaklar)* |`)
+    lines.push(`| **Finansman & Faiz Kaybı** | ${formatCurrency(totalFinancingLoss)} | ${financingTxs.length} işlem (Faiz, KKDF, BSMV) |`)
+    if (activeInstallmentsMonthlyLoad > 0) {
+      lines.push(`| **Devam Eden Kart Taksit Yükü (Gelecek Ay)** | ${formatCurrency(activeInstallmentsMonthlyLoad)} | ${activeCardInstallments.length} aktif taksit |`)
+    }
+    lines.push(`| **Aylık Aktif Gelirler** | ${formatCurrency(activeMonthlyIncome)} | ${incomeMetrics.activeCount} aktif gelir |`)
+    lines.push(`| **Aylık Aktif Abonelikler** | ${formatCurrency(activeMonthlySubs)} | ${subsDetail} |`)
     lines.push('')
 
     lines.push('### 📊 Yaşam ve Üretkenlik Envanteri')
@@ -309,6 +575,52 @@ export function generateLifeMarkdown(
       }
     }
     lines.push('')
+
+    // Persona & Kimlik Karnesi (Identity Persona Özeti)
+    const personaSet = new Set<string>()
+    for (const d of dreams) {
+      if (d.identity_persona && d.identity_persona.trim()) {
+        personaSet.add(d.identity_persona.trim())
+      }
+    }
+    for (const r of data.routines || []) {
+      if (r.identity_persona && r.identity_persona.trim()) {
+        personaSet.add(r.identity_persona.trim())
+      }
+    }
+
+    if (personaSet.size > 0) {
+      lines.push('### 🎭 Kimlik Personaları Özeti')
+      lines.push('| Persona | Aktif Hedef Sayısı | Aktif Rutin Sayısı | Odak Alanları |')
+      lines.push('| :--- | :--- | :--- | :--- |')
+      const sortedPersonas = Array.from(personaSet).sort()
+      for (const persona of sortedPersonas) {
+        const personaDreams = dreams.filter(
+          (d) => (d.identity_persona || '').trim() === persona && d.status === 'active'
+        )
+        const personaRoutines = (data.routines || []).filter(
+          (r) => (r.identity_persona || '').trim() === persona && r.is_active
+        )
+        const categories = Array.from(
+          new Set(
+            [
+              ...dreams
+                .filter((d) => (d.identity_persona || '').trim() === persona && d.category)
+                .map((d) => d.category!.trim()),
+              ...personaRoutines
+                .map((r) => (r.dream_id ? dreamMap.get(r.dream_id)?.category?.trim() : null))
+                .filter(Boolean) as string[],
+            ].filter(Boolean)
+          )
+        )
+        const focusAreas = categories.length > 0 ? categories.join(', ') : '-'
+        lines.push(
+          `| ${cleanCell(persona)} | ${personaDreams.length} hedef | ${personaRoutines.length} rutin | ${cleanCell(focusAreas)} |`
+        )
+      }
+      lines.push('')
+    }
+
     lines.push('---')
     lines.push('')
   }
@@ -339,11 +651,17 @@ export function generateLifeMarkdown(
 
         const incomeMonthly = (data.incomes || [])
           .filter((i) => i.project_id === p.id && i.status === 'Aktif')
-          .reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+          .reduce((sum, i) => {
+            const eq = calculateSubscriptionEquivalent(i.amount, i.period, i.currency)
+            return sum + eq.monthly
+          }, 0)
 
         const subsMonthly = (data.subscriptions || [])
-          .filter((s) => s.project_id === p.id && s.status === 'Aktif')
-          .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+          .filter((s) => s.project_id === p.id && s.status === 'Aktif' && s.decision !== 'İptal Et')
+          .reduce((sum, s) => {
+            const eq = calculateSubscriptionEquivalent(s.amount, s.period, s.currency)
+            return sum + eq.monthly
+          }, 0)
 
         const projectDebts = (data.debts || [])
           .filter((d) => d.project_id === p.id && d.status === 'Açık' && d.type === 'Borç')
@@ -368,8 +686,21 @@ export function generateLifeMarkdown(
         ].filter(Boolean).join(' ') || '-'
 
         lines.push(
-          `| ${cleanCell(p.name)} | ${cleanCell(pType)} | ${cleanCell(p.status)} | ${cleanCell(budget)} | ${cleanCell(formatCurrency(spent))} | ${cleanCell(formatCurrency(incomeMonthly))} | ${cleanCell(formatCurrency(subsMonthly))} | ${cleanCell(debtReceivableStr)} | ${cleanCell(links)} | ${cleanCell(p.description)} |`
+          `| ${cleanCell(p.name)} | ${cleanCell(pType)} | ${cleanCell(p.status)} | ${cleanCell(budget)} | ${cleanCell(formatCurrency(spent))} | ${cleanCell(formatCurrency(incomeMonthly))} | ${cleanCell(formatCurrency(subsMonthly))} | ${cleanCell(debtReceivableStr)} | ${cleanCell(links)} | ${summarizeInline(p.description)} |`
         )
+      }
+
+      if (sections.projectAndIdeaDocs) {
+        const detailedProjects = projects.filter((p) => hasDetailedDoc(p.description))
+        if (detailedProjects.length > 0) {
+          lines.push('')
+          for (const p of detailedProjects) {
+            lines.push(`#### 📁 ${p.name} — Detaylı Dokümantasyon`)
+            lines.push('')
+            lines.push(cleanMultiLine(p.description, 5))
+            lines.push('')
+          }
+        }
       }
     }
     lines.push('')
@@ -387,8 +718,21 @@ export function generateLifeMarkdown(
         const promoted = resolveProject(idea.promoted_project_id)
 
         lines.push(
-          `| ${cleanCell(idea.title)} | ${cleanCell(status)} | ${cleanCell(score)} | ${cleanCell(tags)} | ${cleanCell(promoted)} | ${cleanCell(idea.description)} |`
+          `| ${cleanCell(idea.title)} | ${cleanCell(status)} | ${cleanCell(score)} | ${cleanCell(tags)} | ${cleanCell(promoted)} | ${summarizeInline(idea.description)} |`
         )
+      }
+
+      if (sections.projectAndIdeaDocs) {
+        const detailedIdeas = ideas.filter((idea) => hasDetailedDoc(idea.description))
+        if (detailedIdeas.length > 0) {
+          lines.push('')
+          for (const idea of detailedIdeas) {
+            lines.push(`#### 📁 ${idea.title} — Detaylı Dokümantasyon`)
+            lines.push('')
+            lines.push(cleanMultiLine(idea.description, 5))
+            lines.push('')
+          }
+        }
       }
     }
     lines.push('')
@@ -594,6 +938,19 @@ export function generateLifeMarkdown(
     }
     lines.push('')
 
+    const activeInstallments = extractActiveCardInstallments(data.transactions || [], resolveCard)
+    if (activeInstallments.length > 0) {
+      lines.push('#### ⏳ Aktif Kart Taksitleri & Kalan Yük')
+      lines.push('| Kart | İşlem / Açıklama | Taksit Durumu | Aylık Taksit | Kalan Ay | Kalan Toplam Yük |')
+      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- |')
+      for (const inst of activeInstallments) {
+        lines.push(
+          `| ${cleanCell(inst.cardName)} | ${cleanCell(inst.description)} | ${cleanCell(inst.installmentStatus)} | ${cleanCell(formatCurrency(inst.monthlyAmount))} | ${cleanCell(`${inst.remainingMonths} ay`)} | ${cleanCell(formatCurrency(inst.remainingLoad))} |`
+        )
+      }
+      lines.push('')
+    }
+
     if (statements.length > 0) {
       lines.push('#### 📄 Kart Ekstre Geçmişi')
       lines.push('| Kart | Ekstre Tarihi | Dönem Borcu | Asgari Ödeme | Ödemeler | Harcama | Nakit Avans | Faiz/Masraf | Son Ödeme Tarihi | Değişim (%) |')
@@ -662,13 +1019,14 @@ export function generateLifeMarkdown(
     if (subs.length === 0) {
       lines.push('*Kayıtlı abonelik bulunmuyor.*')
     } else {
-      lines.push('| Servis | Grup | Model | Tutar | Periyot | Bitiş / Yenilenme | Stratejik Etiket | Karar | Durum | Ödeme Yöntemi / Kart | Proje |')
-      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+      lines.push('| Servis | Grup | Model | Tutar | Periyot | Aylık Eşdeğer | Bitiş / Yenilenme | Stratejik Etiket | Karar | Durum | Ödeme Yöntemi / Kart | Proje |')
+      lines.push('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
       for (const sub of subs) {
         const proj = resolveProject(sub.project_id)
         const cardOrMethod = sub.payment_card_id ? resolveCard(sub.payment_card_id) : (sub.payment_method || '-')
+        const eq = calculateSubscriptionEquivalent(sub.amount, sub.period, sub.currency)
         lines.push(
-          `| ${cleanCell(sub.service)} | ${cleanCell(sub.group_type)} | ${cleanCell(sub.model)} | ${cleanCell(formatCurrency(sub.amount, sub.currency))} | ${cleanCell(sub.period)} | ${cleanCell(sub.end_date)} | ${cleanCell(sub.strategic_tag)} | ${cleanCell(sub.decision)} | ${cleanCell(sub.status)} | ${cleanCell(cardOrMethod)} | ${cleanCell(proj)} |`
+          `| ${cleanCell(sub.service)} | ${cleanCell(sub.group_type)} | ${cleanCell(sub.model)} | ${cleanCell(formatCurrency(sub.amount, sub.currency))} | ${cleanCell(sub.period)} | ${cleanCell(formatCurrency(eq.monthly, sub.currency))} | ${cleanCell(sub.end_date)} | ${cleanCell(sub.strategic_tag)} | ${cleanCell(sub.decision)} | ${cleanCell(sub.status)} | ${cleanCell(cardOrMethod)} | ${cleanCell(proj)} |`
         )
       }
     }
